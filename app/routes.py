@@ -131,7 +131,7 @@ async def instagram_start(request: Request, user: User = Depends(current_user)):
     state = new_state()
     request.session["instagram_oauth_state"] = state
     redirect_url = authorization_url(state)
-    logger.info("Instagram OAuth authorization URL: %s", redirect_url)
+    logger.warning("Instagram OAuth authorization URL: %s", redirect_url)
     return RedirectResponse(redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
