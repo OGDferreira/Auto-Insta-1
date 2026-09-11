@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block title %}Dashboard · Auto-Insta{% endblock %}
+{% block content %}<h1>Dashboard</h1><p>Olá, {{ user.email }}.</p>
+<div class="card"><h2>Contas Instagram</h2><a href="/auth/instagram/start"><button>Conectar Instagram</button></a>
+{% if accounts %}<table><tr><th>Usuário</th><th>Auto-resposta</th><th></th></tr>{% for account in accounts %}<tr><td>@{{ account.username }}</td><td>
+<form method="post" action="/accounts/{{ account.id }}/auto-reply"><input name="text" value="{{ account.auto_reply_text }}" placeholder="Resposta automática"><label><input type="checkbox" name="enabled" {% if account.auto_reply_enabled %}checked{% endif %}> ativa</label><button>Salvar</button></form>
+</td><td><form method="post" action="/accounts/{{ account.id }}/delete"><button>Remover</button></form></td></tr>{% endfor %}</table>{% else %}<p>Nenhuma conta conectada.</p>{% endif %}</div>
+{% if accounts %}<div class="card"><h2>Agendar publicação</h2><form method="post" action="/posts">
+<label>Conta<select name="account_id">{% for account in accounts %}<option value="{{ account.id }}">@{{ account.username }}</option>{% endfor %}</select></label>
+<label>URL pública da mídia<input name="media_url" type="url" required placeholder="https://..."></label>
+<label>Tipo<select name="media_type"><option>IMAGE</option><option>VIDEO</option></select></label>
+<label>Legenda<textarea name="caption"></textarea></label><label>Data/hora (ISO 8601)<input name="scheduled_for" type="datetime-local" required></label><button>Agendar</button></form></div>{% endif %}
+<div class="card"><h2>Publicações</h2>{% if posts %}<table><tr><th>Mídia</th><th>Quando</th><th>Status</th></tr>{% for post in posts %}<tr><td>{{ post.media_type }}</td><td>{{ post.scheduled_for }}</td><td>{{ post.status }}{% if post.error_message %}: {{ post.error_message }}{% endif %}</td></tr>{% endfor %}</table>{% else %}<p>Nenhum agendamento.</p>{% endif %}</div>
+{% endblock %}

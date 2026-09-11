@@ -1,0 +1,70 @@
+# Auto-Insta
+
+Aplicação multi-tenant para conectar contas pelo **Instagram Login for Business**, agendar fotos/vídeos e responder eventos básicos de mensagens e comentários. A aplicação usa FastAPI, SQLAlchemy 2 assíncrono, PostgreSQL, Redis/RQ e sessões assinadas.
+
+## Arquitetura e segurança
+
+- `owner_id` está presente em contas e publicações; todas as consultas da interface filtram pelo usuário autenticado.
+- Senhas usam `werkzeug` com scrypt. A sessão fica em cookie assinado por `SECRET_KEY`, com `HttpOnly`, `SameSite=Lax` e `COOKIE_SECURE=true` em produção.
+- Access tokens do Instagram são cifrados em repouso com Fernet (`FERNET_KEY`); nenhum token é exibido em templates.
+- O callback valida um `state` aleatório armazenado na sessão.
+- O fluxo usa exclusivamente `www.instagram.com`, `api.instagram.com` e `graph.instagram.com`; não usa Facebook Graph nem `pages_show_list`.
+- `init_db()` executa `create_all` de forma idempotente no startup. Para evoluções posteriores, adicione migrações Alembic.
+
+## Desenvolvimento local
+
+1. Crie um ambiente Python 3.12 e instale:
+
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate
+   pip install -r requirements.txt
+   copy .env.example .env
+   ```
+
+2. Gere uma chave Fernet sem segredo no repositório:
+
+   ```bash
+   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+
+   Coloque o resultado em `FERNET_KEY`. Para desenvolvimento, SQLite assíncrono é aceito; em produção use `DATABASE_URL` PostgreSQL.
+
+3. Inicie PostgreSQL/Redis e execute:
+
+   ```bash
+   uvicorn app.main:app --reload
+   rq worker --url "$REDIS_URL" instagram
+   ```
+
+   (PowerShell: `rq worker --url $env:REDIS_URL instagram`.)
+
+4. Testes e validação:
+
+   ```bash
+   pytest -q
+   python -m py_compile app\*.py
+   ```
+
+## Configuração Meta
+
+No painel Meta Developers crie um produto Instagram Login for Business e configure o redirect URI como:
+`https://SEU_HOST/auth/instagram/callback`.
+
+Defina `META_APP_ID`, `META_APP_SECRET`, `PUBLIC_BASE_URL`, `GRAPH_API_VERSION` e todos os valores de `.env.example`. Os escopos solicitados são:
+`instagram_business_basic`, `instagram_business_content_publish`,
+`instagram_business_manage_messages` e `instagram_business_manage_comments`.
+
+O worker cria um container em `/{ig_id}/media` e o publica em `/{ig_id}/media_publish`. URLs de mídia precisam ser públicas para que o Instagram consiga buscá-las.
+
+## Meta Webhooks
+
+Cadastre `https://SEU_HOST/webhooks/instagram` no produto Instagram e use o mesmo `WEBHOOK_VERIFY_TOKEN`. O GET responde ao desafio `hub.challenge`; o POST aceita eventos `messaging` e `changes`, encontra a conta pelo `instagram_user_id` e, quando habilitado no dashboard, envia uma resposta automática pela API do Instagram. Configure também os campos de mensagens/comentários exigidos pelo painel Meta.
+
+## Deploy no Render
+
+`render.yaml` cria web, worker RQ, PostgreSQL e Redis. Faça o blueprint apontar para este repositório, preencha os valores `sync: false` e defina `PUBLIC_BASE_URL` com a URL HTTPS do web service. O health check é `/health`; o comando do worker é `rq worker --url $REDIS_URL instagram`.
+
+## Estrutura
+
+`app/config.py` configura ambiente; `models.py` contém o schema; `routes.py` implementa autenticação, dashboard, OAuth e CRUD; `jobs.py` publica agendamentos; `webhooks.py` trata eventos; `templates/` contém o HTML. O projeto não copia banco ou uploads de qualquer aplicação anterior.

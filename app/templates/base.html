@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Auto-Insta{% endblock %}</title>
+  <style>
+    body{font-family:system-ui,sans-serif;max-width:1000px;margin:2rem auto;padding:0 1rem;background:#f7f7fb;color:#202124}
+    nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem}
+    .card{background:white;border:1px solid #ddd;border-radius:10px;padding:1rem;margin:1rem 0}
+    input,select,textarea,button{padding:.6rem;margin:.25rem 0;max-width:100%;box-sizing:border-box}
+    input,select,textarea{border:1px solid #bbb;border-radius:5px;width:100%} button{cursor:pointer;border:0;border-radius:5px;background:#635bff;color:white}
+    .error{color:#b00020}.muted{color:#666;font-size:.9rem} table{width:100%;border-collapse:collapse}td,th{padding:.5rem;border-bottom:1px solid #ddd;text-align:left}
+  </style>
+</head>
+<body>
+<nav><strong>Auto-Insta</strong>{% if request.session.get("user_id") %}<form method="post" action="/logout"><button>Sair</button></form>{% endif %}</nav>
+{% block content %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,69 @@
+services:
+  - type: web
+    name: auto-insta-web
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: auto-insta-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: auto-insta-redis
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FERNET_KEY
+        sync: false
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: WEBHOOK_VERIFY_TOKEN
+        sync: false
+      - key: GRAPH_API_VERSION
+        value: v22.0
+  - type: worker
+    name: auto-insta-worker
+    runtime: docker
+    dockerCommand: rq worker --url $REDIS_URL instagram
+    plan: starter
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: auto-insta-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: auto-insta-redis
+          property: connectionString
+      - key: SECRET_KEY
+        fromService:
+          type: web
+          name: auto-insta-web
+          envVarKey: SECRET_KEY
+      - key: FERNET_KEY
+        sync: false
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: WEBHOOK_VERIFY_TOKEN
+        sync: false
+      - key: GRAPH_API_VERSION
+        value: v22.0
+databases:
+  - name: auto-insta-db
+    plan: starter
+    databaseName: auto_insta
+    user: auto_insta
+  - name: auto-insta-redis
+    plan: starter
