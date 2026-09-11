@@ -4,7 +4,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import get_settings
 from .db import init_db
-from .jobs import schedule_pending_posts, scheduler
+from .jobs import reset_scheduler, schedule_pending_posts
 from .routes import router
 from .webhooks import router as webhook_router
 
@@ -25,11 +25,16 @@ app.include_router(webhook_router)
 @app.on_event("startup")
 async def startup() -> None:
     await init_db()
+    reset_scheduler()
     await schedule_pending_posts()
-    scheduler.start()
+    from . import jobs
+
+    jobs.scheduler.start()
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
-    if scheduler.running:
-        scheduler.shutdown(wait=False)
+    from . import jobs
+
+    if jobs.scheduler.running:
+        jobs.scheduler.shutdown(wait=False)

@@ -13,6 +13,14 @@ from .security import decrypt_token
 scheduler = AsyncIOScheduler(timezone="UTC")
 
 
+def reset_scheduler() -> None:
+    """Create a scheduler bound to the current application event loop."""
+    global scheduler
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
+    scheduler = AsyncIOScheduler(timezone="UTC")
+
+
 def schedule_post(post_id: int, scheduled_for: datetime) -> str:
     """Schedule a post in the web process and return its scheduler job id."""
     job_id = f"scheduled-post-{post_id}"

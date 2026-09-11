@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import PlainTextResponse
 import httpx
 from sqlalchemy import select
 
@@ -7,7 +8,7 @@ from .db import SessionLocal
 from .models import InstagramAccount
 from .security import decrypt_token
 
-router = APIRouter(prefix="/webhooks/instagram")
+router = APIRouter(prefix="/webhook")
 
 
 @router.get("")
@@ -18,7 +19,7 @@ async def verify_webhook(
 ):
     settings = get_settings()
     if mode == "subscribe" and token == settings.webhook_verify_token and challenge:
-        return int(challenge)
+        return PlainTextResponse(challenge)
     raise HTTPException(status_code=403, detail="Webhook verification failed")
 
 
