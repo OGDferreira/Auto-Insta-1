@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 import logging
@@ -159,8 +159,20 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
             .order_by(ScheduledPost.scheduled_for.desc())
         )
     ).all()
+    today = datetime.now(timezone.utc).date()
+    today_posts = [post for post in posts if post.created_at and post.created_at.date() == today]
+    metrics = {
+        "active_accounts": len(accounts),
+        "today_posts": len(today_posts),
+        "daily_views": 0,
+        "average_views": 0,
+        "published": sum(post.status == "published" for post in posts),
+        "pending": sum(post.status == "scheduled" for post in posts),
+        "failed": sum(post.status == "failed" for post in posts),
+    }
     return templates.TemplateResponse(
-        "dashboard.html", {"request": request, "user": user, "accounts": accounts, "posts": posts}
+        "dashboard.html",
+        {"request": request, "user": user, "accounts": accounts, "posts": posts, "metrics": metrics},
     )
 
 
@@ -274,8 +286,8 @@ async def create_post(
         when = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="scheduled_for inválido") from exc
-    if when <= datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="Agendamento deve estar no futuro")
+    if when < datetime.now(timezone.utc) + timedelta(minutes=1):
+        raise HTTPException(status_code=400, detail="Agendamento deve ser pelo menos 1 minuto no futuro")
     media_type = media_type.upper()
     if media_type not in {"IMAGE", "VIDEO"}:
         raise HTTPException(status_code=400, detail="media_type deve ser IMAGE ou VIDEO")
@@ -292,3 +304,61 @@ async def create_post(
     await db.commit()
     schedule_post(post.id, post.scheduled_for)
     return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/posts/bulk")
+async def create_bulk_posts(
+    account_ids: list[int] = Form(...),
+    media_urls: list[str] = Form(...),
+    media_types: list[str] = Form(...),
+    captions: list[str] = Form(...),
+    scheduled_for: str = Form(...),
+    interval_minutes: int = Form(1),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if interval_minutes < 1:
+        raise HTTPException(status_code=400, detail="O intervalo mínimo é de 1 minuto")
+    if not media_urls or not (len(media_urls) == len(media_types) == len(captions)):
+        raise HTTPException(status_code=400, detail="Lista de mídias inválida")
+    accounts = (
+        await db.scalars(
+            select(InstagramAccount).where(
+                InstagramAccount.id.in_(account_ids), InstagramAccount.owner_id == user.id
+            )
+        )
+    ).all()
+    if len(accounts) != len(set(account_ids)) or not accounts:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    try:
+        first_time = datetime.fromisoformat(scheduled_for.replace("Z", "+00:00"))
+        first_time = first_time if first_time.tzinfo else first_time.replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="scheduled_for inválido") from exc
+    if first_time < datetime.now(timezone.utc) + timedelta(minutes=1):
+        raise HTTPException(status_code=400, detail="Agendamento deve ser pelo menos 1 minuto no futuro")
+
+    posts_to_schedule = []
+    for media_index, (media_url, media_type, caption) in enumerate(
+        zip(media_urls, media_types, captions)
+    ):
+        normalized_type = media_type.upper()
+        if normalized_type not in {"IMAGE", "VIDEO"}:
+            raise HTTPException(status_code=400, detail="media_type deve ser IMAGE ou VIDEO")
+        media_time = first_time + timedelta(minutes=media_index * interval_minutes)
+        for account_index, account in enumerate(accounts):
+            post = ScheduledPost(
+                owner_id=user.id,
+                account_id=account.id,
+                media_url=media_url,
+                media_type=normalized_type,
+                caption=caption,
+                scheduled_for=media_time + timedelta(minutes=account_index if len(accounts) > 1 else 0),
+            )
+            db.add(post)
+            posts_to_schedule.append(post)
+    await db.flush()
+    await db.commit()
+    for post in posts_to_schedule:
+        schedule_post(post.id, post.scheduled_for)
+    return RedirectResponse("/dashboard?tab=queue", status_code=status.HTTP_303_SEE_OTHER)
