@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 from urllib.parse import quote
 
+import logging
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -22,6 +24,7 @@ from .security import encrypt_token, hash_password, verify_password
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+logger = logging.getLogger(__name__)
 
 
 async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
@@ -127,7 +130,9 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
 async def instagram_start(request: Request, user: User = Depends(current_user)):
     state = new_state()
     request.session["instagram_oauth_state"] = state
-    return RedirectResponse(authorization_url(state), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    redirect_url = authorization_url(state)
+    logger.info("Instagram OAuth authorization URL: %s", redirect_url)
+    return RedirectResponse(redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 @router.get("/auth/callback")
