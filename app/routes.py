@@ -4,14 +4,12 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from redis import Redis
-from rq import Queue
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
 from .db import get_db
-from .jobs import enqueue_post
+from .jobs import schedule_post
 from .models import InstagramAccount, ScheduledPost, User
 from .oauth import (
     authorization_url,
@@ -246,10 +244,6 @@ async def create_post(
     )
     db.add(post)
     await db.flush()
-    try:
-        post.rq_job_id = enqueue_post(post)
-    except Exception as exc:
-        await db.rollback()
-        raise HTTPException(status_code=503, detail=f"Redis indisponível: {exc}") from exc
     await db.commit()
+    schedule_post(post.id, post.scheduled_for)
     return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)

@@ -52,7 +52,6 @@ class ScheduledPost(Base):
     caption: Mapped[str] = mapped_column(Text, default="")
     scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     status: Mapped[str] = mapped_column(String(20), default="scheduled")
-    rq_job_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     owner: Mapped[User] = relationship(back_populates="scheduled_posts")

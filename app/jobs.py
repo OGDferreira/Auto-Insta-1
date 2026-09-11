@@ -1,9 +1,7 @@
-import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 import httpx
-from redis import Redis
-from rq import Queue
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 
 from .config import get_settings
@@ -12,10 +10,37 @@ from .models import InstagramAccount, ScheduledPost
 from .security import decrypt_token
 
 
-def enqueue_post(post: ScheduledPost) -> str:
-    queue = Queue("instagram", connection=Redis.from_url(get_settings().redis_url))
-    job = queue.enqueue_at(post.scheduled_for, publish_scheduled_post, post.id)
-    return job.id
+scheduler = AsyncIOScheduler(timezone="UTC")
+
+
+def schedule_post(post_id: int, scheduled_for: datetime) -> str:
+    """Schedule a post in the web process and return its scheduler job id."""
+    job_id = f"scheduled-post-{post_id}"
+    scheduler.add_job(
+        _publish,
+        "date",
+        run_date=scheduled_for,
+        args=[post_id],
+        id=job_id,
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    return job_id
+
+
+async def schedule_pending_posts() -> None:
+    """Restore pending schedules after a process restart."""
+    async with SessionLocal() as db:
+        posts = (
+            await db.scalars(
+                select(ScheduledPost).where(
+                    ScheduledPost.status == "scheduled",
+                    ScheduledPost.scheduled_for > datetime.now(timezone.utc),
+                )
+            )
+        ).all()
+    for post in posts:
+        schedule_post(post.id, post.scheduled_for)
 
 
 async def _publish(post_id: int) -> None:
@@ -23,7 +48,7 @@ async def _publish(post_id: int) -> None:
     async with SessionLocal() as db:
         result = await db.execute(select(ScheduledPost).where(ScheduledPost.id == post_id))
         post = result.scalar_one_or_none()
-        if post is None:
+        if post is None or post.status != "scheduled":
             return
         account = await db.get(InstagramAccount, post.account_id)
         if account is None or account.owner_id != post.owner_id:
@@ -55,7 +80,3 @@ async def _publish(post_id: int) -> None:
             post.status = "failed"
             post.error_message = str(exc)[:1000]
         await db.commit()
-
-
-def publish_scheduled_post(post_id: int) -> None:
-    asyncio.run(_publish(post_id))

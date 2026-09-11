@@ -1,6 +1,6 @@
 # Auto-Insta
 
-Aplicação multi-tenant para conectar contas pelo **Instagram Login for Business**, agendar fotos/vídeos e responder eventos básicos de mensagens e comentários. A aplicação usa FastAPI, SQLAlchemy 2 assíncrono, PostgreSQL, Redis/RQ e sessões assinadas.
+Aplicação multi-tenant para conectar contas pelo **Instagram Login for Business**, agendar fotos/vídeos e responder eventos básicos de mensagens e comentários. A aplicação usa FastAPI, SQLAlchemy 2 assíncrono com SQLite, APScheduler e sessões assinadas.
 
 ## Arquitetura e segurança
 
@@ -28,16 +28,13 @@ Aplicação multi-tenant para conectar contas pelo **Instagram Login for Busines
    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
    ```
 
-   Coloque o resultado em `FERNET_KEY`. Para desenvolvimento, SQLite assíncrono é aceito; em produção use `DATABASE_URL` PostgreSQL.
+   Coloque o resultado em `FERNET_KEY`. O SQLite assíncrono é usado localmente e no deploy; o arquivo `auto_insta.db` é criado no diretório da aplicação.
 
-3. Inicie PostgreSQL/Redis e execute:
+3. Execute a aplicação:
 
    ```bash
    uvicorn app.main:app --reload
-   rq worker --url "$REDIS_URL" instagram
    ```
-
-   (PowerShell: `rq worker --url $env:REDIS_URL instagram`.)
 
 4. Testes e validação:
 
@@ -63,7 +60,7 @@ Cadastre `https://SEU_HOST/webhooks/instagram` no produto Instagram e use o mesm
 
 ## Deploy no Render
 
-`render.yaml` cria web, worker RQ, PostgreSQL e Redis. Faça o blueprint apontar para este repositório, preencha os valores `sync: false` e defina `PUBLIC_BASE_URL` com a URL HTTPS do web service. O health check é `/health`; o comando do worker é `rq worker --url $REDIS_URL instagram`.
+`render.yaml` cria apenas um Web Service Docker no plano gratuito. O SQLite e o APScheduler rodam na própria instância, sem serviços externos. Faça o blueprint apontar para este repositório, preencha os valores `sync: false` e defina `PUBLIC_BASE_URL` com a URL HTTPS do web service. O health check é `/health`.
 
 ## Estrutura
 
