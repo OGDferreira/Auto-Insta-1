@@ -4,17 +4,26 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Auto-Insta{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
-    body{font-family:system-ui,sans-serif;max-width:1000px;margin:2rem auto;padding:0 1rem;background:#f7f7fb;color:#202124}
-    nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem}
-    .card{background:white;border:1px solid #ddd;border-radius:10px;padding:1rem;margin:1rem 0}
-    input,select,textarea,button{padding:.6rem;margin:.25rem 0;max-width:100%;box-sizing:border-box}
-    input,select,textarea{border:1px solid #bbb;border-radius:5px;width:100%} button{cursor:pointer;border:0;border-radius:5px;background:#635bff;color:white}
-    .error{color:#b00020}.muted{color:#666;font-size:.9rem} table{width:100%;border-collapse:collapse}td,th{padding:.5rem;border-bottom:1px solid #ddd;text-align:left}
+    :root{color-scheme:dark;--bg:#080b14;--panel:#101522;--panel-2:#151c2d;--line:#273149;--text:#f4f7ff;--muted:#8d99b5;--primary:#8b7cff;--cyan:#55d6ff;--danger:#ff7088;--success:#65e6a3}
+    *{box-sizing:border-box} body{font-family:"DM Sans",sans-serif;max-width:1180px;margin:0 auto;padding:0 1.25rem 3rem;background:radial-gradient(circle at 80% -10%,#202052 0,transparent 35%),var(--bg);color:var(--text);min-height:100vh}
+    nav{display:flex;justify-content:space-between;align-items:center;padding:1.2rem 0 1.8rem;border-bottom:1px solid var(--line);margin-bottom:2rem}
+    .brand{font-family:"Space Grotesk",sans-serif;font-size:1.35rem;letter-spacing:-.04em}.brand span{color:var(--cyan)}
+    .card{background:linear-gradient(145deg,rgba(21,28,45,.96),rgba(12,16,28,.96));border:1px solid var(--line);border-radius:20px;padding:1.35rem;margin:1rem 0;box-shadow:0 18px 50px rgba(0,0,0,.2);transition:border-color .2s,transform .2s,box-shadow .2s}.card:hover{border-color:#46547b;box-shadow:0 20px 60px rgba(44,41,120,.2)}
+    h1,h2{font-family:"Space Grotesk",sans-serif;letter-spacing:-.04em} h1{font-size:clamp(2rem,5vw,3.5rem);margin:.4rem 0} h2{margin:.2rem 0 1rem} p{color:var(--muted)}
+    label{display:block;color:var(--muted);font-size:.88rem;font-weight:600;margin:.8rem 0} input,select,textarea{display:block;width:100%;padding:.78rem .9rem;margin:.35rem 0 0;background:#0c111e;color:var(--text);border:1px solid var(--line);border-radius:11px;font:inherit;transition:border-color .2s,box-shadow .2s} input:focus,select:focus,textarea:focus{outline:0;border-color:var(--primary);box-shadow:0 0 0 3px rgba(139,124,255,.16)} textarea{min-height:90px;resize:vertical}
+    button,.button{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;padding:.72rem 1rem;cursor:pointer;border:0;border-radius:11px;background:linear-gradient(135deg,var(--primary),#6254e8);color:white;font:600 .9rem "DM Sans",sans-serif;text-decoration:none;transition:transform .2s,box-shadow .2s,filter .2s}button:hover,.button:hover{transform:translateY(-2px);filter:brightness(1.1);box-shadow:0 8px 24px rgba(112,92,255,.32)}button.secondary,.button.secondary{background:var(--panel-2);border:1px solid var(--line);box-shadow:none}
+    .error{color:var(--danger)}.muted{color:var(--muted);font-size:.9rem}.top-actions{display:flex;align-items:center;gap:.8rem} .account-pills{display:flex;gap:.55rem;flex-wrap:wrap;margin:1rem 0}.account-pill{display:flex;align-items:center;gap:.5rem;padding:.4rem .7rem;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;font-size:.85rem}.avatar{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,var(--cyan),var(--primary));font-weight:700;color:#07101c}.health{width:7px;height:7px;border-radius:50%;background:var(--success);box-shadow:0 0 10px var(--success)}.health.warn{background:#ffc857;box-shadow:0 0 10px #ffc857}
+    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:1rem}.col-7{grid-column:span 7}.col-5{grid-column:span 5}@media(max-width:800px){.col-7,.col-5{grid-column:1/-1}.top-actions{gap:.4rem}}
+    .eyebrow{color:var(--cyan);font-size:.78rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase}.hero{padding:1.4rem 0 .4rem}.hero p{max-width:620px}.dropzone{border:1px dashed #4b5880;border-radius:14px;padding:1rem;text-align:center;background:rgba(85,214,255,.03);cursor:pointer}.dropzone:hover{border-color:var(--cyan);background:rgba(85,214,255,.07)}.dropzone input{display:none}.preview{max-width:100%;max-height:180px;border-radius:12px;margin-top:.8rem;display:none}.progress{height:5px;background:#252d43;border-radius:99px;overflow:hidden;margin-top:.8rem}.progress span{display:block;height:100%;width:0;background:var(--cyan);transition:width .2s}.status-badge{display:inline-flex;padding:.3rem .6rem;border-radius:999px;font-size:.75rem;font-weight:700;background:#252d43;color:var(--muted)}.status-badge.scheduled{color:#b7adff;background:rgba(139,124,255,.13)}.status-badge.published{color:var(--success);background:rgba(101,230,163,.1)}.status-badge.failed{color:var(--danger);background:rgba(255,112,136,.1)}
+    table{width:100%;border-collapse:collapse}td,th{padding:.8rem .4rem;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.08em}.table-wrap{overflow-x:auto}.flash{color:var(--danger)}
   </style>
 </head>
 <body>
-<nav><strong>Auto-Insta</strong>{% if request.session.get("user_id") %}<form method="post" action="/logout"><button>Sair</button></form>{% endif %}</nav>
+<nav><a class="brand" href="/">Auto<span>·</span>Insta</a>{% if request.session.get("user_id") %}<div class="top-actions"><span class="muted">Workspace</span><form method="post" action="/logout"><button class="secondary">Sair</button></form></div>{% endif %}</nav>
 {% block content %}{% endblock %}
 </body>
 </html>
