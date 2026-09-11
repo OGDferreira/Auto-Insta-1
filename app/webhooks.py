@@ -24,24 +24,34 @@ async def verify_webhook(
 
 
 async def _send_auto_reply(account: InstagramAccount, event: dict) -> None:
-    if not account.auto_reply_enabled or not account.auto_reply_text:
-        return
     sender_id = event.get("sender", {}).get("id")
     settings = get_settings()
     token = decrypt_token(account.access_token_encrypted)
-    comment_id = event.get("comment_id") or event.get("id") if event.get("from") else None
+    comment_id = event.get("comment_id")
+    is_comment = bool(comment_id or event.get("from"))
+    reply_enabled = (
+        account.comment_reply_enabled if is_comment else account.direct_reply_enabled
+    )
+    reply_text = account.comment_reply_text if is_comment else account.direct_reply_text
+    # Legacy accounts continue using the original single-message setting.
+    if not reply_text and account.auto_reply_enabled:
+        reply_enabled, reply_text = True, account.auto_reply_text
+    if not reply_enabled or not reply_text:
+        return
+    if not comment_id and is_comment:
+        comment_id = event.get("id")
     async with httpx.AsyncClient(timeout=20) as client:
         if comment_id:
             url = f"https://graph.instagram.com/{settings.graph_api_version}/{comment_id}/replies"
             response = await client.post(
-                url, params={"access_token": token}, json={"message": account.auto_reply_text}
+                url, params={"access_token": token}, json={"message": reply_text}
             )
         elif sender_id:
             url = f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/messages"
             response = await client.post(
                 url,
                 params={"access_token": token},
-                json={"recipient": {"id": sender_id}, "message": {"text": account.auto_reply_text}},
+                json={"recipient": {"id": sender_id}, "message": {"text": reply_text}},
             )
         else:
             return

@@ -246,8 +246,12 @@ async def delete_account(
 @router.post("/accounts/{account_id}/auto-reply")
 async def update_auto_reply(
     account_id: int,
-    enabled: bool = Form(False),
-    text: str = Form(""),
+    direct_enabled: bool = Form(False),
+    direct_text: str = Form(""),
+    comment_enabled: bool = Form(False),
+    comment_text: str = Form(""),
+    enabled: bool | None = Form(None),
+    text: str | None = Form(None),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -258,7 +262,13 @@ async def update_auto_reply(
     )
     if not account:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
-    account.auto_reply_enabled, account.auto_reply_text = enabled, text[:2000]
+    # Keep the old fields synchronized for clients still using the original form.
+    account.direct_reply_enabled = direct_enabled if enabled is None else enabled
+    account.direct_reply_text = (direct_text if text is None else text)[:2000]
+    account.comment_reply_enabled = comment_enabled
+    account.comment_reply_text = comment_text[:2000]
+    account.auto_reply_enabled = account.direct_reply_enabled or account.comment_reply_enabled
+    account.auto_reply_text = account.direct_reply_text or account.comment_reply_text
     await db.commit()
     return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 

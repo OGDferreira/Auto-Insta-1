@@ -34,6 +34,10 @@ class InstagramAccount(Base):
     access_token_encrypted: Mapped[str] = mapped_column(Text)
     auto_reply_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     auto_reply_text: Mapped[str] = mapped_column(Text, default="")
+    direct_reply_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    direct_reply_text: Mapped[str] = mapped_column(Text, default="")
+    comment_reply_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    comment_reply_text: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     owner: Mapped[User] = relationship(back_populates="instagram_accounts")
     scheduled_posts: Mapped[list["ScheduledPost"]] = relationship(
