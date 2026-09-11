@@ -296,7 +296,7 @@ async def create_post(
         when = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="scheduled_for inválido") from exc
-    if when < datetime.now(timezone.utc) + timedelta(minutes=1):
+    if when <= datetime.now(timezone.utc) + timedelta(minutes=1):
         raise HTTPException(status_code=400, detail="Agendamento deve ser pelo menos 1 minuto no futuro")
     media_type = media_type.upper()
     if media_type not in {"IMAGE", "VIDEO"}:
@@ -345,7 +345,7 @@ async def create_bulk_posts(
         first_time = first_time if first_time.tzinfo else first_time.replace(tzinfo=timezone.utc)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="scheduled_for inválido") from exc
-    if first_time < datetime.now(timezone.utc) + timedelta(minutes=1):
+    if first_time <= datetime.now(timezone.utc) + timedelta(minutes=1):
         raise HTTPException(status_code=400, detail="Agendamento deve ser pelo menos 1 minuto no futuro")
 
     posts_to_schedule = []
