@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from .config import get_settings
 from .db import get_db
@@ -155,6 +156,7 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
     posts = (
         await db.scalars(
             select(ScheduledPost)
+            .options(selectinload(ScheduledPost.account))
             .where(ScheduledPost.owner_id == user.id)
             .order_by(ScheduledPost.scheduled_for.desc())
         )
@@ -250,6 +252,7 @@ async def update_auto_reply(
     direct_text: str = Form(""),
     comment_enabled: bool = Form(False),
     comment_text: str = Form(""),
+    apply_all: bool = Form(False),
     enabled: bool | None = Form(None),
     text: str | None = Form(None),
     user: User = Depends(current_user),
@@ -262,13 +265,20 @@ async def update_auto_reply(
     )
     if not account:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
-    # Keep the old fields synchronized for clients still using the original form.
-    account.direct_reply_enabled = direct_enabled if enabled is None else enabled
-    account.direct_reply_text = (direct_text if text is None else text)[:2000]
-    account.comment_reply_enabled = comment_enabled
-    account.comment_reply_text = comment_text[:2000]
-    account.auto_reply_enabled = account.direct_reply_enabled or account.comment_reply_enabled
-    account.auto_reply_text = account.direct_reply_text or account.comment_reply_text
+    direct_enabled = direct_enabled if enabled is None else enabled
+    direct_text = (direct_text if text is None else text)[:2000]
+    target_accounts = (
+        (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == user.id))).all()
+        if apply_all
+        else [account]
+    )
+    for target in target_accounts:
+        target.direct_reply_enabled = direct_enabled
+        target.direct_reply_text = direct_text
+        target.comment_reply_enabled = comment_enabled
+        target.comment_reply_text = comment_text[:2000]
+        target.auto_reply_enabled = target.direct_reply_enabled or target.comment_reply_enabled
+        target.auto_reply_text = target.direct_reply_text or target.comment_reply_text
     await db.commit()
     return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -316,12 +326,33 @@ async def create_post(
     return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.post("/posts/{post_id}/delete")
+async def delete_post(
+    post_id: int,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    post = await db.scalar(
+        select(ScheduledPost).where(
+            ScheduledPost.id == post_id,
+            ScheduledPost.owner_id == user.id,
+        )
+    )
+    if not post:
+        raise HTTPException(status_code=404, detail="Publicação não encontrada")
+    await db.delete(post)
+    await db.commit()
+    return RedirectResponse("/dashboard?tab=queue", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.post("/posts/bulk")
 async def create_bulk_posts(
     account_ids: list[int] = Form(...),
     media_urls: list[str] = Form(...),
     media_types: list[str] = Form(...),
-    captions: list[str] = Form(...),
+    captions: list[str] = Form(default=[]),
+    caption_mode: str = Form("global"),
+    caption: str = Form(""),
     scheduled_for: str = Form(...),
     interval_minutes: int = Form(1),
     user: User = Depends(current_user),
@@ -329,8 +360,14 @@ async def create_bulk_posts(
 ):
     if interval_minutes < 1:
         raise HTTPException(status_code=400, detail="O intervalo mínimo é de 1 minuto")
-    if not media_urls or not (len(media_urls) == len(media_types) == len(captions)):
+    if not media_urls or len(media_urls) != len(media_types):
         raise HTTPException(status_code=400, detail="Lista de mídias inválida")
+    if caption_mode not in {"global", "individual"}:
+        raise HTTPException(status_code=400, detail="Modo de legenda inválido")
+    if caption_mode == "global":
+        captions = [caption[:2200]] * len(media_urls)
+    elif len(media_urls) != len(captions):
+        raise HTTPException(status_code=400, detail="Lista de legendas inválida")
     accounts = (
         await db.scalars(
             select(InstagramAccount).where(

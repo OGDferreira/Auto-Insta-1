@@ -1,28 +1,140 @@
 {% extends "base.html" %}
 {% block title %}Painel · Auto-Insta{% endblock %}
 {% block content %}
-<section class="hero dashboard-hero"><div><div class="eyebrow">Workspace de conteúdo</div><h1>Olá, {{ user.email.split('@')[0] }}.</h1><p>Organize publicações, contas e automações em um só lugar.</p></div><span class="live-indicator"><i></i> Operação ativa</span></section>
-<nav class="workspace-tabs" aria-label="Navegação do workspace"><a class="workspace-tab active" href="#overview" data-view="overview"><span>01</span>Dashboard</a><a class="workspace-tab" href="#queue" data-view="queue"><span>02</span>Fila</a><a class="workspace-tab" href="#accounts" data-view="accounts"><span>03</span>Hub de contas</a><a class="workspace-tab" href="#messages" data-view="messages"><span>04</span>Automações</a></nav>
+<style>
+  body > nav { padding:.55rem 0 .7rem; margin-bottom:1.1rem; }
+  .queue-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; }
+  .queue-card { position:relative; overflow:hidden; padding:0; background:linear-gradient(145deg,rgba(21,28,45,.96),rgba(12,16,28,.96)); border:1px solid var(--line); border-radius:14px; }
+  .queue-media { aspect-ratio:1 / 1; background:#080b14; overflow:hidden; }
+  .queue-media img,.queue-media video { width:100%; height:100%; display:block; object-fit:cover; }
+  .queue-card-body { padding:.85rem; }
+  .queue-card-head { display:flex; align-items:center; gap:.5rem; padding-right:2rem; }
+  .queue-account { display:flex; align-items:center; gap:.4rem; min-width:0; color:var(--text); font-size:.8rem; font-weight:700; }
+  .queue-account span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .queue-account img,.queue-account-initial { width:24px; height:24px; flex:none; border-radius:50%; object-fit:cover; display:grid; place-items:center; background:linear-gradient(135deg,var(--cyan),var(--primary)); color:#07101c; font-size:.68rem; }
+  .queue-meta { display:flex; align-items:center; justify-content:space-between; gap:.5rem; margin-top:.7rem; color:var(--muted); font-size:.72rem; }
+  .queue-delete { position:absolute; top:.65rem; right:.65rem; width:30px; height:30px; padding:0; border:1px solid rgba(255,112,136,.35); border-radius:8px; background:rgba(8,11,20,.78); color:var(--danger); font-size:1rem; z-index:1; }
+  .queue-delete:hover { background:rgba(255,112,136,.15); transform:none; box-shadow:none; }
+  .caption-mode { display:flex; gap:.5rem; margin:.8rem 0; }
+  .caption-mode label { flex:1; margin:0; padding:.65rem; border:1px solid var(--line); border-radius:9px; color:var(--text); font-size:.78rem; cursor:pointer; }
+  .caption-mode input { display:inline-block; width:auto; margin:0 .35rem 0 0; }
+  .caption-fields { display:grid; gap:.5rem; margin:.8rem 0; }
+  .caption-fields label { margin:0; font-size:.76rem; }
+  .caption-fields textarea { min-height:58px; }
+  .automation-global { grid-column:1/-1; display:flex; align-items:center; gap:.5rem; margin:0; color:var(--text); font-size:.78rem; }
+  .automation-global input { width:auto; margin:0; }
+  @media(max-width:1000px) { .queue-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media(max-width:650px) { .queue-grid { grid-template-columns:1fr; } .caption-mode { display:grid; } }
+</style>
+<section class="hero dashboard-hero">
+  <div><div class="eyebrow">Workspace de conteúdo</div><h1>Olá, {{ user.email.split('@')[0] }}.</h1><p>Organize publicações, contas e automações em um só lugar.</p></div>
+  <span class="live-indicator"><i></i> Operação ativa</span>
+</section>
+<nav class="workspace-tabs" aria-label="Navegação do workspace">
+  <a class="workspace-tab active" href="#overview" data-view="overview"><span>01</span>Dashboard</a>
+  <a class="workspace-tab" href="#queue" data-view="queue"><span>02</span>Fila</a>
+  <a class="workspace-tab" href="#accounts" data-view="accounts"><span>03</span>Hub de contas</a>
+  <a class="workspace-tab" href="#messages" data-view="messages"><span>04</span>Automações</a>
+</nav>
 <main class="workspace-views">
-<section id="overview" class="workspace-view active" data-panel="overview"><div class="section-heading"><div><div class="eyebrow">Visão geral</div><h2>Seu ritmo hoje</h2></div><span class="section-note">Atualizado agora</span></div><div class="metric-grid"><div class="metric"><small>Contas ativas</small><strong>{{ metrics.active_accounts }}</strong><span class="metric-detail">conectadas ao workspace</span></div><div class="metric"><small>Posts hoje</small><strong>{{ metrics.today_posts }}</strong><span class="metric-detail">publicações criadas</span></div><div class="metric"><small>Na fila</small><strong>{{ metrics.pending }}</strong><span class="metric-detail">aguardando publicação</span></div><div class="metric"><small>Publicados</small><strong>{{ metrics.published }}</strong><span class="metric-detail">concluídos com sucesso</span></div></div><div class="overview-grid"><div class="panel panel-feature"><div class="panel-kicker">Próximo passo</div><h3>Planeje sua próxima publicação</h3><p>Escolha as contas, envie suas mídias e mantenha a fila organizada por horário.</p><a class="button" href="#queue" data-view="queue">Abrir fila <span>→</span></a></div><div class="panel"><div class="panel-header"><div><div class="eyebrow">Resumo da operação</div><h3>Status das entregas</h3></div><span class="status-badge published">Estável</span></div><div class="status-line"><span>Publicados</span><strong>{{ metrics.published }}</strong></div><div class="status-line"><span>Pendentes</span><strong>{{ metrics.pending }}</strong></div><div class="status-line"><span>Falhas</span><strong>{{ metrics.failed }}</strong></div></div></div></section>
-<section id="queue" class="workspace-view" data-panel="queue"><div class="section-heading"><div><div class="eyebrow">Publicações</div><h2>Fila de conteúdo</h2></div><span class="section-note">{{ posts|length }} itens</span></div><div class="queue-layout"><div class="panel composer"><div class="panel-kicker">Novo agendamento</div><h3>Postagem em massa</h3>{% if accounts %}<form id="bulk-form" method="post" action="/posts/bulk"><label>Contas de destino</label><div class="check-list">{% for account in accounts %}<label class="account-check"><input type="checkbox" name="account_ids" value="{{ account.id }}" checked><span class="mini-avatar">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}{{ account.username[:1]|upper }}{% endif %}</span><b>@{{ account.username }}</b><span class="check-mark">✓</span></label>{% endfor %}</div><label class="dropzone" for="bulk-files"><span id="bulk-label"><b>Solte suas mídias aqui</b><br><small>Imagens e vídeos · ordem da seleção</small></span><input id="bulk-files" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></label><div id="media-items" class="thumb-list"></div><label>Intervalo entre mídias<input id="interval" name="interval_minutes" type="number" min="1" value="1" required><small class="field-hint">Mínimo de 1 minuto</small></label><label>Primeiro horário<input id="bulk-time" name="scheduled_for" type="datetime-local" required><small id="schedule-hint" class="field-hint"></small></label><p class="form-note">O horário usa o fuso local do seu navegador.</p><button id="bulk-submit" type="submit">Adicionar à fila <span>→</span></button></form>{% else %}<p>Conecte uma conta antes de agendar.</p>{% endif %}</div><div class="panel queue-panel"><div class="panel-header"><div><div class="eyebrow">Fila detalhada</div><h3>Publicações programadas</h3></div></div>{% if posts %}<div class="table-wrap"><table><thead><tr><th>Mídia</th><th>Conta</th><th>Quando</th><th>Status</th></tr></thead><tbody>{% for post in posts %}<tr><td><strong>{{ post.media_type }}</strong>{% if post.caption %}<small>{{ post.caption[:35] }}</small>{% endif %}</td><td class="table-account">{% if post.account and post.account.profile_picture_url %}<img src="{{ post.account.profile_picture_url }}" alt="">{% endif %}@{{ post.account.username if post.account else 'conta' }}</td><td class="scheduled-time" data-utc="{{ post.scheduled_for.strftime('%Y-%m-%dT%H:%M:%SZ') }}"></td><td><span class="status-badge {{ post.status }}">{{ post.status }}</span></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty-state"><span>○</span><h3>A fila está vazia</h3><p>Agende uma publicação para começar.</p></div>{% endif %}</div></div></section>
-<section id="accounts" class="workspace-view" data-panel="accounts"><div class="section-heading"><div><div class="eyebrow">Conexões</div><h2>Hub de contas</h2></div><a class="button" href="/auth/instagram/start">+ Conectar conta</a></div><div class="account-grid">{% if accounts %}{% for account in accounts %}<article class="account-card"><div class="account-card-top"><div class="profile-avatar">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="Foto de @{{ account.username }}">{% else %}{{ account.username[:1]|upper }}{% endif %}</div><span class="health"></span></div><h3>@{{ account.username }}</h3><p>Instagram conectado</p><div class="account-card-footer"><span class="status-badge published">Ativa</span><form method="post" action="/accounts/{{ account.id }}/delete"><button class="text-button" type="submit">Remover</button></form></div></article>{% endfor %}{% else %}<div class="panel empty-state"><span>◎</span><h3>Nenhuma conta conectada</h3><p>Conecte uma conta Instagram para começar.</p><a class="button" href="/auth/instagram/start">Conectar conta</a></div>{% endif %}</div></section>
-<section id="messages" class="workspace-view" data-panel="messages"><div class="section-heading"><div><div class="eyebrow">Regras de resposta</div><h2>Automações</h2></div><span class="section-note">Por conta</span></div><div class="automation-list">{% for account in accounts %}<form method="post" action="/accounts/{{ account.id }}/auto-reply" class="panel automation-card"><div class="automation-title"><div class="profile-avatar small">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}{{ account.username[:1]|upper }}{% endif %}</div><div><h3>@{{ account.username }}</h3><p>Mensagens automáticas</p></div></div><div class="automation-fields"><label><span><input name="direct_enabled" type="checkbox" {% if account.direct_reply_enabled or account.auto_reply_enabled %}checked{% endif %}> Direct</span><textarea name="direct_text" maxlength="2000" placeholder="Resposta para mensagens privadas">{{ account.direct_reply_text or account.auto_reply_text }}</textarea></label><label><span><input name="comment_enabled" type="checkbox" {% if account.comment_reply_enabled %}checked{% endif %}> Comentários</span><textarea name="comment_text" maxlength="2000" placeholder="Resposta para comentários nos seus posts">{{ account.comment_reply_text }}</textarea></label></div><button type="submit">Salvar automações</button></form>{% else %}<div class="panel empty-state"><span>✦</span><h3>Configure depois de conectar uma conta</h3></div>{% endfor %}</div></section>
+  <section id="overview" class="workspace-view active" data-panel="overview">
+    <div class="section-heading"><div><div class="eyebrow">Visão geral</div><h2>Seu ritmo hoje</h2></div><span class="section-note">Atualizado agora</span></div>
+    <div class="metric-grid">
+      <div class="metric"><small>Contas ativas</small><strong>{{ metrics.active_accounts }}</strong><span class="metric-detail">conectadas ao workspace</span></div>
+      <div class="metric"><small>Posts hoje</small><strong>{{ metrics.today_posts }}</strong><span class="metric-detail">publicações criadas</span></div>
+      <div class="metric"><small>Na fila</small><strong>{{ metrics.pending }}</strong><span class="metric-detail">aguardando publicação</span></div>
+      <div class="metric"><small>Publicados</small><strong>{{ metrics.published }}</strong><span class="metric-detail">concluídos com sucesso</span></div>
+    </div>
+    <div class="overview-grid">
+      <div class="panel panel-feature"><div class="panel-kicker">Próximo passo</div><h3>Planeje sua próxima publicação</h3><p>Escolha as contas, envie suas mídias e mantenha a fila organizada por horário.</p><a class="button" href="#queue" data-view="queue">Abrir fila <span>→</span></a></div>
+      <div class="panel"><div class="panel-header"><div><div class="eyebrow">Resumo da operação</div><h3>Status das entregas</h3></div><span class="status-badge published">Estável</span></div><div class="status-line"><span>Publicados</span><strong>{{ metrics.published }}</strong></div><div class="status-line"><span>Pendentes</span><strong>{{ metrics.pending }}</strong></div><div class="status-line"><span>Falhas</span><strong>{{ metrics.failed }}</strong></div></div>
+    </div>
+  </section>
+
+  <section id="queue" class="workspace-view" data-panel="queue">
+    <div class="section-heading"><div><div class="eyebrow">Publicações</div><h2>Fila de conteúdo</h2></div><span class="section-note">{{ posts|length }} itens</span></div>
+    <div class="queue-layout">
+      <div class="panel composer">
+        <div class="panel-kicker">Novo agendamento</div><h3>Postagem em massa</h3>
+        {% if accounts %}
+        <form id="bulk-form" method="post" action="/posts/bulk">
+          <label>Contas de destino</label>
+          <div class="check-list">
+            {% for account in accounts %}<label class="account-check"><input type="checkbox" name="account_ids" value="{{ account.id }}" checked><span class="mini-avatar">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}{{ account.username[:1]|upper }}{% endif %}</span><b>@{{ account.username }}</b><span class="check-mark">✓</span></label>{% endfor %}
+          </div>
+          <label class="dropzone" for="bulk-files"><span id="bulk-label"><b>Solte suas mídias aqui</b><br><small>Imagens e vídeos · ordem da seleção</small></span><input id="bulk-files" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></label>
+          <div id="media-items" class="thumb-list"></div>
+          <div class="caption-mode" role="radiogroup" aria-label="Modo de legenda">
+            <label><input type="radio" name="caption_mode" value="global" checked> Legenda única</label>
+            <label><input type="radio" name="caption_mode" value="individual"> Uma por mídia</label>
+          </div>
+          <label id="global-caption-field">Legenda global<textarea name="caption" maxlength="2200" placeholder="Uma legenda para todas as mídias"></textarea></label>
+          <div id="caption-fields" class="caption-fields" hidden></div>
+          <label>Intervalo entre mídias<input id="interval" name="interval_minutes" type="number" min="1" value="1" required><small class="field-hint">Mínimo de 1 minuto</small></label>
+          <label>Primeiro horário<input id="bulk-time" name="scheduled_for" type="datetime-local" required><small id="schedule-hint" class="field-hint"></small></label>
+          <p class="form-note">O horário usa o fuso local do seu navegador.</p>
+          <button id="bulk-submit" type="submit">Adicionar à fila <span>→</span></button>
+        </form>
+        {% else %}<p>Conecte uma conta antes de agendar.</p>{% endif %}
+      </div>
+      <div class="panel queue-panel">
+        <div class="panel-header"><div><div class="eyebrow">Fila detalhada</div><h3>Publicações programadas</h3></div></div>
+        {% if posts %}
+        <div class="queue-grid">
+          {% for post in posts %}
+          <article class="queue-card">
+            <form method="post" action="/posts/{{ post.id }}/delete"><button class="queue-delete" type="submit" aria-label="Excluir publicação" title="Excluir publicação">&#128465;</button></form>
+            <div class="queue-media">{% if post.media_type == "VIDEO" %}<video src="{{ post.media_url }}" controls preload="metadata"></video>{% else %}<img src="{{ post.media_url }}" alt="Pré-visualização da publicação">{% endif %}</div>
+            <div class="queue-card-body">
+              <div class="queue-card-head"><div class="queue-account">{% if post.account.profile_picture_url %}<img src="{{ post.account.profile_picture_url }}" alt="">{% else %}<span class="queue-account-initial">{{ post.account.username[:1]|upper }}</span>{% endif %}<span>@{{ post.account.username }}</span></div></div>
+              <div class="queue-meta"><time class="scheduled-time" data-utc="{{ post.scheduled_for.isoformat() }}">{{ post.scheduled_for }}</time><span class="status-badge {{ post.status }}">{{ post.status }}</span></div>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+        {% else %}<div class="empty-state"><span>◎</span><h3>Fila vazia</h3><p>Envie uma mídia para começar.</p></div>{% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section id="accounts" class="workspace-view" data-panel="accounts">
+    <div class="section-heading"><div><div class="eyebrow">Conexões</div><h2>Hub de contas</h2></div><a class="button" href="/auth/instagram/start">+ Conectar conta</a></div>
+    <div class="account-grid">{% if accounts %}{% for account in accounts %}<article class="account-card"><div class="account-card-top"><div class="profile-avatar">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="Foto de @{{ account.username }}">{% else %}{{ account.username[:1]|upper }}{% endif %}</div><span class="health"></span></div><h3>@{{ account.username }}</h3><p>Instagram conectado</p><div class="account-card-footer"><span class="status-badge published">Ativa</span><form method="post" action="/accounts/{{ account.id }}/delete"><button class="text-button" type="submit">Remover</button></form></div></article>{% endfor %}{% else %}<div class="panel empty-state"><span>◎</span><h3>Nenhuma conta conectada</h3><p>Conecte uma conta Instagram para começar.</p><a class="button" href="/auth/instagram/start">Conectar conta</a></div>{% endif %}</div>
+  </section>
+
+  <section id="messages" class="workspace-view" data-panel="messages">
+    <div class="section-heading"><div><div class="eyebrow">Regras de resposta</div><h2>Automações</h2></div><span class="section-note">Por conta</span></div>
+    <div class="automation-list">
+      {% for account in accounts %}
+      <form method="post" action="/accounts/{{ account.id }}/auto-reply" class="panel automation-card">
+        <div class="automation-title"><div class="profile-avatar small">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}{{ account.username[:1]|upper }}{% endif %}</div><div><h3>@{{ account.username }}</h3><p>Mensagens automáticas</p></div></div>
+        <div class="automation-fields"><label><span><input name="direct_enabled" type="checkbox" {% if account.direct_reply_enabled or account.auto_reply_enabled %}checked{% endif %}> Direct</span><textarea name="direct_text" maxlength="2000" placeholder="Resposta para mensagens privadas">{{ account.direct_reply_text or account.auto_reply_text }}</textarea></label><label><span><input name="comment_enabled" type="checkbox" {% if account.comment_reply_enabled %}checked{% endif %}> Comentários</span><textarea name="comment_text" maxlength="2000" placeholder="Resposta para comentários nos seus posts">{{ account.comment_reply_text }}</textarea></label></div>
+        <label class="automation-global"><input name="apply_all" type="checkbox"> Aplicar esta resposta a todas as contas</label>
+        <button type="submit">Salvar automações</button>
+      </form>
+      {% else %}<div class="panel empty-state"><span>✦</span><h3>Configure depois de conectar uma conta</h3></div>{% endfor %}
+    </div>
+  </section>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script><script>
-const files=document.getElementById("bulk-files"),list=document.getElementById("media-items"),time=document.getElementById("bulk-time"),form=document.getElementById("bulk-form");
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+const files=document.getElementById("bulk-files"),list=document.getElementById("media-items"),time=document.getElementById("bulk-time"),form=document.getElementById("bulk-form"),captionFields=document.getElementById("caption-fields"),globalCaption=document.getElementById("global-caption-field");
 const pad=value=>String(value).padStart(2,"0");
+const escapeHtml=value=>String(value).replace(/[&<>\"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[char]));
 function formatLocalDateTime(date){return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`}
 function minimumScheduleTime(){const minimum=new Date(Date.now()+60000);minimum.setSeconds(0,0);if(minimum.getTime()<=Date.now()+60000)minimum.setMinutes(minimum.getMinutes()+1);return minimum}
 function parseLocalDateTime(value){if(!value||!value.includes("T"))return new Date(NaN);const [datePart,timePart]=value.split("T"),[year,month,day]=datePart.split("-").map(Number),[hours,minutes]=timePart.split(":").map(Number);return new Date(year,month-1,day,hours,minutes,0,0)}
 function updateScheduleHint(){if(!time)return;const minimum=minimumScheduleTime();time.min=formatLocalDateTime(minimum);document.getElementById("schedule-hint").textContent=`Escolha a partir de ${minimum.toLocaleString([], {dateStyle:"short",timeStyle:"short"})}`}
+function renderCaptionFields(){if(!captionFields)return;const individual=document.querySelector('input[name="caption_mode"]:checked')?.value==="individual";captionFields.hidden=!individual;globalCaption.hidden=individual;if(individual)captionFields.innerHTML=media.map((item,index)=>`<label>Legenda da mídia ${index+1}<textarea class="individual-caption" data-index="${index}" maxlength="2200" placeholder="Legenda para ${escapeHtml(item.file.name)}">${escapeHtml(item.caption||"")}</textarea></label>`).join("");captionFields.querySelectorAll(".individual-caption").forEach(input=>input.addEventListener("input",()=>{media[Number(input.dataset.index)].caption=input.value}))}
+function render(){if(!list)return;list.innerHTML=media.map((item,index)=>`<div class="thumb-item"><img class="thumb" src="${item.preview}" alt=""><span><strong>${escapeHtml(item.file.name)}</strong><br><small>${item.type} · ordem ${index+1}</small></span></div>`).join("");renderCaptionFields()}
 if(time){updateScheduleHint();time.value=time.min;setInterval(updateScheduleHint,15000)}
 document.querySelectorAll(".scheduled-time").forEach(cell=>{const date=new Date(cell.dataset.utc);cell.textContent=Number.isNaN(date.getTime())?"Data inválida":date.toLocaleString([], {dateStyle:"short",timeStyle:"short"})});
 document.querySelectorAll("[data-view]").forEach(link=>link.addEventListener("click",event=>{event.preventDefault();const view=link.dataset.view;history.replaceState(null,"",`#${view}`);document.querySelectorAll(".workspace-tab").forEach(item=>item.classList.toggle("active",item.dataset.view===view));document.querySelectorAll(".workspace-view").forEach(panel=>panel.classList.toggle("active",panel.dataset.panel===view));window.scrollTo({top:0,behavior:"smooth"})}));
 const initialView=location.hash.slice(1)||"overview";document.querySelector(`[data-view="${initialView}"]`)?.click();
-let media=[];function render(){if(!list)return;list.innerHTML=media.map((m,i)=>`<div class="thumb-item"><img class="thumb" src="${m.preview}" alt=""><span><strong>${m.file.name}</strong><br><small>${m.type} · ordem ${i+1}</small></span></div>`).join("")}
+let media=[];
 if(list&&window.Sortable)new Sortable(list,{animation:150,onEnd:event=>{const [item]=media.splice(event.oldIndex,1);media.splice(event.newIndex,0,item);render()}});
-if(files){files.addEventListener("change",async()=>{media=[];for(const file of files.files){const data=new FormData();data.append("media",file);const response=await fetch("/media/upload",{method:"POST",body:data});if(!response.ok){alert("Falha ao enviar "+file.name);continue}const result=await response.json();media.push({file,preview:URL.createObjectURL(file),url:result.url,type:result.media_type})}render()})}
-if(form){form.addEventListener("submit",event=>{if(!media.length){event.preventDefault();alert("Selecione ao menos uma mídia.");return}if(!document.querySelector('input[name="account_ids"]:checked')){event.preventDefault();alert("Selecione ao menos uma conta.");return}const selected=parseLocalDateTime(time.value),minimum=minimumScheduleTime();if(Number.isNaN(selected.getTime())||selected.getTime()<minimum.getTime()){event.preventDefault();time.setCustomValidity("Agende a partir do horário mínimo indicado.");time.reportValidity();return}time.setCustomValidity("");form.querySelectorAll(".generated-media").forEach(item=>item.remove());media.forEach(item=>[["media_urls",item.url],["media_types",item.type],["captions",""]].forEach(([name,value])=>{const input=document.createElement("input");input.type="hidden";input.name=name;input.value=value;input.className="generated-media";form.appendChild(input)}));time.disabled=true;const utcInput=document.createElement("input");utcInput.type="hidden";utcInput.name="scheduled_for";utcInput.value=selected.toISOString();utcInput.className="generated-media";form.appendChild(utcInput)})}
+if(files){files.addEventListener("change",async()=>{media=[];for(const file of files.files){const data=new FormData();data.append("media",file);const response=await fetch("/media/upload",{method:"POST",body:data});if(!response.ok){alert("Falha ao enviar "+file.name);continue}const result=await response.json();media.push({file,preview:URL.createObjectURL(file),url:result.url,type:result.media_type,caption:""})}render()})}
+document.querySelectorAll('input[name="caption_mode"]').forEach(input=>input.addEventListener("change",renderCaptionFields));
+if(form){form.addEventListener("submit",event=>{if(!media.length){event.preventDefault();alert("Selecione ao menos uma mídia.");return}if(!document.querySelector('input[name="account_ids"]:checked')){event.preventDefault();alert("Selecione ao menos uma conta.");return}const selected=parseLocalDateTime(time.value),minimum=minimumScheduleTime();if(Number.isNaN(selected.getTime())||selected.getTime()<minimum.getTime()){event.preventDefault();time.setCustomValidity("Agende a partir do horário mínimo indicado.");time.reportValidity();return}time.setCustomValidity("");form.querySelectorAll(".generated-media").forEach(item=>item.remove());media.forEach(item=>[["media_urls",item.url],["media_types",item.type]].forEach(([name,value])=>{const input=document.createElement("input");input.type="hidden";input.name=name;input.value=value;input.className="generated-media";form.appendChild(input)}));if(document.querySelector('input[name="caption_mode"]:checked').value==="individual")media.forEach(item=>{const input=document.createElement("input");input.type="hidden";input.name="captions";input.value=item.caption||"";input.className="generated-media";form.appendChild(input)});time.disabled=true;const utcInput=document.createElement("input");utcInput.type="hidden";utcInput.name="scheduled_for";utcInput.value=selected.toISOString();utcInput.className="generated-media";form.appendChild(utcInput)})}
 </script>
 {% endblock %}
