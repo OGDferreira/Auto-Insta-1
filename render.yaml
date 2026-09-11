@@ -27,7 +27,7 @@ services:
       - key: WEBHOOK_VERIFY_TOKEN
         sync: false
       - key: GRAPH_API_VERSION
-        value: v22.0
+        value: v25.0
   - type: worker
     name: auto-insta-worker
     runtime: docker
@@ -59,11 +59,13 @@ services:
       - key: WEBHOOK_VERIFY_TOKEN
         sync: false
       - key: GRAPH_API_VERSION
-        value: v22.0
+        value: v25.0
+  - type: redis
+    name: auto-insta-redis
+    plan: starter
+    ipAllowList: []
 databases:
   - name: auto-insta-db
     plan: starter
     databaseName: auto_insta
     user: auto_insta
-  - name: auto-insta-redis
-    plan: starter

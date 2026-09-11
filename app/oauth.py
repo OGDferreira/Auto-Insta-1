@@ -48,6 +48,21 @@ async def exchange_code(code: str) -> dict:
         return response.json()
 
 
+async def exchange_long_lived_token(short_token: str) -> str:
+    settings = get_settings()
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.get(
+            f"https://graph.instagram.com/{settings.graph_api_version}/access_token",
+            params={
+                "grant_type": "ig_exchange_token",
+                "client_secret": settings.meta_app_secret,
+                "access_token": short_token,
+            },
+        )
+        response.raise_for_status()
+        return response.json()["access_token"]
+
+
 async def fetch_profile(access_token: str) -> dict:
     settings = get_settings()
     url = f"https://graph.instagram.com/{settings.graph_api_version}/me"

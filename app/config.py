@@ -17,7 +17,7 @@ class Settings(BaseModel):
     secret_key: str = "change-me-in-production"
     fernet_key: str = ""
     webhook_verify_token: str = "change-me"
-    graph_api_version: str = "v22.0"
+    graph_api_version: str = "v25.0"
     cookie_secure: bool = False
 
     @property
@@ -36,7 +36,7 @@ def get_settings() -> Settings:
         "secret_key": os.getenv("SECRET_KEY", "change-me-in-production"),
         "fernet_key": os.getenv("FERNET_KEY", ""),
         "webhook_verify_token": os.getenv("WEBHOOK_VERIFY_TOKEN", "change-me"),
-        "graph_api_version": os.getenv("GRAPH_API_VERSION", "v22.0"),
+        "graph_api_version": os.getenv("GRAPH_API_VERSION", "v25.0"),
         "cookie_secure": os.getenv("COOKIE_SECURE", "false").lower() == "true",
     }
     # Render may provide postgres://, which SQLAlchemy needs as postgresql+asyncpg.

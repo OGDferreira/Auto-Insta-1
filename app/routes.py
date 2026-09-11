@@ -13,7 +13,13 @@ from .config import get_settings
 from .db import get_db
 from .jobs import enqueue_post
 from .models import InstagramAccount, ScheduledPost, User
-from .oauth import authorization_url, exchange_code, fetch_profile, new_state
+from .oauth import (
+    authorization_url,
+    exchange_code,
+    exchange_long_lived_token,
+    fetch_profile,
+    new_state,
+)
 from .security import encrypt_token, hash_password, verify_password
 
 router = APIRouter()
@@ -137,7 +143,8 @@ async def instagram_callback(
     try:
         token_data = await exchange_code(code)
         short_token = token_data["access_token"]
-        profile = await fetch_profile(short_token)
+        long_lived_token = await exchange_long_lived_token(short_token)
+        profile = await fetch_profile(long_lived_token)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha no OAuth do Instagram: {exc}") from exc
     user = await db.get(User, int(request.session["user_id"]))
@@ -151,14 +158,14 @@ async def instagram_callback(
     )
     if account:
         account.username = profile.get("username", account.username)
-        account.access_token_encrypted = encrypt_token(short_token)
+        account.access_token_encrypted = encrypt_token(long_lived_token)
     else:
         db.add(
             InstagramAccount(
                 owner_id=user.id,
                 instagram_user_id=str(profile.get("user_id") or profile["id"]),
                 username=profile.get("username", ""),
-                access_token_encrypted=encrypt_token(short_token),
+                access_token_encrypted=encrypt_token(long_lived_token),
             )
         )
     await db.commit()
