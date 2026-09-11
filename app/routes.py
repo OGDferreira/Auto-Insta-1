@@ -356,17 +356,17 @@ async def create_bulk_posts(
         if normalized_type not in {"IMAGE", "VIDEO"}:
             raise HTTPException(status_code=400, detail="media_type deve ser IMAGE ou VIDEO")
         media_time = first_time + timedelta(minutes=media_index * interval_minutes)
-        for account_index, account in enumerate(accounts):
-            post = ScheduledPost(
-                owner_id=user.id,
-                account_id=account.id,
-                media_url=media_url,
-                media_type=normalized_type,
-                caption=caption,
-                scheduled_for=media_time + timedelta(minutes=account_index if len(accounts) > 1 else 0),
-            )
-            db.add(post)
-            posts_to_schedule.append(post)
+        account = accounts[media_index % len(accounts)]
+        post = ScheduledPost(
+            owner_id=user.id,
+            account_id=account.id,
+            media_url=media_url,
+            media_type=normalized_type,
+            caption=caption,
+            scheduled_for=media_time,
+        )
+        db.add(post)
+        posts_to_schedule.append(post)
     await db.flush()
     await db.commit()
     for post in posts_to_schedule:

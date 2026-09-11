@@ -13,6 +13,12 @@ from .security import decrypt_token
 scheduler = AsyncIOScheduler(timezone="UTC")
 
 
+def _utc_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def reset_scheduler() -> None:
     """Create a scheduler bound to the current application event loop."""
     global scheduler
@@ -24,10 +30,14 @@ def reset_scheduler() -> None:
 def schedule_post(post_id: int, scheduled_for: datetime) -> str:
     """Schedule a post in the web process and return its scheduler job id."""
     job_id = f"scheduled-post-{post_id}"
+    run_date = _utc_datetime(scheduled_for)
+    now = datetime.now(timezone.utc)
+    if run_date <= now:
+        run_date = now
     scheduler.add_job(
         _publish,
         "date",
-        run_date=scheduled_for,
+        run_date=run_date,
         args=[post_id],
         id=job_id,
         replace_existing=True,
@@ -43,7 +53,6 @@ async def schedule_pending_posts() -> None:
             await db.scalars(
                 select(ScheduledPost).where(
                     ScheduledPost.status == "scheduled",
-                    ScheduledPost.scheduled_for > datetime.now(timezone.utc),
                 )
             )
         ).all()

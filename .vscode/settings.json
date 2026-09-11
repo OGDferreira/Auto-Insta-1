@@ -1,0 +1,6 @@
+{
+  "chat.tools.autoApprove": {
+    "editFiles": true,
+    "runInTerminal": true
+  }
+}
