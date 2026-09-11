@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from .config import get_settings
@@ -10,6 +11,7 @@ from .webhooks import router as webhook_router
 
 settings = get_settings()
 app = FastAPI(title="Auto-Insta", version="1.0.0")
+app.mount("/uploads", StaticFiles(directory="uploads", check_dir=False), name="uploads")
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,

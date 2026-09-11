@@ -25,3 +25,10 @@ async def init_db() -> None:
 
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        if engine.url.get_backend_name() == "sqlite":
+            columns = await connection.exec_driver_sql("PRAGMA table_info(instagram_accounts)")
+            existing = {row[1] for row in columns}
+            if "profile_picture_url" not in existing:
+                await connection.exec_driver_sql(
+                    "ALTER TABLE instagram_accounts ADD COLUMN profile_picture_url TEXT"
+                )

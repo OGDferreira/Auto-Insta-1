@@ -30,6 +30,7 @@ class InstagramAccount(Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     instagram_user_id: Mapped[str] = mapped_column(String(120), index=True)
     username: Mapped[str] = mapped_column(String(120))
+    profile_picture_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     access_token_encrypted: Mapped[str] = mapped_column(Text)
     auto_reply_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     auto_reply_text: Mapped[str] = mapped_column(Text, default="")

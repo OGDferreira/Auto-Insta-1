@@ -73,7 +73,7 @@ async def fetch_profile(access_token: str) -> dict:
     url = f"https://graph.instagram.com/{settings.graph_api_version}/me"
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.get(
-            url, params={"fields": "id,user_id,username", "access_token": access_token}
+            url, params={"fields": "id,user_id,username,profile_picture_url", "access_token": access_token}
         )
         response.raise_for_status()
         return response.json()

@@ -2,8 +2,10 @@ from datetime import datetime, timezone
 from urllib.parse import quote
 
 import logging
+from pathlib import Path
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -25,6 +27,9 @@ from .security import encrypt_token, hash_password, verify_password
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 logger = logging.getLogger(__name__)
+UPLOAD_DIR = Path("uploads")
+ALLOWED_UPLOAD_TYPES = {"image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"}
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 
 
 async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
@@ -45,6 +50,39 @@ def login_redirect() -> RedirectResponse:
 @router.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@router.post("/media/upload")
+async def upload_media(
+    media: UploadFile = File(...),
+    user: User = Depends(current_user),
+):
+    if media.content_type not in ALLOWED_UPLOAD_TYPES:
+        raise HTTPException(status_code=400, detail="Formato de mídia não suportado")
+    extension = Path(media.filename or "").suffix.lower()
+    if not extension:
+        raise HTTPException(status_code=400, detail="Arquivo sem extensão")
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid4().hex}{extension}"
+    destination = UPLOAD_DIR / filename
+    size = 0
+    try:
+        with destination.open("wb") as output:
+            while chunk := await media.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_UPLOAD_SIZE:
+                    raise HTTPException(status_code=413, detail="Arquivo excede o limite de 50 MB")
+                output.write(chunk)
+    except HTTPException:
+        destination.unlink(missing_ok=True)
+        raise
+    finally:
+        await media.close()
+    settings = get_settings()
+    return {
+        "url": f"{settings.public_base_url.rstrip('/')}/uploads/{filename}",
+        "media_type": "VIDEO" if media.content_type.startswith("video/") else "IMAGE",
+    }
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -161,6 +199,7 @@ async def instagram_callback(
     )
     if account:
         account.username = profile.get("username", account.username)
+        account.profile_picture_url = profile.get("profile_picture_url", account.profile_picture_url)
         account.access_token_encrypted = encrypt_token(long_lived_token)
     else:
         db.add(
@@ -168,6 +207,7 @@ async def instagram_callback(
                 owner_id=user.id,
                 instagram_user_id=str(profile.get("user_id") or profile["id"]),
                 username=profile.get("username", ""),
+                profile_picture_url=profile.get("profile_picture_url"),
                 access_token_encrypted=encrypt_token(long_lived_token),
             )
         )
