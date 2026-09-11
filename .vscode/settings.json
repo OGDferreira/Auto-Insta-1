@@ -2,5 +2,12 @@
   "chat.tools.autoApprove": {
     "editFiles": true,
     "runInTerminal": true
-  }
+},
+"chat.tools.terminal.autoApprove": {
+    "/^python -m compileall -q app; python -c \"from jinja2 import Environment, FileSystemLoader; Environment\\(loader=FileSystemLoader\\('app/templates'\\)\\)\\.get_template\\('dashboard\\.html'\\); print\\('validation ok'\\)\"; git diff --check$/": {
+        "approve": true,
+        "matchCommandLine": true
+    },
+    "git add": true
+}
 }
