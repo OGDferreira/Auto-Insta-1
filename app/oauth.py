@@ -15,9 +15,11 @@ OAUTH_SCOPES = (
 
 def authorization_url(state: str) -> str:
     settings = get_settings()
+    if not settings.meta_app_id.strip():
+        raise RuntimeError("META_APP_ID must be configured before starting Instagram OAuth")
     query = urlencode(
         {
-            "client_id": settings.meta_app_id,
+            "client_id": settings.meta_app_id.strip(),
             "redirect_uri": settings.oauth_redirect_uri,
             "response_type": "code",
             "scope": ",".join(OAUTH_SCOPES),

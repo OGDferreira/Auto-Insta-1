@@ -1,6 +1,4 @@
 from functools import lru_cache
-from pathlib import Path
-
 from dotenv import load_dotenv
 from pydantic import BaseModel
 import os
@@ -21,7 +19,7 @@ class Settings(BaseModel):
 
     @property
     def oauth_redirect_uri(self) -> str:
-        return f"{self.public_base_url.rstrip('/')}/auth/instagram/callback"
+        return "https://auto-insta-web.onrender.com/auth/callback"
 
 
 @lru_cache

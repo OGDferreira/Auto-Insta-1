@@ -45,8 +45,8 @@ Aplicação multi-tenant para conectar contas pelo **Instagram Login for Busines
 
 ## Configuração Meta
 
-No painel Meta Developers crie um produto Instagram Login for Business e configure o redirect URI como:
-`https://SEU_HOST/auth/instagram/callback`.
+No painel Meta Developers crie um produto Instagram Login for Business e configure exatamente o redirect URI:
+`https://auto-insta-web.onrender.com/auth/callback`.
 
 Defina `META_APP_ID`, `META_APP_SECRET`, `PUBLIC_BASE_URL`, `GRAPH_API_VERSION` e todos os valores de `.env.example`. Os escopos solicitados são:
 `instagram_business_basic`, `instagram_business_content_publish`,

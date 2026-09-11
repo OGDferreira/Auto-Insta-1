@@ -130,7 +130,7 @@ async def instagram_start(request: Request, user: User = Depends(current_user)):
     return RedirectResponse(authorization_url(state), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
-@router.get("/auth/instagram/callback")
+@router.get("/auth/callback")
 async def instagram_callback(
     request: Request, code: str | None = None, state: str | None = None, db: AsyncSession = Depends(get_db)
 ):
