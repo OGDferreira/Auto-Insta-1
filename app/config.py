@@ -7,6 +7,8 @@ load_dotenv()
 
 
 class Settings(BaseModel):
+    app_version: str = "1.1.0"
+    deploy_timestamp: str = ""
     meta_app_id: str = ""
     meta_app_secret: str = ""
     public_base_url: str = "http://localhost:8000"
@@ -25,6 +27,8 @@ class Settings(BaseModel):
 @lru_cache
 def get_settings() -> Settings:
     values = {
+        "app_version": os.getenv("APP_VERSION", "1.1.0"),
+        "deploy_timestamp": os.getenv("DEPLOY_TIMESTAMP", ""),
         "meta_app_id": os.getenv("META_APP_ID", ""),
         "meta_app_secret": os.getenv("META_APP_SECRET", ""),
         "public_base_url": os.getenv("PUBLIC_BASE_URL", "http://localhost:8000"),

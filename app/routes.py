@@ -27,6 +27,7 @@ from .oauth import (
     fetch_profile,
     new_state,
 )
+from .observability import get_recent_logs
 from .security import encrypt_token, hash_password, verify_password
 
 router = APIRouter()
@@ -272,8 +273,51 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
     }
     return templates.TemplateResponse(
         "dashboard.html",
-        {"request": request, "user": user, "accounts": accounts, "posts": posts, "metrics": metrics},
+        {
+            "request": request,
+            "user": user,
+            "accounts": accounts,
+            "posts": posts,
+            "metrics": metrics,
+            "app_version": get_settings().app_version,
+            "deploy_timestamp": get_settings().deploy_timestamp or "não informado",
+        },
     )
+
+
+@router.get("/api/status")
+async def api_status(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    posts = (
+        await db.scalars(
+            select(ScheduledPost)
+            .options(selectinload(ScheduledPost.account))
+            .where(ScheduledPost.owner_id == user.id)
+            .order_by(ScheduledPost.scheduled_for.desc())
+        )
+    ).all()
+    return {
+        "metrics": {
+            "pending": sum(post.status in {"scheduled", "processing", "aguardando", "pending"} for post in posts),
+            "published": sum(post.status == "published" for post in posts),
+            "failed": sum(post.status == "failed" for post in posts),
+        },
+        "posts": [
+            {
+                "id": post.id,
+                "media_url": post.media_url,
+                "media_type": post.media_type,
+                "status": post.status,
+                "scheduled_for": local_scheduled_datetime(post.scheduled_for),
+                "account": post.account.username if post.account else "",
+            }
+            for post in posts
+        ],
+    }
+
+
+@router.get("/api/logs")
+async def api_logs(user: User = Depends(current_user)):
+    return {"logs": get_recent_logs()}
 
 
 @router.get("/auth/instagram/start")

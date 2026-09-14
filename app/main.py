@@ -8,9 +8,11 @@ from .db import init_db
 from .jobs import reset_scheduler, schedule_pending_posts
 from .routes import router
 from .webhooks import router as webhook_router
+from .observability import configure_logging
 
 settings = get_settings()
-app = FastAPI(title="Auto-Insta", version="1.0.0")
+configure_logging()
+app = FastAPI(title="Auto-Insta", version=settings.app_version)
 app.mount("/uploads", StaticFiles(directory="uploads", check_dir=False), name="uploads")
 app.add_middleware(
     SessionMiddleware,
