@@ -105,7 +105,8 @@
             <div class="queue-media">{% if post.media_type == "VIDEO" %}<video src="{{ post.media_url }}" controls preload="metadata"></video>{% else %}<img src="{{ post.media_url }}" alt="Pré-visualização da publicação">{% endif %}</div>
             <div class="queue-card-body">
               <div class="queue-card-head"><div class="queue-account">{% if post.account.profile_picture_url %}<img src="{{ post.account.profile_picture_url }}" alt="">{% else %}<span class="queue-account-initial">{{ post.account.username[:1]|upper }}</span>{% endif %}<span>@{{ post.account.username }}</span></div></div>
-              <div class="queue-meta"><time class="scheduled-time">{{ local_scheduled_datetime(post.scheduled_for) }}</time><span class="status-badge {{ post.status }}">{{ post.status }}</span></div>
+              <div class="queue-meta"><time class="scheduled-time">{{ local_scheduled_datetime(post.scheduled_for) }}</time><span class="status-badge {{ post.status }}" title="{{ post.error_message or '' }}">{{ post.status }}</span></div>
+              {% if post.error_message %}<p class="queue-error">{{ post.error_message }}</p>{% endif %}
             </div>
           </article>
           {% endfor %}

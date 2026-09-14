@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+import asyncio
+import logging
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -11,6 +13,7 @@ from .models import InstagramAccount, ScheduledPost
 from .security import decrypt_token
 
 
+logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler(timezone="UTC")
 PENDING_STATUSES = ("scheduled", "aguardando", "pending")
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
@@ -20,6 +23,36 @@ def _utc_datetime(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=LOCAL_TIMEZONE).astimezone(timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def _api_error(response: httpx.Response) -> str:
+    """Return the useful Meta error payload instead of only the HTTP status."""
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = response.text
+    return f"Instagram API {response.status_code}: {str(payload)[:900]}"
+
+
+async def _wait_for_container(client: httpx.AsyncClient, base: str, container_id: str, token: str) -> None:
+    """Wait until Meta has finished processing the uploaded media container."""
+    for _ in range(30):
+        response = await client.get(
+            f"{base}/{container_id}",
+            params={"fields": "status_code,status", "access_token": token},
+        )
+        if response.is_error:
+            raise RuntimeError(_api_error(response))
+        payload = response.json()
+        status_code = payload.get("status_code")
+        if status_code == "FINISHED":
+            return
+        if status_code in {"ERROR", "EXPIRED"}:
+            raise RuntimeError(
+                f"Instagram container {status_code}: {payload.get('status') or 'processamento rejeitado'}"
+            )
+        await asyncio.sleep(2)
+    raise RuntimeError("Instagram não concluiu o processamento da mídia no tempo esperado")
 
 
 def reset_scheduler() -> None:
@@ -103,18 +136,25 @@ async def _publish(post_id: int) -> None:
                     "media_type": post.media_type.upper(),
                 }
                 container = await client.post(f"{base}/{account.instagram_user_id}/media", params=params)
-                container.raise_for_status()
-                container_id = container.json()["id"]
+                if container.is_error:
+                    raise RuntimeError(_api_error(container))
+                try:
+                    container_id = container.json()["id"]
+                except (ValueError, KeyError) as exc:
+                    raise RuntimeError(f"Resposta inválida ao criar container: {container.text[:900]}") from exc
+                await _wait_for_container(client, base, container_id, token)
                 published = await client.post(
                     f"{base}/{account.instagram_user_id}/media_publish",
                     params={"creation_id": container_id, "access_token": token},
                 )
-                published.raise_for_status()
+                if published.is_error:
+                    raise RuntimeError(_api_error(published))
             post.status = "published"
             post.error_message = None
         except Exception as exc:
             post.status = "failed"
             post.error_message = str(exc)[:1000]
+            logger.exception("Falha ao publicar post %s: %s", post_id, exc)
         await db.commit()
 
 
