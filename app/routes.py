@@ -439,6 +439,26 @@ async def delete_post(
     return RedirectResponse("/dashboard?tab=queue", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.post("/posts/delete-selected")
+async def delete_selected_posts(
+    post_ids: list[int] = Form(...),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    posts = (
+        await db.scalars(
+            select(ScheduledPost).where(
+                ScheduledPost.id.in_(post_ids),
+                ScheduledPost.owner_id == user.id,
+            )
+        )
+    ).all()
+    for post in posts:
+        await db.delete(post)
+    await db.commit()
+    return RedirectResponse("/dashboard?tab=queue", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.post("/posts/bulk")
 async def create_bulk_posts(
     account_ids: list[int] = Form(...),
@@ -478,24 +498,22 @@ async def create_bulk_posts(
         raise HTTPException(status_code=400, detail="O horário do agendamento deve estar no futuro")
 
     posts_to_schedule = []
-    for media_index, (media_url, media_type, caption) in enumerate(
-        zip(media_urls, media_types, captions)
-    ):
+    for media_index, (media_url, media_type, caption) in enumerate(zip(media_urls, media_types, captions)):
         normalized_type = media_type.upper()
         if normalized_type not in {"IMAGE", "VIDEO"}:
             raise HTTPException(status_code=400, detail="media_type deve ser IMAGE ou VIDEO")
-        media_time = first_time + timedelta(minutes=media_index * interval_minutes)
-        account = ordered_accounts[media_index % len(ordered_accounts)]
-        post = ScheduledPost(
-            owner_id=user.id,
-            account_id=account.id,
-            media_url=media_url,
-            media_type=normalized_type,
-            caption=caption,
-            scheduled_for=media_time,
-        )
-        db.add(post)
-        posts_to_schedule.append(post)
+        for account_index, account in enumerate(ordered_accounts):
+            sequence_index = media_index * len(ordered_accounts) + account_index
+            post = ScheduledPost(
+                owner_id=user.id,
+                account_id=account.id,
+                media_url=media_url,
+                media_type=normalized_type,
+                caption=caption,
+                scheduled_for=first_time + timedelta(minutes=sequence_index * interval_minutes),
+            )
+            db.add(post)
+            posts_to_schedule.append(post)
     await db.flush()
     await db.commit()
     for post in posts_to_schedule:

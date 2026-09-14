@@ -23,6 +23,14 @@
   .caption-fields textarea { min-height:58px; }
   .automation-global { grid-column:1/-1; display:flex; align-items:center; gap:.5rem; margin:0; color:var(--text); font-size:.78rem; }
   .automation-global input { width:auto; margin:0; }
+  .select-all-accounts { display:flex; align-items:center; gap:.55rem; margin:.2rem 0 .55rem; color:var(--text); font-size:.8rem; }
+  .select-all-accounts input,.queue-select { width:auto; margin:0; }
+  .queue-toolbar { display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin-bottom:.75rem; }
+  .queue-toolbar button { width:auto; padding:.5rem .7rem; }
+  .queue-select { position:absolute; top:.78rem; left:.78rem; z-index:2; width:18px; height:18px; accent-color:var(--primary); }
+  .queue-error { margin:.55rem 0 0; color:var(--danger); font-size:.7rem; line-height:1.35; overflow-wrap:anywhere; }
+  .thumb-item { position:relative; padding-right:2.2rem; }
+  .remove-media { position:absolute; right:.45rem; width:25px; height:25px; padding:0; background:rgba(255,112,136,.12); color:var(--danger); }
   @media(max-width:1000px) { .queue-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
   @media(max-width:650px) {
     body { padding-bottom:5.4rem; }
@@ -77,8 +85,9 @@
         {% if accounts %}
         <form id="bulk-form" method="post" action="/posts/bulk">
           <label>Contas de destino</label>
+          <label class="select-all-accounts"><input id="select-all-accounts" type="checkbox" checked> <span>Selecionar todas</span></label>
           <div class="check-list">
-            {% for account in accounts %}<label class="account-check"><input type="checkbox" name="account_ids" value="{{ account.id }}" checked><span class="mini-avatar">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}{{ account.username[:1]|upper }}{% endif %}</span><b>@{{ account.username }}</b><span class="check-mark">✓</span></label>{% endfor %}
+            {% for account in accounts %}<label class="account-check"><input class="account-selector" type="checkbox" name="account_ids" value="{{ account.id }}" checked><span class="mini-avatar">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}{{ account.username[:1]|upper }}{% endif %}</span><b>@{{ account.username }}</b><span class="check-mark">✓</span></label>{% endfor %}
           </div>
           <label class="dropzone" for="bulk-files"><span id="bulk-label"><b>Solte suas mídias aqui</b><br><small>Imagens e vídeos · ordem da seleção</small></span><input id="bulk-files" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></label>
           <div id="media-items" class="thumb-list"></div>
@@ -88,7 +97,7 @@
           </div>
           <label id="global-caption-field">Legenda global<textarea name="caption" maxlength="2200" placeholder="Uma legenda para todas as mídias"></textarea></label>
           <div id="caption-fields" class="caption-fields" hidden></div>
-          <label>Intervalo entre mídias<input id="interval" name="interval_minutes" type="number" min="1" value="1" required><small class="field-hint">Mínimo de 1 minuto</small></label>
+          <label>Intervalo entre publicações<input id="interval" name="interval_minutes" type="number" min="1" value="1" required><small class="field-hint">Aplicado entre cada conta e cada mídia</small></label>
           <label>Primeiro horário<input id="bulk-time" name="scheduled_for_local" type="datetime-local" required><small id="schedule-hint" class="field-hint"></small></label>
           <p class="form-note">O horário usa o fuso local do seu navegador.</p>
           <button id="bulk-submit" type="submit">Adicionar à fila <span>→</span></button>
@@ -96,11 +105,12 @@
         {% else %}<p>Conecte uma conta antes de agendar.</p>{% endif %}
       </div>
       <div class="panel queue-panel">
-        <div class="panel-header"><div><div class="eyebrow">Fila detalhada</div><h3>Publicações programadas</h3></div></div>
+        <div class="queue-toolbar"><div><div class="eyebrow">Fila detalhada</div><h3>Publicações programadas</h3></div><form id="delete-selected-form" method="post" action="/posts/delete-selected"><button type="submit" class="secondary" title="Excluir selecionadas"><i data-lucide="trash-2"></i> Excluir selecionadas</button></form></div>
         {% if posts %}
         <div class="queue-grid">
           {% for post in posts %}
           <article class="queue-card">
+            <input class="queue-select" type="checkbox" value="{{ post.id }}" aria-label="Selecionar publicação {{ post.id }}">
             <form method="post" action="/posts/{{ post.id }}/delete"><button class="queue-delete" type="submit" aria-label="Excluir publicação" title="Excluir publicação"><i data-lucide="trash-2"></i></button></form>
             <div class="queue-media">{% if post.media_type == "VIDEO" %}<video src="{{ post.media_url }}" controls preload="metadata"></video>{% else %}<img src="{{ post.media_url }}" alt="Pré-visualização da publicação">{% endif %}</div>
             <div class="queue-card-body">
@@ -145,13 +155,17 @@ function minimumScheduleTime(){const minimum=new Date(Date.now()+60000);minimum.
 function parseLocalDateTime(value){if(!value||!value.includes("T"))return new Date(NaN);const [datePart,timePart]=value.split("T"),[year,month,day]=datePart.split("-").map(Number),[hours,minutes]=timePart.split(":").map(Number);return new Date(year,month-1,day,hours,minutes,0,0)}
 function updateScheduleHint(){if(!time)return;const minimum=minimumScheduleTime();time.min=formatLocalDateTime(minimum);document.getElementById("schedule-hint").textContent=`Escolha a partir de ${minimum.toLocaleString([], {dateStyle:"short",timeStyle:"short"})}`}
 function renderCaptionFields(){if(!captionFields)return;const individual=document.querySelector('input[name="caption_mode"]:checked')?.value==="individual";captionFields.hidden=!individual;globalCaption.hidden=individual;if(individual)captionFields.innerHTML=media.map((item,index)=>`<label>Legenda da mídia ${index+1}<textarea class="individual-caption" data-index="${index}" maxlength="2200" placeholder="Legenda para ${escapeHtml(item.file.name)}">${escapeHtml(item.caption||"")}</textarea></label>`).join("");captionFields.querySelectorAll(".individual-caption").forEach(input=>input.addEventListener("input",()=>{media[Number(input.dataset.index)].caption=input.value}))}
-function render(){if(!list)return;list.innerHTML=media.map((item,index)=>`<div class="thumb-item"><img class="thumb" src="${item.preview}" alt=""><span><strong>${escapeHtml(item.file.name)}</strong><br><small>${item.type} · ordem ${index+1}</small></span></div>`).join("");renderCaptionFields()}
+function render(){if(!list)return;list.innerHTML=media.map((item,index)=>`<div class="thumb-item"><img class="thumb" src="${item.preview}" alt=""><span><strong>${escapeHtml(item.file.name)}</strong><br><small>${item.type} · ordem ${index+1}</small></span><button class="remove-media" type="button" data-media-index="${index}" aria-label="Remover mídia" title="Remover mídia"><i data-lucide="x"></i></button></div>`).join("");list.querySelectorAll(".remove-media").forEach(button=>button.addEventListener("click",()=>{media.splice(Number(button.dataset.mediaIndex),1);render()}));renderCaptionFields();if(window.lucide)lucide.createIcons()}
 if(time){updateScheduleHint();time.value=time.min;setInterval(updateScheduleHint,15000)}
 document.querySelectorAll("[data-view]").forEach(link=>link.addEventListener("click",event=>{event.preventDefault();const view=link.dataset.view;history.replaceState(null,"",`#${view}`);document.querySelectorAll(".workspace-tab").forEach(item=>item.classList.toggle("active",item.dataset.view===view));document.querySelectorAll(".workspace-view").forEach(panel=>panel.classList.toggle("active",panel.dataset.panel===view));window.scrollTo({top:0,behavior:"smooth"})}));
 const initialView=location.hash.slice(1)||"overview";document.querySelector(`[data-view="${initialView}"]`)?.click();
 let media=[];
 if(list&&window.Sortable)new Sortable(list,{animation:150,onEnd:event=>{const [item]=media.splice(event.oldIndex,1);media.splice(event.newIndex,0,item);render()}});
-if(files){files.addEventListener("change",async()=>{media=[];for(const file of files.files){const data=new FormData();data.append("media",file);const response=await fetch("/media/upload",{method:"POST",body:data});if(!response.ok){alert("Falha ao enviar "+file.name);continue}const result=await response.json();media.push({file,preview:URL.createObjectURL(file),url:result.url,type:result.media_type,caption:""})}render()})}
+if(files){files.addEventListener("change",async()=>{for(const file of files.files){const data=new FormData();data.append("media",file);const response=await fetch("/media/upload",{method:"POST",body:data});if(!response.ok){alert("Falha ao enviar "+file.name);continue}const result=await response.json();media.push({file,preview:URL.createObjectURL(file),url:result.url,type:result.media_type,caption:""})}render()})}
+const selectAll=document.getElementById("select-all-accounts"),accountSelectors=[...document.querySelectorAll(".account-selector")];
+if(selectAll){selectAll.addEventListener("change",()=>accountSelectors.forEach(input=>{input.checked=selectAll.checked}));accountSelectors.forEach(input=>input.addEventListener("change",()=>{selectAll.checked=accountSelectors.every(item=>item.checked);selectAll.indeterminate=accountSelectors.some(item=>item.checked)&&!selectAll.checked}))}
+const deleteSelectedForm=document.getElementById("delete-selected-form");
+if(deleteSelectedForm){deleteSelectedForm.addEventListener("submit",event=>{const selected=[...document.querySelectorAll(".queue-select:checked")];if(!selected.length){event.preventDefault();alert("Selecione ao menos uma publicação.");return}selected.forEach(item=>{const input=document.createElement("input");input.type="hidden";input.name="post_ids";input.value=item.value;deleteSelectedForm.appendChild(input)})})}
 document.querySelectorAll('input[name="caption_mode"]').forEach(input=>input.addEventListener("change",renderCaptionFields));
 if(form){form.addEventListener("submit",event=>{if(!media.length){event.preventDefault();alert("Selecione ao menos uma mídia.");return}if(!document.querySelector('input[name="account_ids"]:checked')){event.preventDefault();alert("Selecione ao menos uma conta.");return}const selected=parseLocalDateTime(time.value);if(Number.isNaN(selected.getTime())){event.preventDefault();time.setCustomValidity("Informe um horário válido.");time.reportValidity();return}time.setCustomValidity("");form.querySelectorAll(".generated-media").forEach(item=>item.remove());media.forEach(item=>[["media_urls",item.url],["media_types",item.type]].forEach(([name,value])=>{const input=document.createElement("input");input.type="hidden";input.name=name;input.value=value;input.className="generated-media";form.appendChild(input)}));if(document.querySelector('input[name="caption_mode"]:checked').value==="individual")media.forEach(item=>{const input=document.createElement("input");input.type="hidden";input.name="captions";input.value=item.caption||"";input.className="generated-media";form.appendChild(input)});const localInput=document.createElement("input");localInput.type="hidden";localInput.name="scheduled_for";localInput.value=time.value;localInput.className="generated-media";form.appendChild(localInput);time.disabled=true})}
 </script>

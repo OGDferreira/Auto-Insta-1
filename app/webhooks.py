@@ -1,4 +1,5 @@
 import logging
+import asyncio
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
@@ -61,6 +62,20 @@ async def _send_auto_reply(account: InstagramAccount, event: dict) -> None:
         response.raise_for_status()
 
 
+async def _delayed_auto_reply(account_id: int, event: dict) -> None:
+    await asyncio.sleep(30)
+    async with SessionLocal() as db:
+        account = await db.get(InstagramAccount, account_id)
+        if account:
+            try:
+                await _send_auto_reply(account, event)
+            except Exception:
+                logger.exception(
+                    "Falha ao enviar automação atrasada para conta Instagram %s",
+                    account.instagram_user_id,
+                )
+
+
 @router.post("")
 async def receive_webhook(request: Request):
     payload = await request.json()
@@ -89,11 +104,5 @@ async def receive_webhook(request: Request):
                     )
                 )
                 if account:
-                    try:
-                        await _send_auto_reply(account, value)
-                    except Exception:
-                        logger.exception(
-                            "Falha ao enviar automação para conta Instagram %s",
-                            account.instagram_user_id,
-                        )
+                    asyncio.create_task(_delayed_auto_reply(account.id, value))
     return {"received": True}
