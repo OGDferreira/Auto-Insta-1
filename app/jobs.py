@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from .config import get_settings
 from .db import SessionLocal
@@ -11,6 +11,7 @@ from .security import decrypt_token
 
 
 scheduler = AsyncIOScheduler(timezone="UTC")
+PENDING_STATUSES = ("scheduled", "aguardando", "pending")
 
 
 def _utc_datetime(value: datetime) -> datetime:
@@ -25,6 +26,15 @@ def reset_scheduler() -> None:
     if scheduler.running:
         scheduler.shutdown(wait=False)
     scheduler = AsyncIOScheduler(timezone="UTC")
+    scheduler.add_job(
+        process_due_posts,
+        "interval",
+        seconds=15,
+        id="process-due-posts",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
 
 
 def schedule_post(post_id: int, scheduled_for: datetime) -> str:
@@ -52,7 +62,7 @@ async def schedule_pending_posts() -> None:
         posts = (
             await db.scalars(
                 select(ScheduledPost).where(
-                    ScheduledPost.status == "scheduled",
+                    ScheduledPost.status.in_(PENDING_STATUSES),
                 )
             )
         ).all()
@@ -63,9 +73,16 @@ async def schedule_pending_posts() -> None:
 async def _publish(post_id: int) -> None:
     settings = get_settings()
     async with SessionLocal() as db:
-        result = await db.execute(select(ScheduledPost).where(ScheduledPost.id == post_id))
-        post = result.scalar_one_or_none()
-        if post is None or post.status != "scheduled":
+        claimed = await db.execute(
+            update(ScheduledPost)
+            .where(ScheduledPost.id == post_id, ScheduledPost.status.in_(PENDING_STATUSES))
+            .values(status="processing")
+        )
+        if claimed.rowcount != 1:
+            return
+        await db.commit()
+        post = await db.get(ScheduledPost, post_id)
+        if post is None:
             return
         account = await db.get(InstagramAccount, post.account_id)
         if account is None or account.owner_id != post.owner_id:
@@ -97,3 +114,22 @@ async def _publish(post_id: int) -> None:
             post.status = "failed"
             post.error_message = str(exc)[:1000]
         await db.commit()
+
+
+async def process_due_posts() -> None:
+    """Recover due posts that missed their one-shot scheduler job."""
+    now = datetime.now(timezone.utc)
+    async with SessionLocal() as db:
+        due_ids = (
+            await db.scalars(
+                select(ScheduledPost.id)
+                .where(
+                    ScheduledPost.status.in_(PENDING_STATUSES),
+                    ScheduledPost.scheduled_for <= now,
+                )
+                .order_by(ScheduledPost.scheduled_for, ScheduledPost.id)
+                .limit(50)
+            )
+        ).all()
+    for post_id in due_ids:
+        await _publish(post_id)

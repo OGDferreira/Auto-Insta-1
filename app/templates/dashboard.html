@@ -2,7 +2,7 @@
 {% block title %}Painel · Auto-Insta{% endblock %}
 {% block content %}
 <style>
-  body > nav { padding:.55rem 0 .7rem; margin-bottom:1.1rem; }
+  body > nav { padding:.4rem 0 .5rem; margin-bottom:.75rem; }
   .queue-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; }
   .queue-card { position:relative; overflow:hidden; padding:0; background:linear-gradient(145deg,rgba(21,28,45,.96),rgba(12,16,28,.96)); border:1px solid var(--line); border-radius:14px; }
   .queue-media { aspect-ratio:1 / 1; background:#080b14; overflow:hidden; }
@@ -71,7 +71,7 @@
           <label id="global-caption-field">Legenda global<textarea name="caption" maxlength="2200" placeholder="Uma legenda para todas as mídias"></textarea></label>
           <div id="caption-fields" class="caption-fields" hidden></div>
           <label>Intervalo entre mídias<input id="interval" name="interval_minutes" type="number" min="1" value="1" required><small class="field-hint">Mínimo de 1 minuto</small></label>
-          <label>Primeiro horário<input id="bulk-time" name="scheduled_for" type="datetime-local" required><small id="schedule-hint" class="field-hint"></small></label>
+          <label>Primeiro horário<input id="bulk-time" name="scheduled_for_local" type="datetime-local" required><small id="schedule-hint" class="field-hint"></small></label>
           <p class="form-note">O horário usa o fuso local do seu navegador.</p>
           <button id="bulk-submit" type="submit">Adicionar à fila <span>→</span></button>
         </form>
@@ -109,7 +109,7 @@
       <form method="post" action="/accounts/{{ account.id }}/auto-reply" class="panel automation-card">
         <div class="automation-title"><div class="profile-avatar small">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}{{ account.username[:1]|upper }}{% endif %}</div><div><h3>@{{ account.username }}</h3><p>Mensagens automáticas</p></div></div>
         <div class="automation-fields"><label><span><input name="direct_enabled" type="checkbox" {% if account.direct_reply_enabled or account.auto_reply_enabled %}checked{% endif %}> Direct</span><textarea name="direct_text" maxlength="2000" placeholder="Resposta para mensagens privadas">{{ account.direct_reply_text or account.auto_reply_text }}</textarea></label><label><span><input name="comment_enabled" type="checkbox" {% if account.comment_reply_enabled %}checked{% endif %}> Comentários</span><textarea name="comment_text" maxlength="2000" placeholder="Resposta para comentários nos seus posts">{{ account.comment_reply_text }}</textarea></label></div>
-        <label class="automation-global"><input name="apply_all" type="checkbox"> Aplicar esta resposta a todas as contas</label>
+        <label class="automation-global"><input name="apply_all" type="checkbox"> Aplicar a mesma resposta para todas as contas conectadas</label>
         <button type="submit">Salvar automações</button>
       </form>
       {% else %}<div class="panel empty-state"><span>✦</span><h3>Configure depois de conectar uma conta</h3></div>{% endfor %}

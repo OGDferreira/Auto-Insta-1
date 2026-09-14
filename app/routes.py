@@ -48,6 +48,18 @@ def login_redirect() -> RedirectResponse:
     return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
 
 
+def parse_scheduled_datetime(value: str) -> datetime:
+    """Normalize browser datetime values to the UTC instant stored in the DB."""
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="scheduled_for inválido") from exc
+    # datetime-local values are intentionally treated as UTC when no offset is
+    # supplied. The browser converts its local wall-clock value to an offset
+    # aware ISO value before submission, preserving the user's chosen instant.
+    return (parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+
+
 @router.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
@@ -301,11 +313,7 @@ async def create_post(
     )
     if not account:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
-    try:
-        when = datetime.fromisoformat(scheduled_for.replace("Z", "+00:00"))
-        when = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="scheduled_for inválido") from exc
+    when = parse_scheduled_datetime(scheduled_for)
     if when <= datetime.now(timezone.utc) + timedelta(minutes=1):
         raise HTTPException(status_code=400, detail="Agendamento deve ser pelo menos 1 minuto no futuro")
     media_type = media_type.upper()
@@ -377,11 +385,9 @@ async def create_bulk_posts(
     ).all()
     if len(accounts) != len(set(account_ids)) or not accounts:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
-    try:
-        first_time = datetime.fromisoformat(scheduled_for.replace("Z", "+00:00"))
-        first_time = first_time if first_time.tzinfo else first_time.replace(tzinfo=timezone.utc)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="scheduled_for inválido") from exc
+    accounts_by_id = {account.id: account for account in accounts}
+    ordered_accounts = [accounts_by_id[account_id] for account_id in account_ids]
+    first_time = parse_scheduled_datetime(scheduled_for)
     if first_time <= datetime.now(timezone.utc) + timedelta(minutes=1):
         raise HTTPException(status_code=400, detail="Agendamento deve ser pelo menos 1 minuto no futuro")
 
@@ -393,7 +399,7 @@ async def create_bulk_posts(
         if normalized_type not in {"IMAGE", "VIDEO"}:
             raise HTTPException(status_code=400, detail="media_type deve ser IMAGE ou VIDEO")
         media_time = first_time + timedelta(minutes=media_index * interval_minutes)
-        account = accounts[media_index % len(accounts)]
+        account = ordered_accounts[media_index % len(ordered_accounts)]
         post = ScheduledPost(
             owner_id=user.id,
             account_id=account.id,
