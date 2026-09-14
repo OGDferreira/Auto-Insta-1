@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -12,11 +13,12 @@ from .security import decrypt_token
 
 scheduler = AsyncIOScheduler(timezone="UTC")
 PENDING_STATUSES = ("scheduled", "aguardando", "pending")
+LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 
 
 def _utc_datetime(value: datetime) -> datetime:
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        return value.replace(tzinfo=LOCAL_TIMEZONE).astimezone(timezone.utc)
     return value.astimezone(timezone.utc)
 
 

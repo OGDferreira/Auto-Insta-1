@@ -5,6 +5,7 @@ import logging
 import re
 from pathlib import Path
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -33,6 +34,7 @@ UPLOAD_DIR = Path("uploads")
 ALLOWED_UPLOAD_TYPES = {"image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"}
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]{2,80}$")
+LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 
 
 async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
@@ -51,15 +53,22 @@ def login_redirect() -> RedirectResponse:
 
 
 def parse_scheduled_datetime(value: str) -> datetime:
-    """Normalize browser datetime values to the UTC instant stored in the DB."""
+    """Interpret datetime-local values in Sao Paulo and store the UTC instant."""
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="scheduled_for inválido") from exc
-    # datetime-local values are intentionally treated as UTC when no offset is
-    # supplied. The browser converts its local wall-clock value to an offset
-    # aware ISO value before submission, preserving the user's chosen instant.
-    return (parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
+    local_value = parsed.replace(tzinfo=LOCAL_TIMEZONE) if parsed.tzinfo is None else parsed
+    return local_value.astimezone(timezone.utc)
+
+
+def local_scheduled_datetime(value: datetime) -> str:
+    """Format a stored UTC value as the user's configured local wall-clock time."""
+    utc_value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return utc_value.astimezone(LOCAL_TIMEZONE).strftime("%d/%m/%Y %H:%M")
+
+
+templates.env.globals["local_scheduled_datetime"] = local_scheduled_datetime
 
 
 @router.get("/health")
