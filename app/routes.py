@@ -115,24 +115,41 @@ async def register_page(request: Request):
 @router.post("/register")
 async def register(
     request: Request,
-    email: str = Form(...),
+    email: str = Form(""),
     username: str = Form(""),
     password: str = Form(...),
     db: AsyncSession = Depends(get_db),
 ):
     email = email.strip().lower()
     username = username.strip()
+    # Some browsers autofill the e-mail into the first text field. Recover
+    # that input instead of rejecting an otherwise valid registration.
+    if "@" in username:
+        autofilled_email = username
+        username = username.split("@", 1)[0]
+        if not email:
+            email = autofilled_email.lower()
     if not username:
         username = email.split("@", 1)[0][:80]
+    form_data = {"request": request, "email": email, "username": username}
+    if not email or "@" not in email:
+        return templates.TemplateResponse(
+            "register.html", {**form_data, "error": "Informe um e-mail válido."}, status_code=400
+        )
     if not USERNAME_PATTERN.fullmatch(username):
         return templates.TemplateResponse(
             "register.html",
-            {"request": request, "error": "Nome de usuário inválido. Use 2 a 80 letras, números, ponto, hífen ou underline."},
+            {
+                **form_data,
+                "error": "Nome de usuário inválido. Use 2 a 80 letras, números, ponto, hífen ou underline.",
+            },
             status_code=400,
         )
     if len(password) < 10:
         return templates.TemplateResponse(
-            "register.html", {"request": request, "error": "Senha deve ter ao menos 10 caracteres"}, status_code=400
+            "register.html",
+            {**form_data, "error": "Senha deve ter ao menos 10 caracteres"},
+            status_code=400,
         )
     existing = await db.scalar(select(User).where(User.email == email))
     if existing:
