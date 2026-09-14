@@ -26,6 +26,16 @@ async def init_db() -> None:
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
         if engine.url.get_backend_name() == "sqlite":
+            user_columns = await connection.exec_driver_sql("PRAGMA table_info(users)")
+            existing_user_columns = {row[1] for row in user_columns}
+            if "username" not in existing_user_columns:
+                await connection.exec_driver_sql(
+                    "ALTER TABLE users ADD COLUMN username TEXT NOT NULL DEFAULT ''"
+                )
+            await connection.exec_driver_sql(
+                "UPDATE users SET username = substr(email, 1, instr(email, '@') - 1) "
+                "WHERE username = ''"
+            )
             columns = await connection.exec_driver_sql("PRAGMA table_info(instagram_accounts)")
             existing = {row[1] for row in columns}
             new_columns = {

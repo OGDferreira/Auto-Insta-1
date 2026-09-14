@@ -27,14 +27,14 @@
   @media(max-width:650px) { .queue-grid { grid-template-columns:1fr; } .caption-mode { display:grid; } }
 </style>
 <section class="hero dashboard-hero">
-  <div><div class="eyebrow">Workspace de conteúdo</div><h1>Olá, {{ user.email.split('@')[0] }}.</h1><p>Organize publicações, contas e automações em um só lugar.</p></div>
+  <div><div class="eyebrow">Workspace de conteúdo</div><h1>Olá, {{ user.username or "usuário" }}.</h1><p>Organize publicações, contas e automações em um só lugar.</p></div>
   <span class="live-indicator"><i></i> Operação ativa</span>
 </section>
 <nav class="workspace-tabs" aria-label="Navegação do workspace">
-  <a class="workspace-tab active" href="#overview" data-view="overview"><span>01</span>Dashboard</a>
-  <a class="workspace-tab" href="#queue" data-view="queue"><span>02</span>Fila</a>
-  <a class="workspace-tab" href="#accounts" data-view="accounts"><span>03</span>Hub de contas</a>
-  <a class="workspace-tab" href="#messages" data-view="messages"><span>04</span>Automações</a>
+  <a class="workspace-tab active" href="#overview" data-view="overview"><span>01</span><i data-lucide="layout-dashboard"></i> Dashboard</a>
+  <a class="workspace-tab" href="#queue" data-view="queue"><span>02</span><i data-lucide="layers-3"></i> Fila</a>
+  <a class="workspace-tab" href="#accounts" data-view="accounts"><span>03</span><i data-lucide="instagram"></i> Hub de contas</a>
+  <a class="workspace-tab" href="#messages" data-view="messages"><span>04</span><i data-lucide="message-circle"></i> Automações</a>
 </nav>
 <main class="workspace-views">
   <section id="overview" class="workspace-view active" data-panel="overview">
@@ -46,9 +46,10 @@
       <div class="metric"><small>Publicados</small><strong>{{ metrics.published }}</strong><span class="metric-detail">concluídos com sucesso</span></div>
     </div>
     <div class="overview-grid">
-      <div class="panel panel-feature"><div class="panel-kicker">Próximo passo</div><h3>Planeje sua próxima publicação</h3><p>Escolha as contas, envie suas mídias e mantenha a fila organizada por horário.</p><a class="button" href="#queue" data-view="queue">Abrir fila <span>→</span></a></div>
+      <div class="panel panel-feature"><div class="panel-kicker">Próximo passo</div><h3>Planeje sua próxima publicação</h3><p>Escolha as contas, envie suas mídias e mantenha a fila organizada por horário.</p><a class="button" href="#queue" data-view="queue"><i data-lucide="plus"></i> Abrir fila</a></div>
       <div class="panel"><div class="panel-header"><div><div class="eyebrow">Resumo da operação</div><h3>Status das entregas</h3></div><span class="status-badge published">Estável</span></div><div class="status-line"><span>Publicados</span><strong>{{ metrics.published }}</strong></div><div class="status-line"><span>Pendentes</span><strong>{{ metrics.pending }}</strong></div><div class="status-line"><span>Falhas</span><strong>{{ metrics.failed }}</strong></div></div>
     </div>
+    <div class="panel profile-panel" style="margin-top:1rem"><div class="panel-header"><div><div class="eyebrow">Seu perfil</div><h3>Nome de usuário</h3></div><i data-lucide="user-round"></i></div><form method="post" action="/profile" style="display:flex;align-items:end;gap:.75rem;max-width:560px"><label style="flex:1;margin:0">Como devemos chamar você?<input name="username" value="{{ user.username }}" maxlength="80" pattern="[a-zA-Z0-9_.-]{2,80}" required></label><button type="submit"><i data-lucide="save"></i> Salvar</button></form><p class="muted" style="margin-bottom:0">Seu e-mail continua privado e não é usado na saudação.</p></div>
   </section>
 
   <section id="queue" class="workspace-view" data-panel="queue">
@@ -83,7 +84,7 @@
         <div class="queue-grid">
           {% for post in posts %}
           <article class="queue-card">
-            <form method="post" action="/posts/{{ post.id }}/delete"><button class="queue-delete" type="submit" aria-label="Excluir publicação" title="Excluir publicação">&#128465;</button></form>
+            <form method="post" action="/posts/{{ post.id }}/delete"><button class="queue-delete" type="submit" aria-label="Excluir publicação" title="Excluir publicação"><i data-lucide="trash-2"></i></button></form>
             <div class="queue-media">{% if post.media_type == "VIDEO" %}<video src="{{ post.media_url }}" controls preload="metadata"></video>{% else %}<img src="{{ post.media_url }}" alt="Pré-visualização da publicação">{% endif %}</div>
             <div class="queue-card-body">
               <div class="queue-card-head"><div class="queue-account">{% if post.account.profile_picture_url %}<img src="{{ post.account.profile_picture_url }}" alt="">{% else %}<span class="queue-account-initial">{{ post.account.username[:1]|upper }}</span>{% endif %}<span>@{{ post.account.username }}</span></div></div>

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 import logging
+import re
 from pathlib import Path
 from uuid import uuid4
 
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 UPLOAD_DIR = Path("uploads")
 ALLOWED_UPLOAD_TYPES = {"image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"}
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
+USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]{2,80}$")
 
 
 async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
@@ -114,10 +116,20 @@ async def register_page(request: Request):
 async def register(
     request: Request,
     email: str = Form(...),
+    username: str = Form(""),
     password: str = Form(...),
     db: AsyncSession = Depends(get_db),
 ):
     email = email.strip().lower()
+    username = username.strip()
+    if not username:
+        username = email.split("@", 1)[0][:80]
+    if not USERNAME_PATTERN.fullmatch(username):
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error": "Nome de usuário inválido. Use 2 a 80 letras, números, ponto, hífen ou underline."},
+            status_code=400,
+        )
     if len(password) < 10:
         return templates.TemplateResponse(
             "register.html", {"request": request, "error": "Senha deve ter ao menos 10 caracteres"}, status_code=400
@@ -127,11 +139,33 @@ async def register(
         return templates.TemplateResponse(
             "register.html", {"request": request, "error": "E-mail já cadastrado"}, status_code=409
         )
-    user = User(email=email, password_hash=hash_password(password))
+    username_in_use = await db.scalar(select(User).where(User.username == username))
+    if username_in_use:
+        return templates.TemplateResponse(
+            "register.html", {"request": request, "error": "Nome de usuário já está em uso"}, status_code=409
+        )
+    user = User(email=email, username=username, password_hash=hash_password(password))
     db.add(user)
     await db.commit()
     request.session["user_id"] = user.id
     return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/profile")
+async def update_profile(
+    username: str = Form(...),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    username = username.strip()
+    if not USERNAME_PATTERN.fullmatch(username):
+        raise HTTPException(status_code=400, detail="Nome de usuário inválido")
+    existing = await db.scalar(select(User).where(User.username == username, User.id != user.id))
+    if existing:
+        raise HTTPException(status_code=409, detail="Nome de usuário já está em uso")
+    user.username = username
+    await db.commit()
+    return RedirectResponse("/dashboard#overview", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/login", response_class=HTMLResponse)
