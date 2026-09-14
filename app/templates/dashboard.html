@@ -24,7 +24,24 @@
   .automation-global { grid-column:1/-1; display:flex; align-items:center; gap:.5rem; margin:0; color:var(--text); font-size:.78rem; }
   .automation-global input { width:auto; margin:0; }
   @media(max-width:1000px) { .queue-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-  @media(max-width:650px) { .queue-grid { grid-template-columns:1fr; } .caption-mode { display:grid; } }
+  @media(max-width:650px) {
+    body { padding-bottom:5.4rem; }
+    .queue-grid { grid-template-columns:1fr; }
+    .caption-mode { display:grid; }
+    .workspace-tabs {
+      position:fixed; z-index:20; left:0; right:0; bottom:0;
+      display:flex; justify-content:space-around; gap:0; margin:0;
+      padding:.45rem .35rem calc(.45rem + env(safe-area-inset-bottom));
+      border:1px solid rgba(151,213,220,.18); border-radius:16px 16px 0 0;
+      background:rgba(8,15,23,.88); backdrop-filter:blur(24px);
+      box-shadow:0 -12px 35px rgba(0,0,0,.3);
+    }
+    .workspace-tab { flex:1; justify-content:center; min-height:2.9rem; padding:.45rem .2rem; border:0; border-radius:10px; }
+    .workspace-tab span { display:none; }
+    .workspace-tab i { width:20px; height:20px; margin:0; }
+    .workspace-tab { font-size:0; }
+    .workspace-tab.active { color:var(--cyan); background:rgba(116,224,219,.1); }
+  }
 </style>
 <section class="hero dashboard-hero">
   <div><div class="eyebrow">Workspace de conteúdo</div><h1>Olá, {{ user.username or "usuário" }}.</h1><p>Organize publicações, contas e automações em um só lugar.</p></div>
@@ -123,7 +140,7 @@ const files=document.getElementById("bulk-files"),list=document.getElementById("
 const pad=value=>String(value).padStart(2,"0");
 const escapeHtml=value=>String(value).replace(/[&<>\"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[char]));
 function formatLocalDateTime(date){return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`}
-function minimumScheduleTime(){const minimum=new Date(Date.now()+60000);minimum.setSeconds(0,0);if(minimum.getTime()<=Date.now()+60000)minimum.setMinutes(minimum.getMinutes()+1);return minimum}
+function minimumScheduleTime(){const minimum=new Date(Date.now()+60000);minimum.setSeconds(0,0);return minimum}
 function parseLocalDateTime(value){if(!value||!value.includes("T"))return new Date(NaN);const [datePart,timePart]=value.split("T"),[year,month,day]=datePart.split("-").map(Number),[hours,minutes]=timePart.split(":").map(Number);return new Date(year,month-1,day,hours,minutes,0,0)}
 function updateScheduleHint(){if(!time)return;const minimum=minimumScheduleTime();time.min=formatLocalDateTime(minimum);document.getElementById("schedule-hint").textContent=`Escolha a partir de ${minimum.toLocaleString([], {dateStyle:"short",timeStyle:"short"})}`}
 function renderCaptionFields(){if(!captionFields)return;const individual=document.querySelector('input[name="caption_mode"]:checked')?.value==="individual";captionFields.hidden=!individual;globalCaption.hidden=individual;if(individual)captionFields.innerHTML=media.map((item,index)=>`<label>Legenda da mídia ${index+1}<textarea class="individual-caption" data-index="${index}" maxlength="2200" placeholder="Legenda para ${escapeHtml(item.file.name)}">${escapeHtml(item.caption||"")}</textarea></label>`).join("");captionFields.querySelectorAll(".individual-caption").forEach(input=>input.addEventListener("input",()=>{media[Number(input.dataset.index)].caption=input.value}))}
@@ -136,6 +153,6 @@ let media=[];
 if(list&&window.Sortable)new Sortable(list,{animation:150,onEnd:event=>{const [item]=media.splice(event.oldIndex,1);media.splice(event.newIndex,0,item);render()}});
 if(files){files.addEventListener("change",async()=>{media=[];for(const file of files.files){const data=new FormData();data.append("media",file);const response=await fetch("/media/upload",{method:"POST",body:data});if(!response.ok){alert("Falha ao enviar "+file.name);continue}const result=await response.json();media.push({file,preview:URL.createObjectURL(file),url:result.url,type:result.media_type,caption:""})}render()})}
 document.querySelectorAll('input[name="caption_mode"]').forEach(input=>input.addEventListener("change",renderCaptionFields));
-if(form){form.addEventListener("submit",event=>{if(!media.length){event.preventDefault();alert("Selecione ao menos uma mídia.");return}if(!document.querySelector('input[name="account_ids"]:checked')){event.preventDefault();alert("Selecione ao menos uma conta.");return}const selected=parseLocalDateTime(time.value),minimum=minimumScheduleTime();if(Number.isNaN(selected.getTime())||selected.getTime()<minimum.getTime()){event.preventDefault();time.setCustomValidity("Agende a partir do horário mínimo indicado.");time.reportValidity();return}time.setCustomValidity("");form.querySelectorAll(".generated-media").forEach(item=>item.remove());media.forEach(item=>[["media_urls",item.url],["media_types",item.type]].forEach(([name,value])=>{const input=document.createElement("input");input.type="hidden";input.name=name;input.value=value;input.className="generated-media";form.appendChild(input)}));if(document.querySelector('input[name="caption_mode"]:checked').value==="individual")media.forEach(item=>{const input=document.createElement("input");input.type="hidden";input.name="captions";input.value=item.caption||"";input.className="generated-media";form.appendChild(input)});time.disabled=true;const utcInput=document.createElement("input");utcInput.type="hidden";utcInput.name="scheduled_for";utcInput.value=selected.toISOString();utcInput.className="generated-media";form.appendChild(utcInput)})}
+if(form){form.addEventListener("submit",event=>{if(!media.length){event.preventDefault();alert("Selecione ao menos uma mídia.");return}if(!document.querySelector('input[name="account_ids"]:checked')){event.preventDefault();alert("Selecione ao menos uma conta.");return}const selected=parseLocalDateTime(time.value);if(Number.isNaN(selected.getTime())){event.preventDefault();time.setCustomValidity("Informe um horário válido.");time.reportValidity();return}time.setCustomValidity("");form.querySelectorAll(".generated-media").forEach(item=>item.remove());media.forEach(item=>[["media_urls",item.url],["media_types",item.type]].forEach(([name,value])=>{const input=document.createElement("input");input.type="hidden";input.name=name;input.value=value;input.className="generated-media";form.appendChild(input)}));if(document.querySelector('input[name="caption_mode"]:checked').value==="individual")media.forEach(item=>{const input=document.createElement("input");input.type="hidden";input.name="captions";input.value=item.caption||"";input.className="generated-media";form.appendChild(input)});const utcInput=document.createElement("input");utcInput.type="hidden";utcInput.name="scheduled_for";utcInput.value=selected.toISOString();utcInput.className="generated-media";form.appendChild(utcInput);time.disabled=true})}
 </script>
 {% endblock %}

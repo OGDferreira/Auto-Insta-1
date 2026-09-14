@@ -365,8 +365,8 @@ async def create_post(
     if not account:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
     when = parse_scheduled_datetime(scheduled_for)
-    if when <= datetime.now(timezone.utc) + timedelta(minutes=1):
-        raise HTTPException(status_code=400, detail="Agendamento deve ser pelo menos 1 minuto no futuro")
+    if when <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="O horário do agendamento deve estar no futuro")
     media_type = media_type.upper()
     if media_type not in {"IMAGE", "VIDEO"}:
         raise HTTPException(status_code=400, detail="media_type deve ser IMAGE ou VIDEO")
@@ -439,8 +439,8 @@ async def create_bulk_posts(
     accounts_by_id = {account.id: account for account in accounts}
     ordered_accounts = [accounts_by_id[account_id] for account_id in account_ids]
     first_time = parse_scheduled_datetime(scheduled_for)
-    if first_time <= datetime.now(timezone.utc) + timedelta(minutes=1):
-        raise HTTPException(status_code=400, detail="Agendamento deve ser pelo menos 1 minuto no futuro")
+    if first_time <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="O horário do agendamento deve estar no futuro")
 
     posts_to_schedule = []
     for media_index, (media_url, media_type, caption) in enumerate(
