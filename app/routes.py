@@ -3,6 +3,7 @@ from urllib.parse import quote
 
 import logging
 import re
+from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -13,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .config import get_settings
 from .db import get_db
@@ -91,12 +93,36 @@ async def upload_media(
     destination = UPLOAD_DIR / filename
     size = 0
     try:
-        with destination.open("wb") as output:
-            while chunk := await media.read(1024 * 1024):
-                size += len(chunk)
-                if size > MAX_UPLOAD_SIZE:
-                    raise HTTPException(status_code=413, detail="Arquivo excede o limite de 50 MB")
-                output.write(chunk)
+        content = await media.read(MAX_UPLOAD_SIZE + 1)
+        size = len(content)
+        if size > MAX_UPLOAD_SIZE:
+            raise HTTPException(status_code=413, detail="Arquivo excede o limite de 50 MB")
+        if media.content_type.startswith("image/"):
+            try:
+                image = ImageOps.exif_transpose(Image.open(BytesIO(content)))
+                width, height = image.size
+                ratio = width / height
+                if ratio < 0.8 or ratio > 1.91:
+                    # Instagram rejects images outside 4:5..1.91:1. Crop only
+                    # invalid uploads and keep valid originals untouched.
+                    target_ratio = 4 / 5
+                    if ratio > target_ratio:
+                        crop_width = int(height * target_ratio)
+                        left = (width - crop_width) // 2
+                        image = image.crop((left, 0, left + crop_width, height))
+                    else:
+                        crop_height = int(width / target_ratio)
+                        top = (height - crop_height) // 2
+                        image = image.crop((0, top, width, top + crop_height))
+                    image.thumbnail((1080, 1350), Image.Resampling.LANCZOS)
+                    output = BytesIO()
+                    image.convert("RGB").save(output, format="JPEG", quality=92, optimize=True)
+                    content = output.getvalue()
+                    filename = f"{uuid4().hex}.jpg"
+                    destination = UPLOAD_DIR / filename
+            except (UnidentifiedImageError, OSError) as exc:
+                raise HTTPException(status_code=400, detail="Imagem inválida ou corrompida") from exc
+        destination.write_bytes(content)
     except HTTPException:
         destination.unlink(missing_ok=True)
         raise

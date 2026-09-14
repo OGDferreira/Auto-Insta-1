@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 import httpx
@@ -9,6 +11,7 @@ from .models import InstagramAccount
 from .security import decrypt_token
 
 router = APIRouter(prefix="/webhook")
+logger = logging.getLogger(__name__)
 
 
 @router.get("")
@@ -24,11 +27,11 @@ async def verify_webhook(
 
 
 async def _send_auto_reply(account: InstagramAccount, event: dict) -> None:
-    sender_id = event.get("sender", {}).get("id")
+    sender_id = (event.get("sender") or {}).get("id") or (event.get("from") or {}).get("id")
     settings = get_settings()
     token = decrypt_token(account.access_token_encrypted)
     comment_id = event.get("comment_id")
-    is_comment = bool(comment_id or event.get("from"))
+    is_comment = bool(comment_id or (event.get("from") and event.get("text")))
     reply_enabled = (
         account.comment_reply_enabled if is_comment else account.direct_reply_enabled
     )
@@ -44,7 +47,7 @@ async def _send_auto_reply(account: InstagramAccount, event: dict) -> None:
         if comment_id:
             url = f"https://graph.instagram.com/{settings.graph_api_version}/{comment_id}/replies"
             response = await client.post(
-                url, params={"access_token": token}, json={"message": reply_text}
+                url, params={"access_token": token, "message": reply_text}
             )
         elif sender_id:
             url = f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/messages"
@@ -63,7 +66,10 @@ async def receive_webhook(request: Request):
     payload = await request.json()
     events = []
     for entry in payload.get("entry", []):
-        events.extend(entry.get("messaging", []))
+        events.extend(
+            {"entry_id": entry.get("id"), **event}
+            for event in entry.get("messaging", [])
+        )
         events.extend(
             {"entry_id": entry.get("id"), **change.get("value", change)}
             for change in entry.get("changes", [])
@@ -86,6 +92,8 @@ async def receive_webhook(request: Request):
                     try:
                         await _send_auto_reply(account, value)
                     except Exception:
-                        # A webhook must acknowledge quickly; delivery can be retried by Meta.
-                        pass
+                        logger.exception(
+                            "Falha ao enviar automação para conta Instagram %s",
+                            account.instagram_user_id,
+                        )
     return {"received": True}
