@@ -26,6 +26,8 @@ EVENT_TYPE_ALIASES = {
     "payment_created": "pix_generated",
     "pix_created": "pix_generated",
     "pix_gerado": "pix_generated",
+    "pix_gerado_com_sucesso": "pix_generated",
+    "pix": "pix_generated",
     "pagamento_aprovado": "pix_paid",
     "payment_approved": "pix_paid",
     "payment_paid": "pix_paid",
@@ -40,6 +42,24 @@ def normalize_event_type(value: object) -> str:
     normalized = str(value or "").strip().lower()
     normalized = normalized.replace("-", "_").replace(" ", "_")
     return EVENT_TYPE_ALIASES.get(normalized, normalized)
+
+
+def _webhook_events(payload: dict) -> list[dict]:
+    """Accept Sharkbot's flat events as well as nested `data`/`payload` bodies."""
+    if isinstance(payload.get("data"), dict):
+        return [{**payload, **payload["data"]}]
+    if isinstance(payload.get("payload"), dict):
+        return [{**payload, **payload["payload"]}]
+    if any(payload.get(key) for key in ("event_type", "event_name", "type", "event", "name")):
+        return [payload]
+    events = []
+    for entry in payload.get("entry", []):
+        events.extend({"entry_id": entry.get("id"), **event} for event in entry.get("messaging", []))
+        events.extend(
+            {"entry_id": entry.get("id"), **change.get("value", change)}
+            for change in entry.get("changes", [])
+        )
+    return events
 
 
 @router.get("")
@@ -107,26 +127,18 @@ async def _delayed_auto_reply(account_id: int, event: dict) -> None:
 @router.post("/sharkbot")
 async def receive_webhook(request: Request):
     payload = await request.json()
-    if payload.get("event_type"):
-        events = [payload]
-    else:
-        events = []
-        for entry in payload.get("entry", []):
-            events.extend(
-                {"entry_id": entry.get("id"), **event}
-                for event in entry.get("messaging", [])
-            )
-            events.extend(
-                {"entry_id": entry.get("id"), **change.get("value", change)}
-                for change in entry.get("changes", [])
-            )
+    events = _webhook_events(payload)
     async with SessionLocal() as db:
         for event in events:
             value = event.get("value", event)
             if not isinstance(value, dict):
                 value = event
             event_type = normalize_event_type(
-                value.get("event_type") or value.get("type") or value.get("event")
+                value.get("event_type")
+                or value.get("event_name")
+                or value.get("type")
+                or value.get("event")
+                or value.get("name")
             )
             if event_type in {"link_click", "lead_initiated", "pix_generated", "pix_paid", "pix_pending"}:
                 account = None
@@ -143,7 +155,9 @@ async def receive_webhook(request: Request):
                         )
                     )
                 try:
-                    event_value = float(value.get("value", value.get("amount", 0)) or 0)
+                    event_value = float(
+                        value.get("value", value.get("amount", value.get("price", 0))) or 0
+                    )
                 except (TypeError, ValueError):
                     event_value = 0.0
                 raw_timestamp = value.get("timestamp")
