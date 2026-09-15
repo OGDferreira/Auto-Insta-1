@@ -389,6 +389,7 @@ async def metrics_page(request: Request, user: User = Depends(current_user), db:
         })
     return templates.TemplateResponse("metrics.html", {
         "request": request, "user": user, "total_views": views,
+        "sharkbot_webhook_url": get_settings().sharkbot_webhook_url,
         "bot_name": "Sharkbot",
         "approved_sales": sum(event.value for event in paid_events),
         "conversion_rate": (len(paid_events) / len(generated_events) * 100) if generated_events else 0,

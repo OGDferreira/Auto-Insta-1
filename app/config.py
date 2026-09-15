@@ -16,6 +16,7 @@ class Settings(BaseModel):
     supabase_url: str = ""
     supabase_key: str = ""
     supabase_storage_bucket: str = "media"
+    sharkbot_webhook_url: str = "https://auto-insta-web.onrender.com/webhook/sharkbot"
     secret_key: str = "change-me-in-production"
     fernet_key: str = ""
     webhook_verify_token: str = "change-me"
@@ -39,6 +40,10 @@ def get_settings() -> Settings:
         "supabase_url": os.getenv("SUPABASE_URL", ""),
         "supabase_key": os.getenv("SUPABASE_KEY", ""),
         "supabase_storage_bucket": os.getenv("SUPABASE_STORAGE_BUCKET", "media"),
+        "sharkbot_webhook_url": os.getenv(
+            "SHARKBOT_WEBHOOK_URL",
+            "https://auto-insta-web.onrender.com/webhook/sharkbot",
+        ),
         "secret_key": os.getenv("SECRET_KEY", "change-me-in-production"),
         "fernet_key": os.getenv("FERNET_KEY", ""),
         "webhook_verify_token": os.getenv("WEBHOOK_VERIFY_TOKEN", "change-me"),
