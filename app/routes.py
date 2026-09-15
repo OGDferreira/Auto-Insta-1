@@ -79,6 +79,11 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+@router.get("/privacy", response_class=HTMLResponse)
+def privacy_page(request: Request):
+    return templates.TemplateResponse("privacy.html", {"request": request})
+
+
 @router.post("/media/upload")
 async def upload_media(
     media: UploadFile = File(...),
