@@ -12,6 +12,9 @@ class Base(DeclarativeBase):
 
 def _async_database_url(url: str) -> str:
     """Use the async PostgreSQL driver while retaining SQLite test support."""
+    url = url.strip().strip("\"'")
+    # Render/Supabase values are occasionally pasted with an extra `//`.
+    url = url.lstrip("/")
     if url.startswith("postgres://"):
         return url.replace("postgres://", "postgresql+asyncpg://", 1)
     if url.startswith("postgresql://"):
