@@ -375,8 +375,26 @@ async def metrics_page(request: Request, user: User = Depends(current_user), db:
     counts = {event_type: sum(event.event_type == event_type for event in events) for event_type in (
         "link_click", "lead_initiated", "pix_generated", "pix_paid"
     )}
+    paid_events = [event for event in events if event.event_type == "pix_paid"]
+    generated_events = [event for event in events if event.event_type == "pix_generated"]
+    today = datetime.now(timezone.utc).date()
+    daily_activity = []
+    for offset in range(6, -1, -1):
+        day = today - timedelta(days=offset)
+        day_events = [event for event in events if event.timestamp and event.timestamp.date() == day]
+        daily_activity.append({
+            "label": day.strftime("%a").capitalize(),
+            "revenue": round(sum(event.value for event in day_events if event.event_type == "pix_paid"), 2),
+            "leads": sum(event.event_type == "lead_initiated" for event in day_events),
+        })
     return templates.TemplateResponse("metrics.html", {
         "request": request, "user": user, "total_views": views,
+        "bot_name": "Sharkbot",
+        "approved_sales": sum(event.value for event in paid_events),
+        "conversion_rate": (len(paid_events) / len(generated_events) * 100) if generated_events else 0,
+        "total_starts": counts["lead_initiated"],
+        "average_ticket": (sum(event.value for event in paid_events) / len(paid_events)) if paid_events else 0,
+        "daily_activity": daily_activity,
         "funnel": [views, counts["link_click"], counts["lead_initiated"], counts["pix_generated"], counts["pix_paid"]],
         "pix_status": {
             "paid": counts["pix_paid"],
