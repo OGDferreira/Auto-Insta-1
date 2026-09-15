@@ -95,7 +95,7 @@ def reset_scheduler() -> None:
     scheduler.add_job(
         collect_instagram_insights,
         "interval",
-        hours=24,
+        minutes=10,
         id="collect-instagram-insights",
         replace_existing=True,
         coalesce=True,
@@ -106,7 +106,8 @@ def reset_scheduler() -> None:
 async def collect_instagram_insights() -> None:
     """Collect daily Instagram impressions and reach for every connected account."""
     settings = get_settings()
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    local_today = datetime.now(LOCAL_TIMEZONE).date()
+    today = datetime.combine(local_today, datetime.min.time(), tzinfo=LOCAL_TIMEZONE).astimezone(timezone.utc)
     async with SessionLocal() as db:
         accounts = (await db.scalars(select(InstagramAccount))).all()
         async with httpx.AsyncClient(timeout=30) as client:

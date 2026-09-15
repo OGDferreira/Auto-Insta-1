@@ -20,7 +20,7 @@ from supabase import create_client
 
 from .config import get_settings
 from .db import get_db
-from .jobs import PENDING_STATUSES, schedule_post
+from .jobs import PENDING_STATUSES, collect_instagram_insights, schedule_post
 from .models import BotEvent, InstagramAccount, InstagramMetric, ScheduledPost, User
 from .oauth import (
     authorization_url,
@@ -299,7 +299,13 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
             )
         )
     ).all() if accounts else (await db.scalars(select(BotEvent).where(BotEvent.account_id.is_(None)))).all()
-    total_views = sum(metric.impressions for metric in metric_rows)
+    local_today = datetime.now(LOCAL_TIMEZONE).date()
+    today_metrics = [
+        metric for metric in metric_rows
+        if (metric.metric_date.replace(tzinfo=timezone.utc) if metric.metric_date.tzinfo is None else metric.metric_date)
+        .astimezone(LOCAL_TIMEZONE).date() == local_today
+    ]
+    total_views = sum(metric.impressions for metric in today_metrics)
     event_counts = {event_type: sum(event.event_type == event_type for event in events) for event_type in (
         "link_click", "lead_initiated", "pix_generated", "pix_paid"
     )}
@@ -353,12 +359,21 @@ async def hub(request: Request, user: User = Depends(current_user), db: AsyncSes
     accounts = (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == owner_id))).all()
     account_views = {}
     for account in accounts:
-        account_views[account.id] = (
-            await db.scalar(select(InstagramMetric.impressions).where(
-                InstagramMetric.account_id == account.id
-            ).order_by(InstagramMetric.metric_date.desc()).limit(1))
-        ) or 0
+        rows = (await db.scalars(select(InstagramMetric).where(
+            InstagramMetric.account_id == account.id
+        ).order_by(InstagramMetric.metric_date.desc()).limit(10))).all()
+        account_views[account.id] = next((
+            row.impressions for row in rows
+            if (row.metric_date.replace(tzinfo=timezone.utc) if row.metric_date.tzinfo is None else row.metric_date)
+            .astimezone(LOCAL_TIMEZONE).date() == datetime.now(LOCAL_TIMEZONE).date()
+        ), 0)
     return templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_views": account_views, "notice": request.session.pop("access_notice", None)})
+
+
+@router.post("/metrics/refresh")
+async def refresh_metrics(user: User = Depends(current_user)):
+    await collect_instagram_insights()
+    return {"refreshed": True}
 
 
 @router.get("/metrics", response_class=HTMLResponse)
