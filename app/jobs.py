@@ -116,12 +116,25 @@ async def collect_instagram_insights() -> None:
                     response = await client.get(
                         f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
                         params={
-                            "metric": "impressions,reach",
+                            # `views` replaced `impressions` for current Instagram
+                            # Insights responses; both are normalized below.
+                            "metric": "views,reach",
                             "period": "day",
                             "access_token": decrypt_token(account.access_token_encrypted),
                         },
                     )
-                    response.raise_for_status()
+                    if response.is_error:
+                        try:
+                            error_payload = response.json()
+                        except ValueError:
+                            error_payload = response.text[:900]
+                        logger.error(
+                            "Instagram Insights retornou %s para %s: %s",
+                            response.status_code,
+                            account.instagram_user_id,
+                            error_payload,
+                        )
+                        response.raise_for_status()
                     payload = response.json()
                     values = {
                         item.get("name"): item.get("values", [{}])[-1].get("value", 0)
@@ -134,7 +147,9 @@ async def collect_instagram_insights() -> None:
                     if metric is None:
                         metric = InstagramMetric(account_id=account.id, metric_date=today)
                         db.add(metric)
-                    metric.impressions = int(values.get("impressions", 0) or 0)
+                    metric.impressions = int(
+                        values.get("views", values.get("impressions", 0)) or 0
+                    )
                     metric.reach = int(values.get("reach", 0) or 0)
                 except Exception:
                     logger.exception("Falha ao coletar Insights da conta %s", account.instagram_user_id)
