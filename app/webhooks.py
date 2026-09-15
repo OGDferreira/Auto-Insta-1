@@ -15,6 +15,32 @@ from .security import decrypt_token
 router = APIRouter(prefix="/webhook")
 logger = logging.getLogger(__name__)
 
+EVENT_TYPE_ALIASES = {
+    "lead": "lead_initiated",
+    "novo_lead": "lead_initiated",
+    "new_lead": "lead_initiated",
+    "lead_iniciado": "lead_initiated",
+    "clique": "link_click",
+    "link_click": "link_click",
+    "pagamento_criado": "pix_generated",
+    "payment_created": "pix_generated",
+    "pix_created": "pix_generated",
+    "pix_gerado": "pix_generated",
+    "pagamento_aprovado": "pix_paid",
+    "payment_approved": "pix_paid",
+    "payment_paid": "pix_paid",
+    "paid": "pix_paid",
+    "pix_pago": "pix_paid",
+    "pix_pendente": "pix_pending",
+    "payment_pending": "pix_pending",
+}
+
+
+def normalize_event_type(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    normalized = normalized.replace("-", "_").replace(" ", "_")
+    return EVENT_TYPE_ALIASES.get(normalized, normalized)
+
 
 @router.get("")
 async def verify_webhook(
@@ -99,7 +125,9 @@ async def receive_webhook(request: Request):
             value = event.get("value", event)
             if not isinstance(value, dict):
                 value = event
-            event_type = value.get("event_type") or value.get("type")
+            event_type = normalize_event_type(
+                value.get("event_type") or value.get("type") or value.get("event")
+            )
             if event_type in {"link_click", "lead_initiated", "pix_generated", "pix_paid", "pix_pending"}:
                 account = None
                 account_key = (
