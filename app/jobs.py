@@ -36,23 +36,27 @@ def _api_error(response: httpx.Response) -> str:
 
 async def _wait_for_container(client: httpx.AsyncClient, base: str, container_id: str, token: str) -> None:
     """Wait until Meta has finished processing the uploaded media container."""
-    for _ in range(30):
+    # Aumentado para 40 tentativas com sleep de 3s (Total ~120s) para garantir o download de vídeos pela Meta
+    for _ in range(40):
         response = await client.get(
             f"{base}/{container_id}",
             params={"fields": "status_code,status", "access_token": token},
         )
         if response.is_error:
             raise RuntimeError(_api_error(response))
+        
         payload = response.json()
         status_code = payload.get("status_code")
+        
         if status_code == "FINISHED":
             return
         if status_code in {"ERROR", "EXPIRED"}:
-            raise RuntimeError(
-                f"Instagram container {status_code}: {payload.get('status') or 'processamento rejeitado'}"
-            )
-        await asyncio.sleep(2)
-    raise RuntimeError("Instagram não concluiu o processamento da mídia no tempo esperado")
+            status_msg = payload.get('status') or 'Processamento rejeitado. Verifique se a URL da mídia é pública, no formato correto e acessível pela Meta.'
+            raise RuntimeError(f"Erro no container da Meta ({status_code}): {status_msg}")
+            
+        await asyncio.sleep(3)
+        
+    raise RuntimeError("A Meta (Instagram) não concluiu o processamento da mídia no tempo esperado.")
 
 
 def reset_scheduler() -> None:
@@ -116,45 +120,72 @@ async def _publish(post_id: int) -> None:
         if claimed.rowcount != 1:
             return
         await db.commit()
+        
         post = await db.get(ScheduledPost, post_id)
         if post is None:
             return
+            
         account = await db.get(InstagramAccount, post.account_id)
         if account is None or account.owner_id != post.owner_id:
             post.status = "failed"
             post.error_message = "Instagram account no longer belongs to this owner"
             await db.commit()
             return
+            
         try:
             token = decrypt_token(account.access_token_encrypted)
-            base = f"https://graph.instagram.com/{settings.graph_api_version}"
-            async with httpx.AsyncClient(timeout=30) as client:
+            
+            # CORREÇÃO 1: A Graph API oficial para criação/publicação roda sob graph.facebook.com
+            base = f"https://graph.facebook.com/{settings.graph_api_version}"
+            
+            # CORREÇÃO 2: Forçar o tipo REELS caso o banco de dados envie VIDEO
+            media_type = post.media_type.upper()
+            if media_type == "VIDEO":
+                media_type = "REELS"
+                
+            # Define a chave correta da URL (image_url vs video_url)
+            media_key = "image_url" if media_type == "IMAGE" else "video_url"
+            
+            # Timeout aumentado para 60s para evitar quedas caso a Meta demore a responder
+            async with httpx.AsyncClient(timeout=60) as client:
                 params = {
                     "access_token": token,
                     "caption": post.caption,
-                    "image_url" if post.media_type.upper() == "IMAGE" else "video_url": post.media_url,
-                    "media_type": post.media_type.upper(),
+                    media_key: post.media_url,
+                    "media_type": media_type,
                 }
+                
+                # ETAPA A: Criar o Container de Mídia
                 container = await client.post(f"{base}/{account.instagram_user_id}/media", params=params)
                 if container.is_error:
                     raise RuntimeError(_api_error(container))
+                    
                 try:
                     container_id = container.json()["id"]
                 except (ValueError, KeyError) as exc:
                     raise RuntimeError(f"Resposta inválida ao criar container: {container.text[:900]}") from exc
-                await _wait_for_container(client, base, container_id, token)
+                    
+                # ETAPA B: Aguardar Processamento (Polling)
+                # Obrigatório para vídeos/Reels. Imagens são imediatas e não expõem status_code.
+                if media_type == "REELS":
+                    await _wait_for_container(client, base, container_id, token)
+                    
+                # ETAPA C: Publicar o Container Final
                 published = await client.post(
                     f"{base}/{account.instagram_user_id}/media_publish",
                     params={"creation_id": container_id, "access_token": token},
                 )
                 if published.is_error:
                     raise RuntimeError(_api_error(published))
+                    
             post.status = "published"
             post.error_message = None
+            
         except Exception as exc:
             post.status = "failed"
             post.error_message = str(exc)[:1000]
             logger.exception("Falha ao publicar post %s: %s", post_id, exc)
+            
         await db.commit()
 
 
