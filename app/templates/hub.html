@@ -13,9 +13,13 @@ if (refreshViews) {
     refreshViews.disabled = true;
     refreshViews.textContent = "Atualizando...";
     try {
-      const response = await fetch("/metrics/refresh", {method: "POST"});
+      const response = await fetch(`/metrics/refresh?at=${Date.now()}`, {
+        method: "POST",
+        cache: "no-store",
+        headers: {"Cache-Control": "no-cache", "Accept": "application/json"},
+      });
       if (!response.ok) throw new Error("Falha ao atualizar");
-      window.location.reload();
+      window.location.replace(`/hub?updated=${Date.now()}`);
     } catch (error) {
       refreshViews.disabled = false;
       refreshViews.textContent = "Tentar novamente";

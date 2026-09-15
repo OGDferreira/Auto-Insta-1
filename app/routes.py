@@ -10,7 +10,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -333,7 +333,7 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
             "published": sum(post.status == "published" and post.created_at and post.created_at.date() == day for post in posts),
             "interactions": 0,
         })
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         "dashboard.html",
         {
             "request": request,
@@ -351,6 +351,9 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
             "volume_days": volume_days,
         },
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @router.get("/hub", response_class=HTMLResponse)
@@ -367,13 +370,19 @@ async def hub(request: Request, user: User = Depends(current_user), db: AsyncSes
             if (row.metric_date.replace(tzinfo=timezone.utc) if row.metric_date.tzinfo is None else row.metric_date)
             .astimezone(LOCAL_TIMEZONE).date() == datetime.now(LOCAL_TIMEZONE).date()
         ), 0)
-    return templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_views": account_views, "notice": request.session.pop("access_notice", None)})
+    response = templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_views": account_views, "notice": request.session.pop("access_notice", None)})
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @router.post("/metrics/refresh")
 async def refresh_metrics(user: User = Depends(current_user)):
     await collect_instagram_insights()
-    return {"refreshed": True}
+    response = JSONResponse({"refreshed": True})
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @router.get("/metrics", response_class=HTMLResponse)

@@ -72,7 +72,7 @@
 </nav>
 <main class="workspace-views">
   <section id="overview" class="workspace-view active" data-panel="overview">
-    <div class="section-heading"><div><div class="eyebrow">Visão geral</div><h2>Seu ritmo hoje</h2></div><span class="section-note">Atualizado agora</span></div>
+    <div class="section-heading"><div><div class="eyebrow">Visão geral</div><h2>Seu ritmo hoje</h2></div><div style="display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;justify-content:flex-end"><span class="section-note" id="views-updated-at">Atualizado agora</span><button class="button secondary" type="button" id="refresh-dashboard-views"><i data-lucide="refresh-cw"></i> Atualizar visualizações</button></div></div>
     <div class="metric-grid">
       <div class="metric"><small>Total de visualizações</small><strong>{{ metrics.total_views }}</strong><span class="metric-detail">todas as contas conectadas</span></div>
       <div class="metric"><small>Contas ativas</small><strong>{{ metrics.active_accounts }}</strong><span class="metric-detail">conectadas ao workspace</span></div>
@@ -203,6 +203,28 @@ if(queueOrder){queueOrder.addEventListener("change",()=>{const sorted=[...queueC
 ["delete-selected-form","publish-selected-form"].forEach(formId=>{const actionForm=document.getElementById(formId);if(actionForm){actionForm.addEventListener("submit",event=>{const selected=selectedQueuePosts();if(!selected.length){event.preventDefault();alert("Selecione ao menos uma publicação.");return}if(formId==="delete-selected-form"&&!confirm("Excluir as publicações selecionadas?")){event.preventDefault();return}actionForm.querySelectorAll(".generated-post-id").forEach(input=>input.remove());selected.forEach(item=>{const input=document.createElement("input");input.type="hidden";input.name="post_ids";input.value=item.value;input.className="generated-post-id";actionForm.appendChild(input)})})}});
 const clearFailedForm=document.getElementById("clear-failed-form");if(clearFailedForm){clearFailedForm.addEventListener("submit",event=>{if(!confirm("Excluir todas as publicações com falha?"))event.preventDefault()})}
 async function refreshDashboard(){try{const response=await fetch("/api/status",{headers:{"Accept":"application/json"}});if(!response.ok)return;const data=await response.json();Object.entries(data.metrics||{}).forEach(([key,value])=>{const element=document.querySelector(`[data-metric="${key}"]`);if(element)element.textContent=value});(data.posts||[]).forEach(post=>{const card=document.querySelector(`[data-post-id="${post.id}"]`);if(card){const status=card.querySelector("[data-post-status]");if(status){status.textContent=post.status;status.className=`status-badge ${post.status}`}}});const logResponse=await fetch("/api/logs",{headers:{"Accept":"application/json"}});if(logResponse.ok){const logs=await logResponse.json();const target=document.getElementById("system-logs");if(target)target.textContent=(logs.logs||[]).map(item=>`[${new Date(item.timestamp).toLocaleTimeString()}] ${item.level} ${item.logger}: ${item.message}`).join("\n")||"Nenhum registro disponível."}}catch(error){console.debug("Atualização do dashboard indisponível",error)}}
+const refreshDashboardViews = document.getElementById("refresh-dashboard-views");
+if (refreshDashboardViews) {
+  refreshDashboardViews.addEventListener("click", async () => {
+    refreshDashboardViews.disabled = true;
+    refreshDashboardViews.innerHTML = '<i data-lucide="loader-circle"></i> Atualizando...';
+    if (window.lucide) window.lucide.createIcons();
+    try {
+      const response = await fetch(`/metrics/refresh?at=${Date.now()}`, {
+        method: "POST",
+        cache: "no-store",
+        headers: {"Cache-Control": "no-cache", "Accept": "application/json"},
+      });
+      if (!response.ok) throw new Error("Falha ao atualizar");
+      window.location.replace(`/dashboard?updated=${Date.now()}#overview`);
+    } catch (error) {
+      refreshDashboardViews.disabled = false;
+      refreshDashboardViews.innerHTML = '<i data-lucide="refresh-cw"></i> Tentar novamente';
+      if (window.lucide) window.lucide.createIcons();
+      alert("Não foi possível atualizar as visualizações agora.");
+    }
+  });
+}
 setInterval(refreshDashboard,10000);refreshDashboard();
 document.querySelectorAll('input[name="caption_mode"]').forEach(input=>input.addEventListener("change",renderCaptionFields));
 if(form){form.addEventListener("submit",event=>{if(!media.length){event.preventDefault();alert("Selecione ao menos uma mídia.");return}if(!document.querySelector('input[name="account_ids"]:checked')){event.preventDefault();alert("Selecione ao menos uma conta.");return}const selected=parseLocalDateTime(time.value);if(Number.isNaN(selected.getTime())){event.preventDefault();time.setCustomValidity("Informe um horário válido.");time.reportValidity();return}time.setCustomValidity("");form.querySelectorAll(".generated-media").forEach(item=>item.remove());media.forEach(item=>[["media_urls",item.url],["media_types",item.type]].forEach(([name,value])=>{const input=document.createElement("input");input.type="hidden";input.name=name;input.value=value;input.className="generated-media";form.appendChild(input)}));if(document.querySelector('input[name="caption_mode"]:checked').value==="individual")media.forEach(item=>{const input=document.createElement("input");input.type="hidden";input.name="captions";input.value=item.caption||"";input.className="generated-media";form.appendChild(input)});const localInput=document.createElement("input");localInput.type="hidden";localInput.name="scheduled_for";localInput.value=time.value;localInput.className="generated-media";form.appendChild(localInput);time.disabled=true})}
