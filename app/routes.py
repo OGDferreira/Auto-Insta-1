@@ -310,6 +310,11 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
         "total_views": total_views,
         "average_views": round(total_views / max(len(accounts), 1)),
         "funnel": event_counts,
+        "pix_status": {
+            "paid": event_counts["pix_paid"],
+            "pending": sum(event.event_type == "pix_pending" for event in events),
+            "generated": event_counts["pix_generated"],
+        },
         "published": sum(post.status == "published" for post in posts),
         "pending": sum(post.status == "scheduled" for post in posts),
         "failed": sum(post.status == "failed" for post in posts),
