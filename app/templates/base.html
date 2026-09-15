@@ -52,8 +52,21 @@
   <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
-<nav><a class="brand" href="/"><i data-lucide="layers"></i> Auto<span>·</span>Insta</a>{% if request.session.get("user_id") %}<div class="top-actions"><span class="muted"><i data-lucide="user-round"></i> {{ user.username if user is defined and user.username else "Workspace" }}</span><form method="post" action="/logout"><button class="secondary" type="submit"><i data-lucide="log-out"></i> Sair</button></form></div>{% endif %}</nav>
+<nav><a class="brand" href="/"><i data-lucide="layers"></i> Auto<span>·</span>Insta <small class="brand-tagline">conteúdo no ritmo certo</small></a>{% if request.session.get("user_id") %}<div class="top-actions"><button id="profile-trigger" class="profile-trigger secondary" type="button" aria-label="Abrir perfil"><i data-lucide="user-round"></i></button></div>{% endif %}</nav>
 {% block content %}{% endblock %}
+{% if request.session.get("user_id") %}
+<div id="profile-modal" class="profile-modal" hidden>
+  <div class="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title">
+    <button id="profile-close" class="modal-close secondary" type="button" aria-label="Fechar"><i data-lucide="x"></i></button>
+    <div class="eyebrow">Conta e acessos</div><h2 id="profile-title">Meu perfil</h2>
+    <section class="profile-section"><h3>Minha conta</h3><form method="post" action="/profile"><label>Nome de usuário<input name="username" value="{{ user.username if user is defined else '' }}" maxlength="80" pattern="[a-zA-Z0-9_.-]{2,80}" required></label><label>Nova senha<input name="password" type="password" placeholder="Deixe vazio para manter"></label><button type="submit">Salvar alterações</button></form></section>
+    {% if user is defined and user.role == "admin" %}<section class="profile-section"><h3>Adicionar colaborador</h3><p class="muted">O colaborador poderá conectar contas no Hub, sem acesso ao dashboard.</p><form method="post" action="/collaborators"><label>Nome de usuário<input name="username" maxlength="80" pattern="[a-zA-Z0-9_.-]{2,80}" required></label><label>Senha<input name="password" type="password" required></label><button type="submit">Criar colaborador</button></form></section>{% endif %}
+    <form method="post" action="/logout"><button class="secondary" type="submit"><i data-lucide="log-out"></i> Sair</button></form>
+  </div>
+</div>
+<style>.brand-tagline{color:var(--muted);font:500 .68rem "DM Sans";letter-spacing:0}.profile-trigger{width:38px;height:38px;padding:0}.profile-modal{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:1rem;background:rgba(3,6,12,.72);backdrop-filter:blur(8px)}.profile-modal[hidden]{display:none}.profile-dialog{position:relative;width:min(100%,480px);max-height:90vh;overflow:auto;padding:1.5rem;background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:0 24px 80px rgba(0,0,0,.45)}.modal-close{position:absolute;top:.8rem;right:.8rem;padding:.45rem}.profile-section{padding:1rem 0;border-top:1px solid var(--line)}.profile-section h3{margin:.1rem 0 .4rem;font-family:"Space Grotesk"}.profile-section form{display:grid;gap:.2rem}.profile-section button{width:100%}</style>
+<script>const profileModal=document.getElementById("profile-modal"),profileTrigger=document.getElementById("profile-trigger"),profileClose=document.getElementById("profile-close");if(profileTrigger){profileTrigger.addEventListener("click",()=>profileModal.hidden=false);profileClose.addEventListener("click",()=>profileModal.hidden=true);profileModal.addEventListener("click",event=>{if(event.target===profileModal)profileModal.hidden=true});document.addEventListener("keydown",event=>{if(event.key==="Escape")profileModal.hidden=true})}</script>
+{% endif %}
 <script>if(window.lucide){lucide.createIcons();}</script>
 </body>
 </html>

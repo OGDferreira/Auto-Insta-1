@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -48,6 +48,22 @@ async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> 
     if not user:
         request.session.clear()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
+    if user.role == "collaborator" and request.url.path not in {
+        "/hub", "/auth/instagram/start", "/auth/callback", "/media/upload",
+        "/logout", "/profile", "/collaborators",
+    } and not request.url.path.startswith("/accounts/"):
+        request.session["access_notice"] = "Acesso restrito: colaboradores usam apenas o Hub de Contas."
+        raise HTTPException(status_code=307, headers={"Location": "/hub"})
+    return user
+
+
+def workspace_owner_id(user: User) -> int:
+    return user.parent_id if user.role == "collaborator" and user.parent_id else user.id
+
+
+async def admin_user(user: User = Depends(current_user)) -> User:
+    if user.role != "admin":
+        raise HTTPException(status_code=307, headers={"Location": "/hub"})
     return user
 
 
@@ -145,7 +161,8 @@ async def upload_media(
 async def home(request: Request, db: AsyncSession = Depends(get_db)):
     if not request.session.get("user_id"):
         return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
-    return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    user = await db.get(User, int(request.session["user_id"]))
+    return RedirectResponse("/hub" if user and user.role == "collaborator" else "/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/register", response_class=HTMLResponse)
@@ -186,12 +203,6 @@ async def register(
             },
             status_code=400,
         )
-    if len(password) < 10:
-        return templates.TemplateResponse(
-            "register.html",
-            {**form_data, "error": "Senha deve ter ao menos 10 caracteres"},
-            status_code=400,
-        )
     existing = await db.scalar(select(User).where(User.email == email))
     if existing:
         return templates.TemplateResponse(
@@ -202,7 +213,7 @@ async def register(
         return templates.TemplateResponse(
             "register.html", {"request": request, "error": "Nome de usuário já está em uso"}, status_code=409
         )
-    user = User(email=email, username=username, password_hash=hash_password(password))
+    user = User(email=email, username=username, password_hash=hash_password(password), role="admin")
     db.add(user)
     await db.commit()
     request.session["user_id"] = user.id
@@ -212,6 +223,7 @@ async def register(
 @router.post("/profile")
 async def update_profile(
     username: str = Form(...),
+    password: str = Form(""),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -222,8 +234,10 @@ async def update_profile(
     if existing:
         raise HTTPException(status_code=409, detail="Nome de usuário já está em uso")
     user.username = username
+    if password:
+        user.password_hash = hash_password(password)
     await db.commit()
-    return RedirectResponse("/dashboard#overview", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/hub" if user.role == "collaborator" else "/dashboard#overview", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -234,18 +248,22 @@ async def login_page(request: Request):
 @router.post("/login")
 async def login(
     request: Request,
-    email: str = Form(...),
+    identifier: str | None = Form(None),
+    email: str | None = Form(None),
     password: str = Form(...),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await db.scalar(select(User).where(User.email == email.strip().lower()))
+    normalized = (identifier or email or "").strip()
+    user = await db.scalar(
+        select(User).where(or_(User.email == normalized.lower(), User.username == normalized))
+    )
     if not user or not verify_password(password, user.password_hash):
         return templates.TemplateResponse(
-            "login.html", {"request": request, "error": "Credenciais inválidas"}, status_code=401
+            "login.html", {"request": request, "identifier": identifier, "error": "Credenciais inválidas"}, status_code=401
         )
     request.session.clear()
     request.session["user_id"] = user.id
-    return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/hub" if user.role == "collaborator" else "/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/logout")
@@ -256,12 +274,15 @@ async def logout(request: Request):
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    accounts = (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == user.id))).all()
+    if user.role == "collaborator":
+        return RedirectResponse("/hub", status_code=status.HTTP_303_SEE_OTHER)
+    owner_id = workspace_owner_id(user)
+    accounts = (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == owner_id))).all()
     posts = (
         await db.scalars(
             select(ScheduledPost)
             .options(selectinload(ScheduledPost.account))
-            .where(ScheduledPost.owner_id == user.id)
+            .where(ScheduledPost.owner_id == owner_id)
             .order_by(ScheduledPost.scheduled_for.desc())
         )
     ).all()
@@ -276,6 +297,14 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
         "pending": sum(post.status == "scheduled" for post in posts),
         "failed": sum(post.status == "failed" for post in posts),
     }
+    volume_days = []
+    for offset in range(6, -1, -1):
+        day = datetime.now(timezone.utc).date() - timedelta(days=offset)
+        volume_days.append({
+            "label": day.strftime("%d/%m"),
+            "published": sum(post.status == "published" and post.created_at and post.created_at.date() == day for post in posts),
+            "interactions": 0,
+        })
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -286,8 +315,45 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
             "metrics": metrics,
             "app_version": get_settings().app_version,
             "deploy_timestamp": get_settings().deploy_timestamp or "não informado",
+            "chart_status": {
+                "published": sum(post.status == "published" for post in posts),
+                "scheduled": sum(post.status in {"scheduled", "pending", "aguardando", "processing"} for post in posts),
+                "failed": sum(post.status == "failed" for post in posts),
+            },
+            "volume_days": volume_days,
         },
     )
+
+
+@router.get("/hub", response_class=HTMLResponse)
+async def hub(request: Request, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    owner_id = workspace_owner_id(user)
+    accounts = (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == owner_id))).all()
+    return templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "notice": request.session.pop("access_notice", None)})
+
+
+@router.post("/collaborators")
+async def create_collaborator(
+    username: str = Form(...),
+    password: str = Form(...),
+    user: User = Depends(admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    username = username.strip()
+    if not USERNAME_PATTERN.fullmatch(username):
+        raise HTTPException(status_code=400, detail="Nome de usuário inválido")
+    if await db.scalar(select(User).where(User.username == username)):
+        raise HTTPException(status_code=409, detail="Nome de usuário já está em uso")
+    collaborator = User(
+        email=f"{username}@collaborator.local",
+        username=username,
+        password_hash=hash_password(password),
+        role="collaborator",
+        parent_id=user.id,
+    )
+    db.add(collaborator)
+    await db.commit()
+    return RedirectResponse("/dashboard#overview", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/api/status")
@@ -296,7 +362,7 @@ async def api_status(user: User = Depends(current_user), db: AsyncSession = Depe
         await db.scalars(
             select(ScheduledPost)
             .options(selectinload(ScheduledPost.account))
-            .where(ScheduledPost.owner_id == user.id)
+            .where(ScheduledPost.owner_id == workspace_owner_id(user))
             .order_by(ScheduledPost.scheduled_for.desc())
         )
     ).all()
@@ -352,9 +418,10 @@ async def instagram_callback(
     user = await db.get(User, int(request.session["user_id"]))
     if not user:
         raise HTTPException(status_code=401, detail="Login required")
+    owner_id = workspace_owner_id(user)
     account = await db.scalar(
         select(InstagramAccount).where(
-            InstagramAccount.owner_id == user.id,
+            InstagramAccount.owner_id == owner_id,
             InstagramAccount.instagram_user_id == str(profile.get("user_id") or profile["id"]),
         )
     )
@@ -365,7 +432,7 @@ async def instagram_callback(
     else:
         db.add(
             InstagramAccount(
-                owner_id=user.id,
+                owner_id=owner_id,
                 instagram_user_id=str(profile.get("user_id") or profile["id"]),
                 username=profile.get("username", ""),
                 profile_picture_url=profile.get("profile_picture_url"),
@@ -373,23 +440,24 @@ async def instagram_callback(
             )
         )
     await db.commit()
-    return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/hub" if user.role == "collaborator" else "/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/accounts/{account_id}/delete")
 async def delete_account(
     account_id: int, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
 ):
+    owner_id = workspace_owner_id(user)
     account = await db.scalar(
         select(InstagramAccount).where(
-            InstagramAccount.id == account_id, InstagramAccount.owner_id == user.id
+            InstagramAccount.id == account_id, InstagramAccount.owner_id == owner_id
         )
     )
     if not account:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
     await db.delete(account)
     await db.commit()
-    return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/hub" if user.role == "collaborator" else "/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/accounts/{account_id}/auto-reply")
@@ -405,9 +473,10 @@ async def update_auto_reply(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    owner_id = workspace_owner_id(user)
     account = await db.scalar(
         select(InstagramAccount).where(
-            InstagramAccount.id == account_id, InstagramAccount.owner_id == user.id
+            InstagramAccount.id == account_id, InstagramAccount.owner_id == owner_id
         )
     )
     if not account:
@@ -415,7 +484,7 @@ async def update_auto_reply(
     direct_enabled = direct_enabled if enabled is None else enabled
     direct_text = (direct_text if text is None else text)[:2000]
     target_accounts = (
-        (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == user.id))).all()
+        (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == owner_id))).all()
         if apply_all
         else [account]
     )

@@ -16,12 +16,20 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     username: Mapped[str] = mapped_column(String(80), default="")
     password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(20), default="admin", index=True)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     instagram_accounts: Mapped[list["InstagramAccount"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
     )
     scheduled_posts: Mapped[list["ScheduledPost"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
+    )
+    parent: Mapped["User | None"] = relationship(
+        remote_side="User.id", back_populates="collaborators"
+    )
+    collaborators: Mapped[list["User"]] = relationship(
+        back_populates="parent", cascade="all, delete-orphan"
     )
 
 

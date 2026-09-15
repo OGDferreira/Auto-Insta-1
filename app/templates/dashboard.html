@@ -32,6 +32,11 @@
   .queue-toolbar-actions input { width:auto; margin:0; }
   .queue-toolbar-actions select { width:auto; margin:0; padding:.5rem .65rem; }
   .privacy-blur { filter:blur(10px); transition:filter .2s ease; }
+  .account-list { display:grid; gap:.35rem; }
+  .account-list .account-row { display:flex; align-items:center; gap:.75rem; padding:.7rem .2rem; border-bottom:1px solid var(--line); }
+  .account-list .account-row strong { flex:1; }
+  .account-list .profile-avatar { width:36px; height:36px; }
+  .account-list .text-button { padding:.4rem; background:transparent; color:var(--danger); }
   .queue-select { position:absolute; top:.78rem; left:.78rem; z-index:2; width:18px; height:18px; accent-color:var(--primary); }
   .queue-error { margin:.55rem 0 0; color:var(--danger); font-size:.7rem; line-height:1.35; overflow-wrap:anywhere; }
   .thumb-item { position:relative; padding-right:2.2rem; }
@@ -56,10 +61,7 @@
     .workspace-tab.active { color:var(--cyan); background:rgba(116,224,219,.1); }
   }
 </style>
-<section class="hero dashboard-hero">
-  <div><div class="eyebrow">Workspace de conteúdo</div><h1>Olá, {{ user.username or "usuário" }}.</h1><p>Organize publicações, contas e automações em um só lugar.</p></div>
-  <span class="live-indicator"><i></i> Operação ativa</span>
-</section>
+<section class="hero dashboard-hero"><div><div class="eyebrow">Workspace de conteúdo</div><h1>Seu ritmo de conteúdo</h1><p>Agende, publique e acompanhe suas contas em um só lugar.</p></div><a class="button" href="/auth/instagram/start"><i data-lucide="plus"></i> Adicionar conta</a></section>
 <nav class="workspace-tabs" aria-label="Navegação do workspace">
   <a class="workspace-tab active" href="#overview" data-view="overview"><span>01</span><i data-lucide="layout-dashboard"></i> Dashboard</a>
   <a class="workspace-tab" href="#queue" data-view="queue"><span>02</span><i data-lucide="layers-3"></i> Fila</a>
@@ -80,7 +82,7 @@
       <div class="panel panel-feature"><div class="panel-kicker">Próximo passo</div><h3>Planeje sua próxima publicação</h3><p>Escolha as contas, envie suas mídias e mantenha a fila organizada por horário.</p><a class="button" href="#queue" data-view="queue"><i data-lucide="plus"></i> Abrir fila</a></div>
       <div class="panel"><div class="panel-header"><div><div class="eyebrow">Resumo da operação</div><h3>Status das entregas</h3></div><span class="status-badge published">Estável</span></div><div class="status-line"><span>Publicados</span><strong>{{ metrics.published }}</strong></div><div class="status-line"><span>Pendentes</span><strong>{{ metrics.pending }}</strong></div><div class="status-line"><span>Falhas</span><strong>{{ metrics.failed }}</strong></div></div>
     </div>
-    <div class="panel profile-panel" style="margin-top:1rem"><div class="panel-header"><div><div class="eyebrow">Seu perfil</div><h3>Nome de usuário</h3></div><i data-lucide="user-round"></i></div><form method="post" action="/profile" style="display:flex;align-items:end;gap:.75rem;max-width:560px"><label style="flex:1;margin:0">Como devemos chamar você?<input name="username" value="{{ user.username }}" maxlength="80" pattern="[a-zA-Z0-9_.-]{2,80}" required></label><button type="submit"><i data-lucide="save"></i> Salvar</button></form><p class="muted" style="margin-bottom:0">Seu e-mail continua privado e não é usado na saudação.</p></div>
+    <div class="overview-grid"><div class="panel"><div class="panel-header"><h3>Status das publicações</h3></div><canvas id="status-chart" height="180"></canvas></div><div class="panel"><div class="panel-header"><h3>Últimos 7 dias</h3></div><canvas id="volume-chart" height="180"></canvas></div></div>
   </section>
 
   <section id="queue" class="workspace-view" data-panel="queue">
@@ -133,7 +135,7 @@
 
   <section id="accounts" class="workspace-view" data-panel="accounts">
     <div class="section-heading"><div><div class="eyebrow">Conexões</div><h2>Hub de contas</h2></div><a class="button" href="/auth/instagram/start">+ Conectar conta</a></div>
-    <div class="account-grid">{% if accounts %}{% for account in accounts %}<article class="account-card"><div class="account-card-top"><div class="profile-avatar">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="Foto de @{{ account.username }}">{% else %}{{ account.username[:1]|upper }}{% endif %}</div><span class="health"></span></div><h3>@{{ account.username }}</h3><p>Instagram conectado</p><div class="account-card-footer"><span class="status-badge published">Ativa</span><form method="post" action="/accounts/{{ account.id }}/delete"><button class="text-button" type="submit">Remover</button></form></div></article>{% endfor %}{% else %}<div class="panel empty-state"><span>◎</span><h3>Nenhuma conta conectada</h3><p>Conecte uma conta Instagram para começar.</p><a class="button" href="/auth/instagram/start">Conectar conta</a></div>{% endif %}</div>
+    <div class="account-list">{% if accounts %}{% for account in accounts %}<div class="account-row"><div class="profile-avatar small">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="Foto de @{{ account.username }}">{% else %}{{ account.username[:1]|upper }}{% endif %}</div><strong>@{{ account.username }}</strong><span class="health" title="Ativa"></span><form method="post" action="/accounts/{{ account.id }}/delete"><button class="text-button" type="submit" aria-label="Desconectar @{{ account.username }}"><i data-lucide="trash-2"></i></button></form></div>{% endfor %}{% else %}<div class="panel empty-state"><span>◎</span><h3>Nenhuma conta conectada</h3><p>Conecte uma conta Instagram para começar.</p><a class="button" href="/auth/instagram/start">Conectar conta</a></div>{% endif %}</div>
   </section>
 
   <section id="messages" class="workspace-view" data-panel="messages">
@@ -159,7 +161,10 @@
   </section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
+const chartStatus={{ chart_status|tojson }},volumeDays={{ volume_days|tojson }};
+if(window.Chart){new Chart(document.getElementById("status-chart"),{type:"doughnut",data:{labels:["Publicadas","Agendadas","Falhas"],datasets:[{data:[chartStatus.published,chartStatus.scheduled,chartStatus.failed],backgroundColor:["#65e6a3","#8b7cff","#ff7088"],borderWidth:0}]},options:{plugins:{legend:{labels:{color:"#f4f7ff"}}}}});new Chart(document.getElementById("volume-chart"),{type:"line",data:{labels:volumeDays.map(item=>item.label),datasets:[{label:"Publicações",data:volumeDays.map(item=>item.published),borderColor:"#55d6ff",backgroundColor:"rgba(85,214,255,.15)",fill:true,tension:.35},{label:"Interações",data:volumeDays.map(item=>item.interactions),borderColor:"#8b7cff",tension:.35}]},options:{scales:{x:{ticks:{color:"#8d99b5"}},y:{beginAtZero:true,ticks:{color:"#8d99b5"}}},plugins:{legend:{labels:{color:"#f4f7ff"}}}}})}
 const files=document.getElementById("bulk-files"),list=document.getElementById("media-items"),time=document.getElementById("bulk-time"),form=document.getElementById("bulk-form"),captionFields=document.getElementById("caption-fields"),globalCaption=document.getElementById("global-caption-field");
 const pad=value=>String(value).padStart(2,"0");
 const escapeHtml=value=>String(value).replace(/[&<>\"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[char]));

@@ -32,6 +32,14 @@ async def init_db() -> None:
                 await connection.exec_driver_sql(
                     "ALTER TABLE users ADD COLUMN username TEXT NOT NULL DEFAULT ''"
                 )
+            if "role" not in existing_user_columns:
+                await connection.exec_driver_sql(
+                    "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'"
+                )
+            if "parent_id" not in existing_user_columns:
+                await connection.exec_driver_sql(
+                    "ALTER TABLE users ADD COLUMN parent_id INTEGER"
+                )
             await connection.exec_driver_sql(
                 "UPDATE users SET username = substr(email, 1, instr(email, '@') - 1) "
                 "WHERE username = ''"
