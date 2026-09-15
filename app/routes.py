@@ -11,14 +11,14 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .config import get_settings
 from .db import get_db
-from .jobs import schedule_post
+from .jobs import PENDING_STATUSES, schedule_post
 from .models import InstagramAccount, ScheduledPost, User
 from .oauth import (
     authorization_url,
@@ -132,7 +132,7 @@ async def upload_media(
     settings = get_settings()
     return {
         "url": f"{settings.public_base_url.rstrip('/')}/uploads/{filename}",
-        "media_type": "VIDEO" if media.content_type.startswith("video/") else "IMAGE",
+        "media_type": "REELS" if media.content_type.startswith("video/") else "IMAGE",
     }
 
 
@@ -447,8 +447,10 @@ async def create_post(
     if when <= datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="O horário do agendamento deve estar no futuro")
     media_type = media_type.upper()
-    if media_type not in {"IMAGE", "VIDEO"}:
-        raise HTTPException(status_code=400, detail="media_type deve ser IMAGE ou VIDEO")
+    if media_type == "VIDEO":
+        media_type = "REELS"
+    if media_type not in {"IMAGE", "REELS"}:
+        raise HTTPException(status_code=400, detail="media_type deve ser IMAGE ou REELS")
     post = ScheduledPost(
         owner_id=user.id,
         account_id=account.id,
@@ -489,17 +491,54 @@ async def delete_selected_posts(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not post_ids:
+        raise HTTPException(status_code=400, detail="Nenhuma publicação selecionada")
+    await db.execute(
+        delete(ScheduledPost).where(
+            ScheduledPost.id.in_(set(post_ids)),
+            ScheduledPost.owner_id == user.id,
+        )
+    )
+    await db.commit()
+    return RedirectResponse("/dashboard?tab=queue", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/posts/clear-failed")
+async def clear_failed_posts(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await db.execute(
+        delete(ScheduledPost).where(
+            ScheduledPost.owner_id == user.id,
+            ScheduledPost.status == "failed",
+        )
+    )
+    await db.commit()
+    return RedirectResponse("/dashboard?tab=queue", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/posts/publish-selected")
+async def publish_selected_posts(
+    post_ids: list[int] = Form(...),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
     posts = (
         await db.scalars(
             select(ScheduledPost).where(
                 ScheduledPost.id.in_(post_ids),
                 ScheduledPost.owner_id == user.id,
+                ScheduledPost.status.in_(PENDING_STATUSES),
             )
         )
     ).all()
+    now = datetime.now(timezone.utc)
     for post in posts:
-        await db.delete(post)
+        post.scheduled_for = now
     await db.commit()
+    for post in posts:
+        schedule_post(post.id, now)
     return RedirectResponse("/dashboard?tab=queue", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -544,8 +583,10 @@ async def create_bulk_posts(
     posts_to_schedule = []
     for media_index, (media_url, media_type, caption) in enumerate(zip(media_urls, media_types, captions)):
         normalized_type = media_type.upper()
-        if normalized_type not in {"IMAGE", "VIDEO"}:
-            raise HTTPException(status_code=400, detail="media_type deve ser IMAGE ou VIDEO")
+        if normalized_type == "VIDEO":
+            normalized_type = "REELS"
+        if normalized_type not in {"IMAGE", "REELS"}:
+            raise HTTPException(status_code=400, detail="media_type deve ser IMAGE ou REELS")
         for account_index, account in enumerate(ordered_accounts):
             sequence_index = media_index * len(ordered_accounts) + account_index
             post = ScheduledPost(

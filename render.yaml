@@ -14,8 +14,10 @@ services:
       - key: META_APP_SECRET
         sync: false
       - key: PUBLIC_BASE_URL
-        sync: false
+        value: https://auto-insta-web.onrender.com
       - key: WEBHOOK_VERIFY_TOKEN
         sync: false
       - key: GRAPH_API_VERSION
         value: v25.0
+      - key: COOKIE_SECURE
+        value: "true"

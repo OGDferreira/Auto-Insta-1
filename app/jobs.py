@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 import asyncio
 import logging
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -34,6 +35,17 @@ def _api_error(response: httpx.Response) -> str:
     return f"Instagram API {response.status_code}: {str(payload)[:900]}"
 
 
+def _validate_media_url(media_url: str) -> None:
+    parsed = urlparse(media_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise RuntimeError("A URL da mídia precisa ser absoluta e pública (http/https).")
+    if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
+        raise RuntimeError(
+            "A URL da mídia aponta para localhost e não é acessível pela Meta. "
+            "Configure PUBLIC_BASE_URL com a URL HTTPS pública do Render."
+        )
+
+
 async def _wait_for_container(client: httpx.AsyncClient, base: str, container_id: str, token: str) -> None:
     """Wait until Meta has finished processing the uploaded media container."""
     # Aumentado para 40 tentativas com sleep de 3s (Total ~120s) para garantir o download de vídeos pela Meta
@@ -45,14 +57,20 @@ async def _wait_for_container(client: httpx.AsyncClient, base: str, container_id
         if response.is_error:
             raise RuntimeError(_api_error(response))
         
-        payload = response.json()
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise RuntimeError(f"Resposta inválida ao consultar container: {response.text[:900]}") from exc
         status_code = payload.get("status_code")
         
         if status_code == "FINISHED":
             return
         if status_code in {"ERROR", "EXPIRED"}:
-            status_msg = payload.get('status') or 'Processamento rejeitado. Verifique se a URL da mídia é pública, no formato correto e acessível pela Meta.'
-            raise RuntimeError(f"Erro no container da Meta ({status_code}): {status_msg}")
+            status_msg = payload.get("status") or "sem mensagem da Meta"
+            raise RuntimeError(
+                f"Erro no container da Meta ({status_code}): {status_msg}. "
+                "Verifique se a URL da mídia é pública e acessível pela Meta."
+            )
             
         await asyncio.sleep(3)
         
@@ -142,6 +160,9 @@ async def _publish(post_id: int) -> None:
             media_type = post.media_type.upper()
             if media_type == "VIDEO":
                 media_type = "REELS"
+            if media_type not in {"IMAGE", "REELS"}:
+                raise RuntimeError(f"Tipo de mídia não suportado: {post.media_type}")
+            _validate_media_url(post.media_url)
                 
             # Define a chave correta da URL (image_url vs video_url)
             media_key = "image_url" if media_type == "IMAGE" else "video_url"
