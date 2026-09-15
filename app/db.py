@@ -10,7 +10,18 @@ class Base(DeclarativeBase):
     pass
 
 
-engine = create_async_engine(get_settings().database_url, pool_pre_ping=True)
+def _async_database_url(url: str) -> str:
+    """Use the async PostgreSQL driver while retaining SQLite test support."""
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+asyncpg://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if url.startswith("postgresql+psycopg2://"):
+        return url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+    return url
+
+
+engine = create_async_engine(_async_database_url(get_settings().database_url), pool_pre_ping=True)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 

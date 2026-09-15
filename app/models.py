@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -13,7 +13,7 @@ def utcnow() -> datetime:
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(320), unique=True, index=True, nullable=True)
     username: Mapped[str] = mapped_column(String(80), default="")
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(20), default="admin", index=True)
@@ -52,6 +52,12 @@ class InstagramAccount(Base):
     scheduled_posts: Mapped[list["ScheduledPost"]] = relationship(
         back_populates="account", cascade="all, delete-orphan"
     )
+    bot_events: Mapped[list["BotEvent"]] = relationship(
+        back_populates="account", cascade="all, delete-orphan"
+    )
+    instagram_metrics: Mapped[list["InstagramMetric"]] = relationship(
+        back_populates="account", cascade="all, delete-orphan"
+    )
 
 
 class ScheduledPost(Base):
@@ -70,3 +76,27 @@ class ScheduledPost(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     owner: Mapped[User] = relationship(back_populates="scheduled_posts")
     account: Mapped[InstagramAccount] = relationship(back_populates="scheduled_posts")
+
+
+class BotEvent(Base):
+    __tablename__ = "bot_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("instagram_accounts.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    event_type: Mapped[str] = mapped_column(String(30), index=True)
+    value: Mapped[float] = mapped_column(Float, default=0.0)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    account: Mapped[InstagramAccount | None] = relationship(back_populates="bot_events")
+
+
+class InstagramMetric(Base):
+    __tablename__ = "instagram_metrics"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("instagram_accounts.id", ondelete="CASCADE"), index=True
+    )
+    metric_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    impressions: Mapped[int] = mapped_column(Integer, default=0)
+    reach: Mapped[int] = mapped_column(Integer, default=0)
+    account: Mapped[InstagramAccount] = relationship(back_populates="instagram_metrics")

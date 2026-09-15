@@ -13,6 +13,9 @@ class Settings(BaseModel):
     meta_app_secret: str = ""
     public_base_url: str = "http://localhost:8000"
     database_url: str = "sqlite+aiosqlite:///./auto_insta.db"
+    supabase_url: str = ""
+    supabase_key: str = ""
+    supabase_storage_bucket: str = "media"
     secret_key: str = "change-me-in-production"
     fernet_key: str = ""
     webhook_verify_token: str = "change-me"
@@ -33,6 +36,9 @@ def get_settings() -> Settings:
         "meta_app_secret": os.getenv("META_APP_SECRET", ""),
         "public_base_url": os.getenv("PUBLIC_BASE_URL", "http://localhost:8000"),
         "database_url": os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./auto_insta.db"),
+        "supabase_url": os.getenv("SUPABASE_URL", ""),
+        "supabase_key": os.getenv("SUPABASE_KEY", ""),
+        "supabase_storage_bucket": os.getenv("SUPABASE_STORAGE_BUCKET", "media"),
         "secret_key": os.getenv("SECRET_KEY", "change-me-in-production"),
         "fernet_key": os.getenv("FERNET_KEY", ""),
         "webhook_verify_token": os.getenv("WEBHOOK_VERIFY_TOKEN", "change-me"),

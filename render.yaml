@@ -9,6 +9,14 @@ services:
         generateValue: true
       - key: FERNET_KEY
         sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: media
       - key: META_APP_ID
         sync: false
       - key: META_APP_SECRET

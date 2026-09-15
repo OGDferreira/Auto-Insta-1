@@ -10,7 +10,7 @@ from sqlalchemy import select, update
 
 from .config import get_settings
 from .db import SessionLocal
-from .models import InstagramAccount, ScheduledPost
+from .models import InstagramAccount, InstagramMetric, ScheduledPost
 from .security import decrypt_token
 
 
@@ -92,6 +92,52 @@ def reset_scheduler() -> None:
         coalesce=True,
         max_instances=1,
     )
+    scheduler.add_job(
+        collect_instagram_insights,
+        "interval",
+        hours=24,
+        id="collect-instagram-insights",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+
+
+async def collect_instagram_insights() -> None:
+    """Collect daily Instagram impressions and reach for every connected account."""
+    settings = get_settings()
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    async with SessionLocal() as db:
+        accounts = (await db.scalars(select(InstagramAccount))).all()
+        async with httpx.AsyncClient(timeout=30) as client:
+            for account in accounts:
+                try:
+                    response = await client.get(
+                        f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
+                        params={
+                            "metric": "impressions,reach",
+                            "period": "day",
+                            "access_token": decrypt_token(account.access_token_encrypted),
+                        },
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    values = {
+                        item.get("name"): item.get("values", [{}])[-1].get("value", 0)
+                        for item in payload.get("data", [])
+                    }
+                    metric = await db.scalar(select(InstagramMetric).where(
+                        InstagramMetric.account_id == account.id,
+                        InstagramMetric.metric_date == today,
+                    ))
+                    if metric is None:
+                        metric = InstagramMetric(account_id=account.id, metric_date=today)
+                        db.add(metric)
+                    metric.impressions = int(values.get("impressions", 0) or 0)
+                    metric.reach = int(values.get("reach", 0) or 0)
+                except Exception:
+                    logger.exception("Falha ao coletar Insights da conta %s", account.instagram_user_id)
+        await db.commit()
 
 
 def schedule_post(post_id: int, scheduled_for: datetime) -> str:

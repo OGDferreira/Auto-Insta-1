@@ -73,11 +73,13 @@
   <section id="overview" class="workspace-view active" data-panel="overview">
     <div class="section-heading"><div><div class="eyebrow">Visão geral</div><h2>Seu ritmo hoje</h2></div><span class="section-note">Atualizado agora</span></div>
     <div class="metric-grid">
+      <div class="metric"><small>Total de visualizações</small><strong>{{ metrics.total_views }}</strong><span class="metric-detail">todas as contas conectadas</span></div>
       <div class="metric"><small>Contas ativas</small><strong>{{ metrics.active_accounts }}</strong><span class="metric-detail">conectadas ao workspace</span></div>
       <div class="metric"><small>Posts hoje</small><strong>{{ metrics.today_posts }}</strong><span class="metric-detail">publicações criadas</span></div>
       <div class="metric"><small>Na fila</small><strong data-metric="pending">{{ metrics.pending }}</strong><span class="metric-detail">aguardando publicação</span></div>
       <div class="metric"><small>Publicados</small><strong data-metric="published">{{ metrics.published }}</strong><span class="metric-detail">concluídos com sucesso</span></div>
     </div>
+    <div class="panel" style="margin-top:1rem"><div class="panel-header"><div><div class="eyebrow">Funil global</div><h3>Conversão do tráfego</h3></div><a class="button secondary" href="/metrics">Ver métricas detalhadas</a></div><div class="status-line"><span>Visualizações → cliques</span><strong>{{ ((metrics.funnel.link_click / metrics.total_views * 100) if metrics.total_views else 0)|round(1) }}%</strong></div><div class="status-line"><span>Cliques → Pix gerados</span><strong>{{ ((metrics.funnel.pix_generated / metrics.funnel.link_click * 100) if metrics.funnel.link_click else 0)|round(1) }}%</strong></div><div class="status-line"><span>Pix gerados → pagos</span><strong>{{ ((metrics.funnel.pix_paid / metrics.funnel.pix_generated * 100) if metrics.funnel.pix_generated else 0)|round(1) }}%</strong></div></div>
     <div class="overview-grid">
       <div class="panel panel-feature"><div class="panel-kicker">Próximo passo</div><h3>Planeje sua próxima publicação</h3><p>Escolha as contas, envie suas mídias e mantenha a fila organizada por horário.</p><a class="button" href="#queue" data-view="queue"><i data-lucide="plus"></i> Abrir fila</a></div>
       <div class="panel"><div class="panel-header"><div><div class="eyebrow">Resumo da operação</div><h3>Status das entregas</h3></div><span class="status-badge published">Estável</span></div><div class="status-line"><span>Publicados</span><strong>{{ metrics.published }}</strong></div><div class="status-line"><span>Pendentes</span><strong>{{ metrics.pending }}</strong></div><div class="status-line"><span>Falhas</span><strong>{{ metrics.failed }}</strong></div></div>

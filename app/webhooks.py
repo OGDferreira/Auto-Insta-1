@@ -1,5 +1,6 @@
 import logging
 import asyncio
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
@@ -8,7 +9,7 @@ from sqlalchemy import select
 
 from .config import get_settings
 from .db import SessionLocal
-from .models import InstagramAccount
+from .models import BotEvent, InstagramAccount
 from .security import decrypt_token
 
 router = APIRouter(prefix="/webhook")
@@ -77,21 +78,61 @@ async def _delayed_auto_reply(account_id: int, event: dict) -> None:
 
 
 @router.post("")
+@router.post("/sharkbot")
 async def receive_webhook(request: Request):
     payload = await request.json()
-    events = []
-    for entry in payload.get("entry", []):
-        events.extend(
-            {"entry_id": entry.get("id"), **event}
-            for event in entry.get("messaging", [])
-        )
-        events.extend(
-            {"entry_id": entry.get("id"), **change.get("value", change)}
-            for change in entry.get("changes", [])
-        )
+    if payload.get("event_type"):
+        events = [payload]
+    else:
+        events = []
+        for entry in payload.get("entry", []):
+            events.extend(
+                {"entry_id": entry.get("id"), **event}
+                for event in entry.get("messaging", [])
+            )
+            events.extend(
+                {"entry_id": entry.get("id"), **change.get("value", change)}
+                for change in entry.get("changes", [])
+            )
     async with SessionLocal() as db:
         for event in events:
             value = event.get("value", event)
+            if not isinstance(value, dict):
+                value = event
+            event_type = value.get("event_type") or value.get("type")
+            if event_type in {"link_click", "lead_initiated", "pix_generated", "pix_paid", "pix_pending"}:
+                account = None
+                account_key = (
+                    value.get("account_id")
+                    or value.get("instagram_user_id")
+                    or event.get("entry_id")
+                    or value.get("recipient", {}).get("id")
+                )
+                if account_key:
+                    account = await db.scalar(
+                        select(InstagramAccount).where(
+                            InstagramAccount.instagram_user_id == str(account_key)
+                        )
+                    )
+                try:
+                    event_value = float(value.get("value", value.get("amount", 0)) or 0)
+                except (TypeError, ValueError):
+                    event_value = 0.0
+                raw_timestamp = value.get("timestamp")
+                timestamp = datetime.now(timezone.utc)
+                if isinstance(raw_timestamp, (int, float)):
+                    timestamp = datetime.fromtimestamp(raw_timestamp, tz=timezone.utc)
+                elif isinstance(raw_timestamp, str):
+                    try:
+                        timestamp = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
+                    except ValueError:
+                        logger.warning("Timestamp inválido recebido pelo Sharkbot: %s", raw_timestamp)
+                db.add(BotEvent(
+                    account_id=account.id if account else None,
+                    event_type=event_type,
+                    value=event_value,
+                    timestamp=timestamp,
+                ))
             account_id = (
                 event.get("entry_id")
                 or value.get("instagram_user_id")
@@ -105,4 +146,5 @@ async def receive_webhook(request: Request):
                 )
                 if account:
                     asyncio.create_task(_delayed_auto_reply(account.id, value))
+        await db.commit()
     return {"received": True}

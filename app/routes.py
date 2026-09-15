@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 import logging
+import asyncio
 import re
 from io import BytesIO
 from pathlib import Path
@@ -15,11 +16,12 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from PIL import Image, ImageOps, UnidentifiedImageError
+from supabase import create_client
 
 from .config import get_settings
 from .db import get_db
 from .jobs import PENDING_STATUSES, schedule_post
-from .models import InstagramAccount, ScheduledPost, User
+from .models import BotEvent, InstagramAccount, InstagramMetric, ScheduledPost, User
 from .oauth import (
     authorization_url,
     exchange_code,
@@ -112,7 +114,6 @@ async def upload_media(
         raise HTTPException(status_code=400, detail="Arquivo sem extensão")
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{uuid4().hex}{extension}"
-    destination = UPLOAD_DIR / filename
     size = 0
     try:
         content = await media.read(MAX_UPLOAD_SIZE + 1)
@@ -141,18 +142,29 @@ async def upload_media(
                     image.convert("RGB").save(output, format="JPEG", quality=92, optimize=True)
                     content = output.getvalue()
                     filename = f"{uuid4().hex}.jpg"
-                    destination = UPLOAD_DIR / filename
             except (UnidentifiedImageError, OSError) as exc:
                 raise HTTPException(status_code=400, detail="Imagem inválida ou corrompida") from exc
-        destination.write_bytes(content)
     except HTTPException:
-        destination.unlink(missing_ok=True)
         raise
     finally:
         await media.close()
     settings = get_settings()
+    if not settings.supabase_url or not settings.supabase_key:
+        raise HTTPException(status_code=503, detail="Supabase Storage não configurado")
+
+    def upload_to_storage() -> str:
+        client = create_client(settings.supabase_url, settings.supabase_key)
+        path = f"{uuid4().hex}/{filename}"
+        client.storage.from_(settings.supabase_storage_bucket).upload(
+            path,
+            content,
+            file_options={"content-type": media.content_type, "upsert": "false"},
+        )
+        return client.storage.from_(settings.supabase_storage_bucket).get_public_url(path)
+
+    public_url = await asyncio.to_thread(upload_to_storage)
     return {
-        "url": f"{settings.public_base_url.rstrip('/')}/uploads/{filename}",
+        "url": public_url,
         "media_type": "REELS" if media.content_type.startswith("video/") else "IMAGE",
     }
 
@@ -178,22 +190,8 @@ async def register(
     password: str = Form(...),
     db: AsyncSession = Depends(get_db),
 ):
-    email = email.strip().lower()
     username = username.strip()
-    # Some browsers autofill the e-mail into the first text field. Recover
-    # that input instead of rejecting an otherwise valid registration.
-    if "@" in username:
-        autofilled_email = username
-        username = username.split("@", 1)[0]
-        if not email:
-            email = autofilled_email.lower()
-    if not username:
-        username = email.split("@", 1)[0][:80]
-    form_data = {"request": request, "email": email, "username": username}
-    if not email or "@" not in email:
-        return templates.TemplateResponse(
-            "register.html", {**form_data, "error": "Informe um e-mail válido."}, status_code=400
-        )
+    form_data = {"request": request, "username": username}
     if not USERNAME_PATTERN.fullmatch(username):
         return templates.TemplateResponse(
             "register.html",
@@ -203,17 +201,17 @@ async def register(
             },
             status_code=400,
         )
-    existing = await db.scalar(select(User).where(User.email == email))
-    if existing:
-        return templates.TemplateResponse(
-            "register.html", {"request": request, "error": "E-mail já cadastrado"}, status_code=409
-        )
     username_in_use = await db.scalar(select(User).where(User.username == username))
     if username_in_use:
         return templates.TemplateResponse(
             "register.html", {"request": request, "error": "Nome de usuário já está em uso"}, status_code=409
         )
-    user = User(email=email, username=username, password_hash=hash_password(password), role="admin")
+    user = User(
+        email=f"{username}@local.invalid",
+        username=username,
+        password_hash=hash_password(password),
+        role="admin",
+    )
     db.add(user)
     await db.commit()
     request.session["user_id"] = user.id
@@ -254,9 +252,7 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ):
     normalized = (identifier or email or "").strip()
-    user = await db.scalar(
-        select(User).where(or_(User.email == normalized.lower(), User.username == normalized))
-    )
+    user = await db.scalar(select(User).where(User.username == normalized))
     if not user or not verify_password(password, user.password_hash):
         return templates.TemplateResponse(
             "login.html", {"request": request, "identifier": identifier, "error": "Credenciais inválidas"}, status_code=401
@@ -288,11 +284,32 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
     ).all()
     today = datetime.now(timezone.utc).date()
     today_posts = [post for post in posts if post.created_at and post.created_at.date() == today]
+    metric_rows = (
+        await db.scalars(
+            select(InstagramMetric).where(InstagramMetric.account_id.in_([a.id for a in accounts]))
+        )
+    ).all() if accounts else []
+    events = (
+        await db.scalars(
+            select(BotEvent).where(
+                or_(
+                    BotEvent.account_id.in_([a.id for a in accounts]),
+                    BotEvent.account_id.is_(None),
+                )
+            )
+        )
+    ).all() if accounts else (await db.scalars(select(BotEvent).where(BotEvent.account_id.is_(None)))).all()
+    total_views = sum(metric.impressions for metric in metric_rows)
+    event_counts = {event_type: sum(event.event_type == event_type for event in events) for event_type in (
+        "link_click", "lead_initiated", "pix_generated", "pix_paid"
+    )}
     metrics = {
         "active_accounts": len(accounts),
         "today_posts": len(today_posts),
-        "daily_views": 0,
-        "average_views": 0,
+        "daily_views": total_views,
+        "total_views": total_views,
+        "average_views": round(total_views / max(len(accounts), 1)),
+        "funnel": event_counts,
         "published": sum(post.status == "published" for post in posts),
         "pending": sum(post.status == "scheduled" for post in posts),
         "failed": sum(post.status == "failed" for post in posts),
@@ -329,7 +346,40 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
 async def hub(request: Request, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     owner_id = workspace_owner_id(user)
     accounts = (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == owner_id))).all()
-    return templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "notice": request.session.pop("access_notice", None)})
+    account_views = {}
+    for account in accounts:
+        account_views[account.id] = (
+            await db.scalar(select(InstagramMetric.impressions).where(
+                InstagramMetric.account_id == account.id
+            ).order_by(InstagramMetric.metric_date.desc()).limit(1))
+        ) or 0
+    return templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_views": account_views, "notice": request.session.pop("access_notice", None)})
+
+
+@router.get("/metrics", response_class=HTMLResponse)
+async def metrics_page(request: Request, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    owner_id = workspace_owner_id(user)
+    accounts = (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == owner_id))).all()
+    account_ids = [account.id for account in accounts]
+    metrics = (await db.scalars(select(InstagramMetric).where(InstagramMetric.account_id.in_(account_ids)).order_by(InstagramMetric.metric_date))).all() if account_ids else []
+    event_query = select(BotEvent).options(selectinload(BotEvent.account)).where(
+        or_(BotEvent.account_id.in_(account_ids), BotEvent.account_id.is_(None))
+    ).order_by(BotEvent.timestamp.desc()).limit(100) if account_ids else select(BotEvent).options(selectinload(BotEvent.account)).where(BotEvent.account_id.is_(None)).order_by(BotEvent.timestamp.desc()).limit(100)
+    events = (await db.scalars(event_query)).all()
+    views = sum(metric.impressions for metric in metrics)
+    counts = {event_type: sum(event.event_type == event_type for event in events) for event_type in (
+        "link_click", "lead_initiated", "pix_generated", "pix_paid"
+    )}
+    return templates.TemplateResponse("metrics.html", {
+        "request": request, "user": user, "total_views": views,
+        "funnel": [views, counts["link_click"], counts["lead_initiated"], counts["pix_generated"], counts["pix_paid"]],
+        "pix_status": {
+            "paid": counts["pix_paid"],
+            "pending": sum(event.event_type == "pix_pending" for event in events),
+            "generated": counts["pix_generated"],
+        },
+        "events": events,
+    })
 
 
 @router.post("/collaborators")

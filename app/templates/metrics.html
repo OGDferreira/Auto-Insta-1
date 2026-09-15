@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Métricas · Auto-Insta{% endblock %}
+{% block content %}
+<section class="hero"><div class="eyebrow">Performance</div><h1>Métricas detalhadas</h1><p>Total de visualizações: <strong>{{ total_views }}</strong></p></section>
+<div class="overview-grid">
+  <section class="panel"><h2>Funil global</h2><canvas id="funnel-chart" height="220"></canvas></section>
+  <section class="panel"><h2>Status do Pix</h2><canvas id="pix-chart" height="220"></canvas></section>
+</div>
+<section class="panel" style="margin-top:1rem"><h2>Eventos recentes do Sharkbot</h2><div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Valor</th><th>Conta</th><th>Data</th></tr></thead><tbody>{% for event in events %}<tr><td>{{ event.event_type }}</td><td>R$ {{ "%.2f"|format(event.value) }}</td><td>{{ event.account.username if event.account else "Global" }}</td><td>{{ event.timestamp.strftime("%d/%m/%Y %H:%M") }}</td></tr>{% else %}<tr><td colspan="4">Nenhum evento capturado ainda.</td></tr>{% endfor %}</tbody></table></div></section>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+new Chart(document.getElementById("funnel-chart"), {type:"bar", data:{labels:["Visualizações","Cliques","Leads","Pix gerado","Pix pago"],datasets:[{label:"Eventos",data:{{ funnel|tojson }},backgroundColor:["#55d6ff","#8b7cff","#ffc857","#ff9f68","#65e6a3"]}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+new Chart(document.getElementById("pix-chart"), {type:"doughnut", data:{labels:["Pagos","Pendentes","Gerados"],datasets:[{data:{{ [pix_status.paid, pix_status.pending, pix_status.generated]|tojson }},backgroundColor:["#65e6a3","#ffc857","#8b7cff"]}]},options:{responsive:true}});
+</script>
+{% endblock %}
