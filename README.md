@@ -8,7 +8,7 @@ Aplicação multi-tenant para conectar contas pelo **Instagram Login for Busines
 - Senhas usam `werkzeug` com scrypt. A sessão fica em cookie assinado por `SECRET_KEY`, com `HttpOnly`, `SameSite=Lax` e `COOKIE_SECURE=true` em produção.
 - Access tokens do Instagram são cifrados em repouso com Fernet (`FERNET_KEY`); nenhum token é exibido em templates.
 - O callback valida um `state` aleatório armazenado na sessão.
-- OAuth usa `www.instagram.com` e `api.instagram.com`; a publicação usa `https://graph.facebook.com/{GRAPH_API_VERSION}`.
+- OAuth e publicação usam o fluxo Instagram Login: `www.instagram.com`, `api.instagram.com` e `https://graph.instagram.com/{GRAPH_API_VERSION}`. Tokens obtidos nesse fluxo não devem ser enviados para `graph.facebook.com`.
 - `init_db()` executa `create_all` de forma idempotente no startup. Para evoluções posteriores, adicione migrações Alembic.
 
 ## Desenvolvimento local
@@ -52,7 +52,7 @@ Defina `META_APP_ID`, `META_APP_SECRET`, `PUBLIC_BASE_URL`, `GRAPH_API_VERSION` 
 `instagram_business_basic`, `instagram_business_content_publish`,
 `instagram_business_manage_messages` e `instagram_business_manage_comments`.
 
-O worker cria um container em `/{ig_id}/media` e o publica em `/{ig_id}/media_publish` usando `https://graph.facebook.com/{GRAPH_API_VERSION}`. Vídeos são enviados como `REELS` e só são publicados após o container retornar `status_code=FINISHED`. Imagens são enviadas diretamente por `image_url`, sem polling. URLs de mídia precisam ser públicas para que o Instagram consiga buscá-las.
+O worker cria um container em `/{ig_id}/media` e o publica em `/{ig_id}/media_publish` usando `https://graph.instagram.com/{GRAPH_API_VERSION}`. Vídeos são enviados como `REELS` e só são publicados após o container retornar `status_code=FINISHED`. Imagens são enviadas diretamente por `image_url`, sem polling. URLs de mídia precisam ser públicas para que o Instagram consiga buscá-las.
 
 O endpoint `/media/upload` salva os arquivos em `/uploads/{filename}` e devolve uma URL derivada de `PUBLIC_BASE_URL`. Em produção, `PUBLIC_BASE_URL` deve ser a URL HTTPS pública do serviço, nunca `localhost`. O disco local do Render é efêmero: para garantir que mídias continuem disponíveis após reinícios, redeploys ou múltiplas instâncias, substitua o diretório local por um storage externo público (por exemplo, S3/R2) antes de usar a aplicação em escala.
 

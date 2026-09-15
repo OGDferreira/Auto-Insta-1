@@ -153,8 +153,8 @@ async def _publish(post_id: int) -> None:
         try:
             token = decrypt_token(account.access_token_encrypted)
             
-            # CORREÇÃO 1: A Graph API oficial para criação/publicação roda sob graph.facebook.com
-            base = f"https://graph.facebook.com/{settings.graph_api_version}"
+            # Este projeto usa Instagram Login, cujo token é válido em graph.instagram.com.
+            base = f"https://graph.instagram.com/{settings.graph_api_version}"
             
             # CORREÇÃO 2: Forçar o tipo REELS caso o banco de dados envie VIDEO
             media_type = post.media_type.upper()
