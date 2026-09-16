@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler(timezone="UTC")
 PENDING_STATUSES = ("scheduled", "aguardando", "pending")
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
-INSIGHTS_GRAPH_URL = "https://graph.facebook.com/v19.0"
 
 
 def _utc_datetime(value: datetime) -> datetime:
@@ -78,61 +77,6 @@ async def _refresh_account_status(
     account.status_reason = None
     account.status_checked_at = datetime.now(timezone.utc)
     return True
-
-
-async def _resolve_business_account_id(
-    client: httpx.AsyncClient,
-    account: InstagramAccount,
-    token: str,
-) -> tuple[str | None, str | None]:
-    """Resolve the IG Business ID and its Facebook Page before requesting Insights."""
-    response = await client.get(
-        f"{INSIGHTS_GRAPH_URL}/me/accounts",
-        params={
-            "fields": "id,name,instagram_business_account",
-            "access_token": token,
-        },
-    )
-    if response.is_error:
-        logger.error(
-            "Não foi possível resolver o Instagram Business ID da conta %s: %s",
-            account.instagram_user_id,
-            _api_error(response),
-        )
-        return None, None
-    pages = response.json().get("data", [])
-    candidates = [
-        page for page in pages
-        if isinstance(page, dict)
-        and isinstance(page.get("instagram_business_account"), dict)
-        and page["instagram_business_account"].get("id")
-    ]
-    selected = next(
-        (
-            page for page in candidates
-            if str(page["instagram_business_account"]["id"]) == str(account.instagram_user_id)
-        ),
-        candidates[0] if len(candidates) == 1 else None,
-    )
-    if not selected:
-        logger.error(
-            "Nenhuma Página conectada possui Instagram Business ID para a conta %s",
-            account.instagram_user_id,
-        )
-        return None, None
-    instagram_business_id = str(selected["instagram_business_account"]["id"])
-    page_id = str(selected["id"]) if selected.get("id") else None
-    if account.instagram_user_id != instagram_business_id:
-        logger.warning(
-            "ID Instagram corrigido para a conta %s: %s -> %s",
-            account.id,
-            account.instagram_user_id,
-            instagram_business_id,
-        )
-        account.instagram_user_id = instagram_business_id
-    if account.facebook_page_id != page_id:
-        account.facebook_page_id = page_id
-    return instagram_business_id, page_id
 
 
 def _local_day_start(value) -> datetime:
@@ -247,9 +191,6 @@ async def collect_instagram_insights() -> None:
                     token = decrypt_token(account.access_token_encrypted)
                     if not await _refresh_account_status(client, account, token, settings):
                         continue
-                    instagram_business_id, _ = await _resolve_business_account_id(client, account, token)
-                    if not instagram_business_id:
-                        continue
                     created_at = account.created_at or datetime.now(timezone.utc)
                     connected_date = (
                         created_at.astimezone(LOCAL_TIMEZONE).date()
@@ -257,7 +198,7 @@ async def collect_instagram_insights() -> None:
                         else created_at.replace(tzinfo=timezone.utc).astimezone(LOCAL_TIMEZONE).date()
                     )
                     insights = await client.get(
-                        f"{INSIGHTS_GRAPH_URL}/{instagram_business_id}/insights",
+                        f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
                         params={
                             "metric": "impressions,reach",
                             "period": "day",
@@ -371,8 +312,9 @@ async def _publish(post_id: int) -> None:
                     "access_token": token,
                     "caption": post.caption,
                     media_key: post.media_url,
-                    "media_type": media_type,
                 }
+                if media_type == "REELS":
+                    params["media_type"] = media_type
                 
                 # ETAPA A: Criar o Container de Mídia
                 container = await client.post(f"{base}/{account.instagram_user_id}/media", params=params)
