@@ -352,13 +352,7 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
     ).all() if accounts else (await db.scalars(select(BotEvent).where(BotEvent.account_id.is_(None)))).all()
     views_by_account = _metric_views_by_account(metric_rows, [account.id for account in accounts])
     total_views = sum(views_by_account.values())
-    account_views = {
-        account.id: next((
-            metric.impressions for metric in today_metrics
-            if metric.account_id == account.id
-        ), 0)
-        for account in accounts
-    }
+    account_views = views_by_account
     event_counts = {event_type: sum(event.event_type == event_type for event in events) for event_type in (
         "link_click", "lead_initiated", "pix_generated", "pix_paid"
     )}
