@@ -87,9 +87,12 @@ def _insight_values(payload: dict, today) -> list[tuple[datetime, int, int]]:
     values_by_date: dict[object, dict[str, int]] = {}
     for item in payload.get("data", []):
         name = item.get("name")
-        if name not in {"impressions", "reach"}:
+        if name not in {"impressions", "views", "reach"}:
             continue
-        for entry in item.get("values", []):
+        entries = item.get("values", [])
+        if not entries and isinstance(item.get("total_value"), dict):
+            entries = [{"value": item["total_value"].get("value", 0)}]
+        for entry in entries:
             raw_date = entry.get("end_time")
             try:
                 metric_date = (
@@ -105,7 +108,11 @@ def _insight_values(payload: dict, today) -> list[tuple[datetime, int, int]]:
     if not values_by_date:
         values_by_date[today] = {"impressions": 0, "reach": 0}
     return [
-        (_local_day_start(metric_date), values.get("impressions", 0), values.get("reach", 0))
+        (
+            _local_day_start(metric_date),
+            values.get("impressions", values.get("views", 0)),
+            values.get("reach", 0),
+        )
         for metric_date, values in values_by_date.items()
     ]
 
@@ -197,24 +204,43 @@ async def collect_instagram_insights() -> None:
                         if created_at.tzinfo
                         else created_at.replace(tzinfo=timezone.utc).astimezone(LOCAL_TIMEZONE).date()
                     )
-                    insights = await client.get(
-                        f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
-                        params={
-                            "metric": "impressions,reach",
-                            "period": "day",
-                            "since": connected_date.isoformat(),
-                            "until": until_date.isoformat(),
-                            "access_token": token,
-                        },
-                    )
-                    if insights.is_error:
+                    insights = None
+                    for metric_names in ("views,reach", "impressions,reach"):
+                        candidate = await client.get(
+                            f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
+                            params={
+                                "metric": metric_names,
+                                "period": "day",
+                                "since": connected_date.isoformat(),
+                                "until": until_date.isoformat(),
+                                "access_token": token,
+                            },
+                        )
+                        if not candidate.is_error:
+                            insights = candidate
+                            break
+                        logger.warning(
+                            "Insights %s indisponíveis para a conta Instagram %s: %s",
+                            metric_names,
+                            account.instagram_user_id,
+                            _api_error(candidate),
+                        )
+                    if insights is None:
                         logger.warning(
                             "Insights indisponíveis para a conta Instagram %s: %s",
                             account.instagram_user_id,
-                            _api_error(insights),
+                            "nenhuma métrica compatível foi retornada",
                         )
                         continue
                     payload = insights.json()
+                    logger.info(
+                        "Insights recebidos para Instagram %s: %s",
+                        account.instagram_user_id,
+                        {
+                            item.get("name"): item.get("values", item.get("total_value"))
+                            for item in payload.get("data", [])
+                        },
+                    )
                     for metric_date, impressions, reach in _insight_values(payload, local_today):
                         metric = await db.scalar(select(InstagramMetric).where(
                             InstagramMetric.account_id == account.id,
@@ -327,9 +353,9 @@ async def _publish(post_id: int) -> None:
                     raise RuntimeError(f"Resposta inválida ao criar container: {container.text[:900]}") from exc
                     
                 # ETAPA B: Aguardar Processamento (Polling)
-                # Obrigatório para vídeos/Reels. Imagens são imediatas e não expõem status_code.
-                if media_type == "REELS":
-                    await _wait_for_container(client, base, container_id, token)
+                # A Meta pode manter imagens em processamento; publicar antes
+                # de o container ficar pronto retorna o erro 9007/2207027.
+                await _wait_for_container(client, base, container_id, token)
                     
                 # ETAPA C: Publicar o Container Final
                 published = await client.post(
