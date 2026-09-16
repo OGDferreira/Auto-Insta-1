@@ -400,7 +400,7 @@ async def metrics_page(request: Request, user: User = Depends(current_user), db:
     account_ids = [account.id for account in accounts]
     event_query = select(BotEvent).options(selectinload(BotEvent.account)).where(
         or_(BotEvent.account_id.in_(account_ids), BotEvent.account_id.is_(None))
-    ).order_by(BotEvent.timestamp.desc()).limit(100) if account_ids else select(BotEvent).options(selectinload(BotEvent.account)).where(BotEvent.account_id.is_(None)).order_by(BotEvent.timestamp.desc()).limit(100)
+    ).order_by(BotEvent.timestamp.desc()) if account_ids else select(BotEvent).options(selectinload(BotEvent.account)).where(BotEvent.account_id.is_(None)).order_by(BotEvent.timestamp.desc())
     events = (await db.scalars(event_query)).all()
     counts = {event_type: sum(event.event_type == event_type for event in events) for event_type in (
         "link_click", "lead_initiated", "pix_generated", "pix_paid"
