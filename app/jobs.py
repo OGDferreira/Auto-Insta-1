@@ -238,7 +238,7 @@ async def collect_instagram_insights() -> None:
     """Collect daily Instagram impressions and reach for every connected account."""
     settings = get_settings()
     local_today = datetime.now(LOCAL_TIMEZONE).date()
-    until_date = local_today + timedelta(days=1)
+    until_date = local_today
     async with SessionLocal() as db:
         accounts = (await db.scalars(select(InstagramAccount))).all()
         async with httpx.AsyncClient(timeout=30) as client:

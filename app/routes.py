@@ -4,7 +4,7 @@ from urllib.parse import quote
 import logging
 import asyncio
 import re
-from io import BytesIO
+from mimetypes import guess_type
 from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -15,7 +15,6 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from PIL import Image, ImageOps, UnidentifiedImageError
 from supabase import create_client
 
 from .config import get_settings
@@ -37,8 +36,6 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 logger = logging.getLogger(__name__)
 UPLOAD_DIR = Path("uploads")
-ALLOWED_UPLOAD_TYPES = {"image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"}
-ALLOWED_UPLOAD_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov"}
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]{2,80}$")
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
@@ -62,7 +59,6 @@ def _metric_views_by_account(
     metric_rows: list[InstagramMetric],
     account_ids: list[int],
 ) -> dict[int, int]:
-    local_today = datetime.now(LOCAL_TIMEZONE).date()
     result: dict[int, int] = {}
     for account_id in account_ids:
         rows = sorted(
@@ -70,20 +66,11 @@ def _metric_views_by_account(
             key=lambda row: row.metric_date,
             reverse=True,
         )
-        today_row = next(
-            (
-                row
-                for row in rows
-                if (
-                    row.metric_date.replace(tzinfo=timezone.utc)
-                    if row.metric_date.tzinfo is None
-                    else row.metric_date
-                ).astimezone(LOCAL_TIMEZONE).date() == local_today
-            ),
-            None,
+        result[account_id] = int(
+            sum(row.impressions for row in rows)
+            if rows
+            else 0
         )
-        selected_row = today_row if today_row is not None else (rows[0] if rows else None)
-        result[account_id] = int(selected_row.impressions if selected_row is not None else 0)
     return result
 
 
@@ -153,44 +140,14 @@ async def upload_media(
     user: User = Depends(current_user),
 ):
     extension = Path(media.filename or "").suffix.lower()
-    if media.content_type not in ALLOWED_UPLOAD_TYPES and extension not in ALLOWED_UPLOAD_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Formato de mídia não suportado")
     if not extension:
         raise HTTPException(status_code=400, detail="Arquivo sem extensão")
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{uuid4().hex}{extension}"
-    size = 0
-    upload_content_type = media.content_type or "application/octet-stream"
+    upload_content_type = media.content_type or guess_type(filename)[0] or "application/octet-stream"
     try:
         content = await media.read(MAX_UPLOAD_SIZE + 1)
-        size = len(content)
-        if size > MAX_UPLOAD_SIZE:
+        if len(content) > MAX_UPLOAD_SIZE:
             raise HTTPException(status_code=413, detail="Arquivo excede o limite de 50 MB")
-        if media.content_type.startswith("image/"):
-            try:
-                image = ImageOps.exif_transpose(Image.open(BytesIO(content)))
-                width, height = image.size
-                ratio = width / height
-                if ratio < 0.8 or ratio > 1.91:
-                    # Instagram rejects images outside 4:5..1.91:1. Crop only
-                    # invalid uploads and keep valid originals untouched.
-                    target_ratio = 4 / 5
-                    if ratio > target_ratio:
-                        crop_width = int(height * target_ratio)
-                        left = (width - crop_width) // 2
-                        image = image.crop((left, 0, left + crop_width, height))
-                    else:
-                        crop_height = int(width / target_ratio)
-                        top = (height - crop_height) // 2
-                        image = image.crop((0, top, width, top + crop_height))
-                    image.thumbnail((1080, 1350), Image.Resampling.LANCZOS)
-                    output = BytesIO()
-                    image.convert("RGB").save(output, format="JPEG", quality=92, optimize=True)
-                    content = output.getvalue()
-                    filename = f"{uuid4().hex}.jpg"
-                    upload_content_type = "image/jpeg"
-            except (UnidentifiedImageError, OSError) as exc:
-                raise HTTPException(status_code=400, detail="Imagem inválida ou corrompida") from exc
     except HTTPException:
         raise
     finally:
@@ -205,7 +162,10 @@ async def upload_media(
         client.storage.from_(settings.supabase_storage_bucket).upload(
             path,
             content,
-            file_options={"content-type": upload_content_type, "upsert": "false"},
+            file_options={
+                "content-type": upload_content_type,
+                "upsert": "false",
+            },
         )
         return client.storage.from_(settings.supabase_storage_bucket).get_public_url(path)
 
@@ -216,7 +176,7 @@ async def upload_media(
         raise HTTPException(status_code=502, detail="Não foi possível armazenar a mídia") from exc
     return {
         "url": public_url,
-        "media_type": "REELS" if media.content_type.startswith("video/") else "IMAGE",
+        "media_type": "VIDEO" if upload_content_type.startswith("video/") else "IMAGE",
     }
 
 
