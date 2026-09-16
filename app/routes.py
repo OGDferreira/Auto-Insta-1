@@ -470,12 +470,27 @@ async def api_status(user: User = Depends(current_user), db: AsyncSession = Depe
             .order_by(ScheduledPost.scheduled_for.desc())
         )
     ).all()
+    account_ids = [account.id for account in (
+        await db.scalars(select(InstagramAccount).where(
+            InstagramAccount.owner_id == workspace_owner_id(user)
+        ))
+    ).all()]
+    bot_events = (await db.scalars(
+        select(BotEvent).where(
+            or_(BotEvent.account_id.in_(account_ids), BotEvent.account_id.is_(None))
+        )
+    )).all() if account_ids else []
+    bot_counts = {
+        event_type: sum(event.event_type == event_type for event in bot_events)
+        for event_type in ("link_click", "lead_initiated", "pix_generated", "pix_paid", "pix_pending")
+    }
     return {
         "metrics": {
             "pending": sum(post.status in {"scheduled", "processing", "aguardando", "pending"} for post in posts),
             "published": sum(post.status == "published" for post in posts),
             "failed": sum(post.status == "failed" for post in posts),
         },
+        "sharkbot": bot_counts,
         "posts": [
             {
                 "id": post.id,

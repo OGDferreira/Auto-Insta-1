@@ -20,6 +20,8 @@ EVENT_TYPE_ALIASES = {
     "novo_lead": "lead_initiated",
     "new_lead": "lead_initiated",
     "lead_iniciado": "lead_initiated",
+    "user_joined": "lead_initiated",
+    "user_join": "lead_initiated",
     "clique": "link_click",
     "link_click": "link_click",
     "pagamento_criado": "pix_generated",
@@ -154,9 +156,19 @@ async def receive_webhook(request: Request):
                             InstagramAccount.instagram_user_id == str(account_key)
                         )
                     )
+                transaction = value.get("transaction")
+                if not isinstance(transaction, dict):
+                    transaction = {}
                 try:
                     event_value = float(
-                        value.get("value", value.get("amount", value.get("price", 0))) or 0
+                        value.get(
+                            "value",
+                            value.get(
+                                "amount",
+                                value.get("price", transaction.get("amount", 0)),
+                            ),
+                        )
+                        or 0
                     )
                 except (TypeError, ValueError):
                     event_value = 0.0
