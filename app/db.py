@@ -75,12 +75,35 @@ async def init_db() -> None:
                     await connection.exec_driver_sql(
                         f"ALTER TABLE instagram_accounts ADD COLUMN {name} {definition}"
                     )
+            columns = await connection.exec_driver_sql("PRAGMA table_info(bot_events)")
+            existing = {row[1] for row in columns}
+            new_columns = {
+                "webhook_id": "TEXT",
+                "customer_name": "TEXT",
+                "customer_username": "TEXT",
+                "bot_name": "TEXT",
+                "transaction_id": "TEXT",
+                "plan_name": "TEXT",
+            }
+            for name, definition in new_columns.items():
+                if name not in existing:
+                    await connection.exec_driver_sql(
+                        f"ALTER TABLE bot_events ADD COLUMN {name} {definition}"
+                    )
         else:
             migrations = {
                 "instagram_accounts": {
                     "connection_status": "VARCHAR(20) NOT NULL DEFAULT 'connected'",
                     "status_reason": "TEXT",
                     "status_checked_at": "TIMESTAMP WITH TIME ZONE",
+                },
+                "bot_events": {
+                    "webhook_id": "VARCHAR(120)",
+                    "customer_name": "VARCHAR(180)",
+                    "customer_username": "VARCHAR(120)",
+                    "bot_name": "VARCHAR(180)",
+                    "transaction_id": "VARCHAR(120)",
+                    "plan_name": "VARCHAR(180)",
                 }
             }
             from sqlalchemy import inspect

@@ -172,6 +172,17 @@ async def receive_webhook(request: Request):
                 transaction = value.get("transaction")
                 if not isinstance(transaction, dict):
                     transaction = {}
+                customer = value.get("customer")
+                if not isinstance(customer, dict):
+                    customer = {}
+                bot = value.get("bot")
+                if not isinstance(bot, dict):
+                    bot = {}
+                customer_name = " ".join(
+                    str(part).strip()
+                    for part in (customer.get("first_name"), customer.get("last_name"))
+                    if part
+                ) or None
                 try:
                     event_value = float(
                         value.get(
@@ -198,6 +209,12 @@ async def receive_webhook(request: Request):
                     account_id=account.id if account else None,
                     event_type=event_type,
                     value=event_value,
+                    webhook_id=str(event.get("webhook_id")) if event.get("webhook_id") else None,
+                    customer_name=customer_name,
+                    customer_username=str(customer.get("username")) if customer.get("username") else None,
+                    bot_name=str(bot.get("name")) if bot.get("name") else None,
+                    transaction_id=str(transaction.get("id")) if transaction.get("id") else None,
+                    plan_name=str(transaction.get("plan_name")) if transaction.get("plan_name") else None,
                     timestamp=timestamp,
                 ))
             account_id = (

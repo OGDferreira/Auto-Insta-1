@@ -640,9 +640,10 @@ async def create_post(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    owner_id = workspace_owner_id(user)
     account = await db.scalar(
         select(InstagramAccount).where(
-            InstagramAccount.id == account_id, InstagramAccount.owner_id == user.id
+            InstagramAccount.id == account_id, InstagramAccount.owner_id == owner_id
         )
     )
     if not account:
@@ -656,7 +657,7 @@ async def create_post(
     if media_type not in {"IMAGE", "REELS"}:
         raise HTTPException(status_code=400, detail="media_type deve ser IMAGE ou REELS")
     post = ScheduledPost(
-        owner_id=user.id,
+        owner_id=owner_id,
         account_id=account.id,
         media_url=media_url,
         media_type=media_type,
@@ -667,7 +668,7 @@ async def create_post(
     await db.flush()
     await db.commit()
     schedule_post(post.id, post.scheduled_for)
-    return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/posts/{post_id}/delete")
@@ -676,17 +677,18 @@ async def delete_post(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    owner_id = workspace_owner_id(user)
     post = await db.scalar(
         select(ScheduledPost).where(
             ScheduledPost.id == post_id,
-            ScheduledPost.owner_id == user.id,
+            ScheduledPost.owner_id == owner_id,
         )
     )
     if not post:
         raise HTTPException(status_code=404, detail="Publicação não encontrada")
     await db.delete(post)
     await db.commit()
-    return RedirectResponse("/dashboard?tab=queue", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/posts/delete-selected")
@@ -697,14 +699,15 @@ async def delete_selected_posts(
 ):
     if not post_ids:
         raise HTTPException(status_code=400, detail="Nenhuma publicação selecionada")
+    owner_id = workspace_owner_id(user)
     await db.execute(
         delete(ScheduledPost).where(
             ScheduledPost.id.in_(set(post_ids)),
-            ScheduledPost.owner_id == user.id,
+            ScheduledPost.owner_id == owner_id,
         )
     )
     await db.commit()
-    return RedirectResponse("/dashboard?tab=queue", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/posts/clear-failed")
@@ -712,14 +715,15 @@ async def clear_failed_posts(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    owner_id = workspace_owner_id(user)
     await db.execute(
         delete(ScheduledPost).where(
-            ScheduledPost.owner_id == user.id,
+            ScheduledPost.owner_id == owner_id,
             ScheduledPost.status == "failed",
         )
     )
     await db.commit()
-    return RedirectResponse("/dashboard?tab=queue", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/posts/publish-selected")
@@ -728,11 +732,12 @@ async def publish_selected_posts(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    owner_id = workspace_owner_id(user)
     posts = (
         await db.scalars(
             select(ScheduledPost).where(
                 ScheduledPost.id.in_(post_ids),
-                ScheduledPost.owner_id == user.id,
+                ScheduledPost.owner_id == owner_id,
                 ScheduledPost.status.in_(PENDING_STATUSES),
             )
         )
@@ -743,7 +748,7 @@ async def publish_selected_posts(
     await db.commit()
     for post in posts:
         schedule_post(post.id, now)
-    return RedirectResponse("/dashboard?tab=queue", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/posts/bulk")
@@ -759,6 +764,7 @@ async def create_bulk_posts(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    owner_id = workspace_owner_id(user)
     if interval_minutes < 1:
         raise HTTPException(status_code=400, detail="O intervalo mínimo é de 1 minuto")
     if not media_urls or len(media_urls) != len(media_types):
@@ -772,7 +778,7 @@ async def create_bulk_posts(
     accounts = (
         await db.scalars(
             select(InstagramAccount).where(
-                InstagramAccount.id.in_(account_ids), InstagramAccount.owner_id == user.id
+                InstagramAccount.id.in_(account_ids), InstagramAccount.owner_id == owner_id
             )
         )
     ).all()
@@ -794,7 +800,7 @@ async def create_bulk_posts(
         for account_index, account in enumerate(ordered_accounts):
             sequence_index = media_index * len(ordered_accounts) + account_index
             post = ScheduledPost(
-                owner_id=user.id,
+                owner_id=owner_id,
                 account_id=account.id,
                 media_url=media_url,
                 media_type=normalized_type,
@@ -807,4 +813,4 @@ async def create_bulk_posts(
     await db.commit()
     for post in posts_to_schedule:
         schedule_post(post.id, post.scheduled_for)
-    return RedirectResponse("/dashboard?tab=queue", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)

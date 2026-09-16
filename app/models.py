@@ -89,6 +89,12 @@ class BotEvent(Base):
     )
     event_type: Mapped[str] = mapped_column(String(30), index=True)
     value: Mapped[float] = mapped_column(Float, default=0.0)
+    webhook_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    customer_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    customer_username: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    bot_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    transaction_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    plan_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     account: Mapped[InstagramAccount | None] = relationship(back_populates="bot_events")
 

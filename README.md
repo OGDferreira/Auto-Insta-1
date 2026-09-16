@@ -60,6 +60,14 @@ O endpoint `/media/upload` salva os arquivos em `/uploads/{filename}` e devolve 
 
 Cadastre `https://SEU_HOST/webhook` no produto Instagram e use o mesmo `WEBHOOK_VERIFY_TOKEN`. O GET responde ao desafio `hub.challenge`; o POST aceita eventos `messaging` e `changes`, encontra a conta pelo `instagram_user_id` e, quando habilitado no dashboard, envia uma resposta automática pela API do Instagram. Configure também os campos de mensagens/comentários exigidos pelo painel Meta.
 
+## Webhook Shark Bot
+
+No Shark Bot, informe esta URL para receber pagamentos criados, pagamentos aprovados e novos leads:
+
+`https://auto-insta-web.onrender.com/webhook/sharkbot`
+
+O endpoint aceita os payloads `payment_created`, `payment_approved` e `user_joined`. Os valores da transação são gravados em BRL e os dados do cliente, bot, plano e transação ficam disponíveis no log e na tabela de métricas. Para uma instalação em outro domínio, substitua `auto-insta-web.onrender.com` pelo valor público de `PUBLIC_BASE_URL`.
+
 ## Deploy no Render
 
 `render.yaml` cria apenas um Web Service Docker no plano gratuito. O SQLite e o APScheduler rodam na própria instância, sem serviços externos. Faça o blueprint apontar para este repositório, preencha os valores `sync: false` e defina `PUBLIC_BASE_URL` com a URL HTTPS do web service. O health check é `/health`.
