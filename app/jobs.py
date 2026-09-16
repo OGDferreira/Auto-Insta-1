@@ -112,9 +112,10 @@ async def collect_instagram_insights() -> None:
         accounts = (await db.scalars(select(InstagramAccount))).all()
         async with httpx.AsyncClient(timeout=30) as client:
             for account in accounts:
+                response = None
                 try:
                     response = await client.get(
-                        f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
+                        f"https://graph.facebook.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
                         params={
                             # `views` replaced `impressions` for current Instagram
                             # Insights responses; both are normalized below.
@@ -157,7 +158,9 @@ async def collect_instagram_insights() -> None:
                 except Exception:
                     account.status_checked_at = datetime.now(timezone.utc)
                     account.connection_status = "suspended"
-                    account.status_reason = str(response.text if "response" in locals() else "Falha de acesso à conta.")[:500]
+                    account.status_reason = str(
+                        response.text if response is not None else "Falha de acesso à conta."
+                    )[:500]
                     logger.exception("Falha ao coletar Insights da conta %s", account.instagram_user_id)
         await db.commit()
 

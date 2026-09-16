@@ -24,6 +24,8 @@ EVENT_TYPE_ALIASES = {
     "user_join": "lead_initiated",
     "clique": "link_click",
     "link_click": "link_click",
+    "click": "link_click",
+    "link_clicked": "link_click",
     "pagamento_criado": "pix_generated",
     "payment_created": "pix_generated",
     "pix_created": "pix_generated",
@@ -128,7 +130,13 @@ async def _delayed_auto_reply(account_id: int, event: dict) -> None:
 @router.post("")
 @router.post("/sharkbot")
 async def receive_webhook(request: Request):
-    payload = await request.json()
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        logger.warning("Payload Sharkbot inválido: %s", exc)
+        raise HTTPException(status_code=400, detail="Payload JSON inválido") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload Sharkbot deve ser um objeto JSON")
     events = _webhook_events(payload)
     async with SessionLocal() as db:
         for event in events:

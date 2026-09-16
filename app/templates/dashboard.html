@@ -35,13 +35,14 @@
   .account-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:.75rem; }
   .account-list .account-row { display:grid; grid-template-columns:38px minmax(0,1fr) auto auto; min-width:0; align-items:center; gap:.6rem; padding:.8rem; border:1px solid var(--line); border-radius:14px; background:linear-gradient(145deg,rgba(17,24,39,.96),rgba(7,11,24,.96)); }
   .account-list .account-row.suspended { border-color:var(--danger); }
-  .account-list .account-row strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .account-list .account-row strong { min-width:0; overflow-wrap:anywhere; word-break:break-word; }
   .account-list .profile-avatar { width:38px; height:38px; }
   .account-list .text-button { padding:.4rem; background:transparent; color:var(--danger); }
   .account-views { display:block; color:var(--muted); font-size:.7rem; font-weight:500; margin-top:.25rem; }
   #status-chart { max-width:180px; max-height:180px; margin:0 auto; display:block; }
   .queue-select { position:absolute; top:.78rem; left:.78rem; z-index:2; width:18px; height:18px; accent-color:var(--primary); }
-  .queue-error { margin:.55rem 0 0; color:var(--danger); font-size:.7rem; line-height:1.35; overflow-wrap:anywhere; }
+  .queue-error { display:grid; place-items:center; width:22px; height:22px; margin:.55rem 0 0; color:var(--danger); border:1px solid var(--danger); border-radius:50%; font-weight:800; cursor:help; }
+  .privacy-button { width:34px; height:34px; padding:0; }
   .thumb-item { position:relative; padding-right:2.2rem; }
   .remove-media { position:absolute; right:.45rem; width:25px; height:25px; padding:0; background:rgba(255,112,136,.12); color:var(--danger); }
   @media(max-width:1000px) { .queue-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
@@ -118,7 +119,7 @@
         {% else %}<p>Conecte uma conta antes de agendar.</p>{% endif %}
       </div>
       <div class="panel queue-panel">
-        <div class="queue-toolbar"><div><div class="eyebrow">Fila detalhada</div><h3>Publicações programadas</h3></div><div class="queue-toolbar-actions"><label><input id="privacy-toggle" type="checkbox"> Modo privacidade</label><label for="queue-order">Ordenar<select id="queue-order" aria-label="Ordenar publicações"><option value="asc">Mais antiga primeiro</option><option value="desc" selected>Mais recente primeiro</option></select></label><label><input id="select-all-posts" type="checkbox"> Selecionar todas</label><form id="publish-selected-form" method="post" action="/posts/publish-selected"><button type="submit" title="Publicar selecionadas"><i data-lucide="send"></i> Publicar selecionadas</button></form><form id="delete-selected-form" method="post" action="/posts/delete-selected"><button type="submit" class="secondary" title="Excluir selecionadas"><i data-lucide="trash-2"></i> Excluir selecionadas</button></form><form id="clear-failed-form" method="post" action="/posts/clear-failed"><button type="submit" class="secondary" title="Limpar todas as falhas"><i data-lucide="eraser"></i> Limpar falhas</button></form></div></div>
+        <div class="queue-toolbar"><div><div class="eyebrow">Fila detalhada</div><h3>Publicações programadas</h3></div><div class="queue-toolbar-actions"><label><input id="privacy-toggle" type="checkbox" hidden><button class="secondary privacy-button" type="button" id="privacy-button" title="Ativar modo privacidade" aria-label="Ativar modo privacidade"><i data-lucide="eye"></i></button></label><label for="queue-order">Ordenar<select id="queue-order" aria-label="Ordenar publicações"><option value="asc">Mais antiga primeiro</option><option value="desc" selected>Mais recente primeiro</option></select></label><label><input id="select-all-posts" type="checkbox"> Selecionar todas</label><form id="publish-selected-form" method="post" action="/posts/publish-selected"><button type="submit" title="Publicar selecionadas"><i data-lucide="send"></i> Publicar selecionadas</button></form><form id="delete-selected-form" method="post" action="/posts/delete-selected"><button type="submit" class="secondary" title="Excluir selecionadas"><i data-lucide="trash-2"></i> Excluir selecionadas</button></form><form id="clear-failed-form" method="post" action="/posts/clear-failed"><button type="submit" class="secondary" title="Limpar todas as falhas"><i data-lucide="eraser"></i> Limpar falhas</button></form></div></div>
         {% if posts %}
         <div class="queue-grid">
           {% for post in posts %}
@@ -128,7 +129,7 @@
             <div class="queue-card-body">
               <div class="queue-card-head"><div class="queue-account">{% if post.account.profile_picture_url %}<img src="{{ post.account.profile_picture_url }}" alt="">{% else %}<span class="queue-account-initial">{{ post.account.username[:1]|upper }}</span>{% endif %}<span>@{{ post.account.username }}</span></div></div>
               <div class="queue-meta"><time class="scheduled-time">{{ local_scheduled_datetime(post.scheduled_for) }}</time><span class="status-badge {{ post.status }}" data-post-status title="{{ post.error_message or '' }}">{{ post.status }}</span></div>
-              {% if post.error_message %}<span class="queue-error" title="{{ post.error_message }}" aria-label="Detalhes do erro desta publicação">!</span>{% endif %}
+              {% if post.error_message %}<button class="queue-error" type="button" title="{{ post.error_message }}" aria-label="Detalhes do erro desta publicação">!</button>{% endif %}
             </div>
           </article>
           {% endfor %}
@@ -198,7 +199,7 @@ const queueCards=[...document.querySelectorAll(".queue-card")],queueSelects=[...
 function selectedQueuePosts(){return queueSelects.filter(input=>input.checked)}
 function syncSelectAllPosts(){if(!selectAllPosts)return;const selected=queueSelects.filter(input=>input.checked);selectAllPosts.checked=queueSelects.length>0&&selected.length===queueSelects.length;selectAllPosts.indeterminate=selected.length>0&&selected.length<queueSelects.length}
 if(selectAllPosts){selectAllPosts.addEventListener("change",()=>{queueSelects.forEach(input=>{input.checked=selectAllPosts.checked});syncSelectAllPosts()});queueSelects.forEach(input=>input.addEventListener("change",syncSelectAllPosts));syncSelectAllPosts()}
-if(privacyToggle){privacyToggle.addEventListener("change",()=>document.querySelectorAll(".queue-media-content img,.queue-media-content video").forEach(media=>media.classList.toggle("privacy-blur",privacyToggle.checked)))}
+const privacyButton=document.getElementById("privacy-button");if(privacyToggle){privacyToggle.addEventListener("change",()=>{document.querySelectorAll(".queue-media-content img,.queue-media-content video").forEach(media=>media.classList.toggle("privacy-blur",privacyToggle.checked));if(privacyButton){privacyButton.innerHTML=`<i data-lucide="${privacyToggle.checked?"eye-off":"eye"}"></i>`;privacyButton.title=privacyToggle.checked?"Desativar modo privacidade":"Ativar modo privacidade";privacyButton.setAttribute("aria-label",privacyButton.title);if(window.lucide)lucide.createIcons()}})}if(privacyButton&&privacyToggle){privacyButton.addEventListener("click",()=>{privacyToggle.checked=!privacyToggle.checked;privacyToggle.dispatchEvent(new Event("change"))})}
 if(queueOrder){queueOrder.addEventListener("change",()=>{const sorted=[...queueCards].sort((a,b)=>{const first=Date.parse(a.dataset.scheduled),second=Date.parse(b.dataset.scheduled);return queueOrder.value==="asc"?first-second:second-first});const grid=document.querySelector(".queue-grid");sorted.forEach(card=>grid.appendChild(card))})}
 ["delete-selected-form","publish-selected-form"].forEach(formId=>{const actionForm=document.getElementById(formId);if(actionForm){actionForm.addEventListener("submit",event=>{const selected=selectedQueuePosts();if(!selected.length){event.preventDefault();alert("Selecione ao menos uma publicação.");return}if(formId==="delete-selected-form"&&!confirm("Excluir as publicações selecionadas?")){event.preventDefault();return}actionForm.querySelectorAll(".generated-post-id").forEach(input=>input.remove());selected.forEach(item=>{const input=document.createElement("input");input.type="hidden";input.name="post_ids";input.value=item.value;input.className="generated-post-id";actionForm.appendChild(input)})})}});
 const clearFailedForm=document.getElementById("clear-failed-form");if(clearFailedForm){clearFailedForm.addEventListener("submit",event=>{if(!confirm("Excluir todas as publicações com falha?"))event.preventDefault()})}
