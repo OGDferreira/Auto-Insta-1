@@ -37,6 +37,7 @@ templates = Jinja2Templates(directory="app/templates")
 logger = logging.getLogger(__name__)
 UPLOAD_DIR = Path("uploads")
 ALLOWED_UPLOAD_TYPES = {"image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"}
+ALLOWED_UPLOAD_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov"}
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]{2,80}$")
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
@@ -107,14 +108,15 @@ async def upload_media(
     media: UploadFile = File(...),
     user: User = Depends(current_user),
 ):
-    if media.content_type not in ALLOWED_UPLOAD_TYPES:
-        raise HTTPException(status_code=400, detail="Formato de mídia não suportado")
     extension = Path(media.filename or "").suffix.lower()
+    if media.content_type not in ALLOWED_UPLOAD_TYPES and extension not in ALLOWED_UPLOAD_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Formato de mídia não suportado")
     if not extension:
         raise HTTPException(status_code=400, detail="Arquivo sem extensão")
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{uuid4().hex}{extension}"
     size = 0
+    upload_content_type = media.content_type or "application/octet-stream"
     try:
         content = await media.read(MAX_UPLOAD_SIZE + 1)
         size = len(content)
@@ -142,6 +144,7 @@ async def upload_media(
                     image.convert("RGB").save(output, format="JPEG", quality=92, optimize=True)
                     content = output.getvalue()
                     filename = f"{uuid4().hex}.jpg"
+                    upload_content_type = "image/jpeg"
             except (UnidentifiedImageError, OSError) as exc:
                 raise HTTPException(status_code=400, detail="Imagem inválida ou corrompida") from exc
     except HTTPException:
@@ -158,11 +161,15 @@ async def upload_media(
         client.storage.from_(settings.supabase_storage_bucket).upload(
             path,
             content,
-            file_options={"content-type": media.content_type, "upsert": "false"},
+            file_options={"content-type": upload_content_type, "upsert": "false"},
         )
         return client.storage.from_(settings.supabase_storage_bucket).get_public_url(path)
 
-    public_url = await asyncio.to_thread(upload_to_storage)
+    try:
+        public_url = await asyncio.to_thread(upload_to_storage)
+    except Exception as exc:
+        logger.exception("Falha ao armazenar mídia %s no Supabase Storage", media.filename)
+        raise HTTPException(status_code=502, detail="Não foi possível armazenar a mídia") from exc
     return {
         "url": public_url,
         "media_type": "REELS" if media.content_type.startswith("video/") else "IMAGE",
@@ -475,16 +482,17 @@ async def api_status(user: User = Depends(current_user), db: AsyncSession = Depe
             InstagramAccount.owner_id == workspace_owner_id(user)
         ))
     ).all()]
-    bot_events = (await db.scalars(
-        select(BotEvent).where(
+    bot_query = select(BotEvent).where(BotEvent.account_id.is_(None))
+    if account_ids:
+        bot_query = select(BotEvent).where(
             or_(BotEvent.account_id.in_(account_ids), BotEvent.account_id.is_(None))
         )
-    )).all() if account_ids else []
+    bot_events = (await db.scalars(bot_query)).all()
     bot_counts = {
         event_type: sum(event.event_type == event_type for event in bot_events)
         for event_type in ("link_click", "lead_initiated", "pix_generated", "pix_paid", "pix_pending")
     }
-    return {
+    response = JSONResponse({
         "metrics": {
             "pending": sum(post.status in {"scheduled", "processing", "aguardando", "pending"} for post in posts),
             "published": sum(post.status == "published" for post in posts),
@@ -502,7 +510,10 @@ async def api_status(user: User = Depends(current_user), db: AsyncSession = Depe
             }
             for post in posts
         ],
-    }
+    })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @router.get("/api/logs")

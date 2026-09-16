@@ -51,7 +51,8 @@ def normalize_event_type(value: object) -> str:
 def _webhook_events(payload: dict) -> list[dict]:
     """Accept Sharkbot's flat events as well as nested `data`/`payload` bodies."""
     if isinstance(payload.get("data"), dict):
-        return [{**payload, **payload["data"]}]
+        data = payload["data"]
+        return [{**payload, **data, "data": data, "event": payload.get("event") or data.get("event")}]
     if isinstance(payload.get("payload"), dict):
         return [{**payload, **payload["payload"]}]
     if any(payload.get(key) for key in ("event_type", "event_name", "type", "event", "name")):
@@ -129,6 +130,7 @@ async def _delayed_auto_reply(account_id: int, event: dict) -> None:
 
 @router.post("")
 @router.post("/sharkbot")
+@router.post("/sharkbot/")
 async def receive_webhook(request: Request):
     try:
         payload = await request.json()
@@ -138,6 +140,8 @@ async def receive_webhook(request: Request):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Payload Sharkbot deve ser um objeto JSON")
     events = _webhook_events(payload)
+    if not events:
+        raise HTTPException(status_code=422, detail="Nenhum evento reconhecível no payload")
     async with SessionLocal() as db:
         for event in events:
             value = event.get("value", event)
@@ -150,6 +154,7 @@ async def receive_webhook(request: Request):
                 or value.get("event")
                 or value.get("name")
             )
+            logger.info("Evento Sharkbot recebido: tipo=%s", event_type)
             if event_type in {"link_click", "lead_initiated", "pix_generated", "pix_paid", "pix_pending"}:
                 account = None
                 account_key = (
