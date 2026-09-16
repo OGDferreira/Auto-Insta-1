@@ -306,6 +306,13 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
         .astimezone(LOCAL_TIMEZONE).date() == local_today
     ]
     total_views = sum(metric.impressions for metric in today_metrics)
+    account_views = {
+        account.id: next((
+            metric.impressions for metric in today_metrics
+            if metric.account_id == account.id
+        ), 0)
+        for account in accounts
+    }
     event_counts = {event_type: sum(event.event_type == event_type for event in events) for event_type in (
         "link_click", "lead_initiated", "pix_generated", "pix_paid"
     )}
@@ -339,6 +346,7 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
             "request": request,
             "user": user,
             "accounts": accounts,
+            "account_views": account_views,
             "posts": posts,
             "metrics": metrics,
             "app_version": get_settings().app_version,
@@ -390,12 +398,10 @@ async def metrics_page(request: Request, user: User = Depends(current_user), db:
     owner_id = workspace_owner_id(user)
     accounts = (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == owner_id))).all()
     account_ids = [account.id for account in accounts]
-    metrics = (await db.scalars(select(InstagramMetric).where(InstagramMetric.account_id.in_(account_ids)).order_by(InstagramMetric.metric_date))).all() if account_ids else []
     event_query = select(BotEvent).options(selectinload(BotEvent.account)).where(
         or_(BotEvent.account_id.in_(account_ids), BotEvent.account_id.is_(None))
     ).order_by(BotEvent.timestamp.desc()).limit(100) if account_ids else select(BotEvent).options(selectinload(BotEvent.account)).where(BotEvent.account_id.is_(None)).order_by(BotEvent.timestamp.desc()).limit(100)
     events = (await db.scalars(event_query)).all()
-    views = sum(metric.impressions for metric in metrics)
     counts = {event_type: sum(event.event_type == event_type for event in events) for event_type in (
         "link_click", "lead_initiated", "pix_generated", "pix_paid"
     )}
@@ -412,7 +418,7 @@ async def metrics_page(request: Request, user: User = Depends(current_user), db:
             "leads": sum(event.event_type == "lead_initiated" for event in day_events),
         })
     return templates.TemplateResponse("metrics.html", {
-        "request": request, "user": user, "total_views": views,
+        "request": request, "user": user,
         "sharkbot_webhook_url": get_settings().sharkbot_webhook_url,
         "bot_name": "Sharkbot",
         "approved_sales": sum(event.value for event in paid_events),
@@ -420,7 +426,7 @@ async def metrics_page(request: Request, user: User = Depends(current_user), db:
         "total_starts": counts["lead_initiated"],
         "average_ticket": (sum(event.value for event in paid_events) / len(paid_events)) if paid_events else 0,
         "daily_activity": daily_activity,
-        "funnel": [views, counts["link_click"], counts["lead_initiated"], counts["pix_generated"], counts["pix_paid"]],
+        "funnel": [counts["link_click"], counts["lead_initiated"], counts["pix_generated"], counts["pix_paid"]],
         "pix_status": {
             "paid": counts["pix_paid"],
             "pending": sum(event.event_type == "pix_pending" for event in events),

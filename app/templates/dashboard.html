@@ -32,11 +32,14 @@
   .queue-toolbar-actions input { width:auto; margin:0; }
   .queue-toolbar-actions select { width:auto; margin:0; padding:.5rem .65rem; }
   .privacy-blur { filter:blur(10px); transition:filter .2s ease; }
-  .account-list { display:grid; gap:.35rem; }
-  .account-list .account-row { display:flex; align-items:center; gap:.75rem; padding:.7rem .2rem; border-bottom:1px solid var(--line); }
-  .account-list .account-row strong { flex:1; }
-  .account-list .profile-avatar { width:36px; height:36px; }
+  .account-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:.75rem; }
+  .account-list .account-row { display:grid; grid-template-columns:38px minmax(0,1fr) auto auto; align-items:center; gap:.6rem; padding:.8rem; border:1px solid var(--line); border-radius:14px; background:linear-gradient(145deg,rgba(17,24,39,.96),rgba(7,11,24,.96)); }
+  .account-list .account-row.suspended { border-color:var(--danger); }
+  .account-list .account-row strong { min-width:0; }
+  .account-list .profile-avatar { width:38px; height:38px; }
   .account-list .text-button { padding:.4rem; background:transparent; color:var(--danger); }
+  .account-views { display:block; color:var(--muted); font-size:.7rem; font-weight:500; margin-top:.25rem; }
+  #status-chart { max-width:180px; max-height:180px; margin:0 auto; display:block; }
   .queue-select { position:absolute; top:.78rem; left:.78rem; z-index:2; width:18px; height:18px; accent-color:var(--primary); }
   .queue-error { margin:.55rem 0 0; color:var(--danger); font-size:.7rem; line-height:1.35; overflow-wrap:anywhere; }
   .thumb-item { position:relative; padding-right:2.2rem; }
@@ -61,7 +64,7 @@
     .workspace-tab.active { color:var(--cyan); background:rgba(116,224,219,.1); }
   }
 </style>
-<section class="hero dashboard-hero"><div><div class="eyebrow">Workspace de conteúdo</div><h1>Seu ritmo de conteúdo</h1><p>Agende, publique e acompanhe suas contas em um só lugar.</p></div><a class="button" href="/auth/instagram/start"><i data-lucide="plus"></i> Adicionar conta</a></section>
+<section class="tool-header"><h1>Auto-Insta</h1></section>
 <nav class="workspace-tabs" aria-label="Navegação do workspace">
   <a class="workspace-tab active" href="#overview" data-view="overview"><span>01</span><i data-lucide="layout-dashboard"></i> Dashboard</a>
   <a class="workspace-tab" href="#queue" data-view="queue"><span>02</span><i data-lucide="layers-3"></i> Fila</a>
@@ -81,10 +84,6 @@
       <div class="metric"><small>Publicados</small><strong data-metric="published">{{ metrics.published }}</strong><span class="metric-detail">concluídos com sucesso</span></div>
     </div>
     <div class="panel" style="margin-top:1rem"><div class="panel-header"><div><div class="eyebrow">Funil global</div><h3>Conversão do tráfego</h3></div><a class="button secondary" href="#metrics" data-view="metrics">Ver métricas detalhadas</a></div><div class="status-line"><span>Visualizações → cliques</span><strong>{{ ((metrics.funnel.link_click / metrics.total_views * 100) if metrics.total_views else 0)|round(1) }}%</strong></div><div class="status-line"><span>Cliques → Pix gerados</span><strong>{{ ((metrics.funnel.pix_generated / metrics.funnel.link_click * 100) if metrics.funnel.link_click else 0)|round(1) }}%</strong></div><div class="status-line"><span>Pix gerados → pagos</span><strong>{{ ((metrics.funnel.pix_paid / metrics.funnel.pix_generated * 100) if metrics.funnel.pix_generated else 0)|round(1) }}%</strong></div></div>
-    <div class="overview-grid">
-      <div class="panel panel-feature"><div class="panel-kicker">Próximo passo</div><h3>Planeje sua próxima publicação</h3><p>Escolha as contas, envie suas mídias e mantenha a fila organizada por horário.</p><a class="button" href="#queue" data-view="queue"><i data-lucide="plus"></i> Abrir fila</a></div>
-      <div class="panel"><div class="panel-header"><div><div class="eyebrow">Resumo da operação</div><h3>Status das entregas</h3></div><span class="status-badge published">Estável</span></div><div class="status-line"><span>Publicados</span><strong>{{ metrics.published }}</strong></div><div class="status-line"><span>Pendentes</span><strong>{{ metrics.pending }}</strong></div><div class="status-line"><span>Falhas</span><strong>{{ metrics.failed }}</strong></div></div>
-    </div>
     <div class="overview-grid"><div class="panel"><div class="panel-header"><h3>Status das publicações</h3></div><canvas id="status-chart" height="180"></canvas></div><div class="panel"><div class="panel-header"><h3>Últimos 7 dias</h3></div><canvas id="volume-chart" height="180"></canvas></div></div>
   </section>
 
@@ -138,7 +137,7 @@
 
   <section id="accounts" class="workspace-view" data-panel="accounts">
     <div class="section-heading"><div><div class="eyebrow">Conexões</div><h2>Hub de contas</h2></div><a class="button" href="/auth/instagram/start">+ Conectar conta</a></div>
-    <div class="account-list">{% if accounts %}{% for account in accounts %}<div class="account-row"><div class="profile-avatar small">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="Foto de @{{ account.username }}">{% else %}{{ account.username[:1]|upper }}{% endif %}</div><strong>@{{ account.username }}</strong><span class="health" title="Ativa"></span><form method="post" action="/accounts/{{ account.id }}/delete"><button class="text-button" type="submit" aria-label="Desconectar @{{ account.username }}"><i data-lucide="trash-2"></i></button></form></div>{% endfor %}{% else %}<div class="panel empty-state"><span>◎</span><h3>Nenhuma conta conectada</h3><p>Conecte uma conta Instagram para começar.</p><a class="button" href="/auth/instagram/start">Conectar conta</a></div>{% endif %}</div>
+    <div class="account-list">{% if accounts %}{% for account in accounts %}{% set suspended = account.connection_status == "suspended" %}<div class="account-row{% if suspended %} suspended{% endif %}" title="{{ account.status_reason or '' }}"><div class="profile-avatar small">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="Foto de @{{ account.username }}">{% else %}{{ account.username[:1]|upper }}{% endif %}</div><strong>@{{ account.username }}<span class="account-views">{{ account_views.get(account.id, 0) }} visualizações hoje</span></strong><span class="account-status"><i class="health{% if suspended %} warn{% endif %}"></i>{% if suspended %}Suspensa{% else %}Ativa{% endif %}</span><form method="post" action="/accounts/{{ account.id }}/delete"><button class="text-button" type="submit" aria-label="Desconectar @{{ account.username }}"><i data-lucide="trash-2"></i></button></form></div>{% endfor %}{% else %}<div class="panel empty-state"><span>◎</span><h3>Nenhuma conta conectada</h3><p>Conecte uma conta Instagram para começar.</p><a class="button" href="/auth/instagram/start">Conectar conta</a></div>{% endif %}</div>
   </section>
 
   <section id="metrics" class="workspace-view" data-panel="metrics">
@@ -172,8 +171,8 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 const chartStatus={{ chart_status|tojson }},volumeDays={{ volume_days|tojson }},funnelMetrics={{ metrics.funnel|tojson }},pixStatus={{ metrics.pix_status|tojson }};
-if(window.Chart){new Chart(document.getElementById("status-chart"),{type:"doughnut",data:{labels:["Publicadas","Agendadas","Falhas"],datasets:[{data:[chartStatus.published,chartStatus.scheduled,chartStatus.failed],backgroundColor:["#65e6a3","#8b7cff","#ff7088"],borderWidth:0}]},options:{plugins:{legend:{labels:{color:"#f4f7ff"}}}}});new Chart(document.getElementById("volume-chart"),{type:"line",data:{labels:volumeDays.map(item=>item.label),datasets:[{label:"Publicações",data:volumeDays.map(item=>item.published),borderColor:"#55d6ff",backgroundColor:"rgba(85,214,255,.15)",fill:true,tension:.35},{label:"Interações",data:volumeDays.map(item=>item.interactions),borderColor:"#8b7cff",tension:.35}]},options:{scales:{x:{ticks:{color:"#8d99b5"}},y:{beginAtZero:true,ticks:{color:"#8d99b5"}}},plugins:{legend:{labels:{color:"#f4f7ff"}}}}})}
-if(window.Chart&&document.getElementById("dashboard-funnel-chart")){new Chart(document.getElementById("dashboard-funnel-chart"),{type:"bar",data:{labels:["Visualizações","Cliques","Leads","Pix gerado","Pix pago"],datasets:[{data:[{{ metrics.total_views }},funnelMetrics.link_click,funnelMetrics.lead_initiated,funnelMetrics.pix_generated,funnelMetrics.pix_paid],backgroundColor:["#55d6ff","#8b7cff","#ffc857","#ff9f68","#65e6a3"]}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});new Chart(document.getElementById("dashboard-pix-chart"),{type:"doughnut",data:{labels:["Pagos","Pendentes","Gerados"],datasets:[{data:[pixStatus.paid,pixStatus.pending,pixStatus.generated],backgroundColor:["#65e6a3","#ffc857","#8b7cff"],borderWidth:0}]},options:{plugins:{legend:{labels:{color:"#f4f7ff"}}}}})}
+if(window.Chart){new Chart(document.getElementById("status-chart"),{type:"doughnut",data:{labels:["Publicadas","Agendadas","Falhas"],datasets:[{data:[chartStatus.published,chartStatus.scheduled,chartStatus.failed],backgroundColor:["#22c55e","#2563eb","#f43f5e"],borderWidth:0}]},options:{maintainAspectRatio:false,cutout:"72%",plugins:{legend:{labels:{color:"#f8fafc",boxWidth:10}}}}});new Chart(document.getElementById("volume-chart"),{type:"line",data:{labels:volumeDays.map(item=>item.label),datasets:[{label:"Publicações",data:volumeDays.map(item=>item.published),borderColor:"#38bdf8",backgroundColor:"rgba(56,189,248,.15)",fill:true,tension:.35},{label:"Interações",data:volumeDays.map(item=>item.interactions),borderColor:"#2563eb",tension:.35}]},options:{scales:{x:{ticks:{color:"#94a3b8"}},y:{beginAtZero:true,ticks:{color:"#94a3b8"}}},plugins:{legend:{labels:{color:"#f8fafc"}}}}})}
+if(window.Chart&&document.getElementById("dashboard-funnel-chart")){new Chart(document.getElementById("dashboard-funnel-chart"),{type:"bar",data:{labels:["Visualizações","Cliques","Leads","Pix gerado","Pix pago"],datasets:[{data:[{{ metrics.total_views }},funnelMetrics.link_click,funnelMetrics.lead_initiated,funnelMetrics.pix_generated,funnelMetrics.pix_paid],backgroundColor:["#38bdf8","#2563eb","#f59e0b","#fb923c","#22c55e"]}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});new Chart(document.getElementById("dashboard-pix-chart"),{type:"doughnut",data:{labels:["Pagos","Pendentes","Gerados"],datasets:[{data:[pixStatus.paid,pixStatus.pending,pixStatus.generated],backgroundColor:["#22c55e","#f59e0b","#2563eb"],borderWidth:0}]},options:{plugins:{legend:{labels:{color:"#f8fafc"}}}}})}
 const files=document.getElementById("bulk-files"),list=document.getElementById("media-items"),time=document.getElementById("bulk-time"),form=document.getElementById("bulk-form"),captionFields=document.getElementById("caption-fields"),globalCaption=document.getElementById("global-caption-field");
 const pad=value=>String(value).padStart(2,"0");
 const escapeHtml=value=>String(value).replace(/[&<>\"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[char]));
