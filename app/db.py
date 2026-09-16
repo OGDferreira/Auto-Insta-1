@@ -66,9 +66,33 @@ async def init_db() -> None:
                 "direct_reply_text": "TEXT NOT NULL DEFAULT ''",
                 "comment_reply_enabled": "BOOLEAN NOT NULL DEFAULT 0",
                 "comment_reply_text": "TEXT NOT NULL DEFAULT ''",
+                "connection_status": "TEXT NOT NULL DEFAULT 'connected'",
+                "status_reason": "TEXT",
+                "status_checked_at": "DATETIME",
             }
             for name, definition in new_columns.items():
                 if name not in existing:
                     await connection.exec_driver_sql(
                         f"ALTER TABLE instagram_accounts ADD COLUMN {name} {definition}"
                     )
+        else:
+            migrations = {
+                "instagram_accounts": {
+                    "connection_status": "VARCHAR(20) NOT NULL DEFAULT 'connected'",
+                    "status_reason": "TEXT",
+                    "status_checked_at": "TIMESTAMP WITH TIME ZONE",
+                }
+            }
+            from sqlalchemy import inspect
+            for table_name, columns in migrations.items():
+                existing = {
+                    column["name"]
+                    for column in await connection.run_sync(
+                        lambda sync_connection, name=table_name: inspect(sync_connection).get_columns(name)
+                    )
+                }
+                for name, definition in columns.items():
+                    if name not in existing:
+                        await connection.exec_driver_sql(
+                            f'ALTER TABLE "{table_name}" ADD COLUMN "{name}" {definition}'
+                        )

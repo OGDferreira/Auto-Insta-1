@@ -151,7 +151,13 @@ async def collect_instagram_insights() -> None:
                         values.get("views", values.get("impressions", 0)) or 0
                     )
                     metric.reach = int(values.get("reach", 0) or 0)
+                    account.connection_status = "connected"
+                    account.status_reason = None
+                    account.status_checked_at = datetime.now(timezone.utc)
                 except Exception:
+                    account.status_checked_at = datetime.now(timezone.utc)
+                    account.connection_status = "suspended"
+                    account.status_reason = str(response.text if "response" in locals() else "Falha de acesso à conta.")[:500]
                     logger.exception("Falha ao coletar Insights da conta %s", account.instagram_user_id)
         await db.commit()
 
@@ -267,6 +273,8 @@ async def _publish(post_id: int) -> None:
         except Exception as exc:
             post.status = "failed"
             post.error_message = str(exc)[:1000]
+            account.connection_status = "suspended" if "permission" in str(exc).lower() or "token" in str(exc).lower() else account.connection_status
+            account.status_reason = str(exc)[:500] if account.connection_status == "suspended" else account.status_reason
             logger.exception("Falha ao publicar post %s: %s", post_id, exc)
             
         await db.commit()

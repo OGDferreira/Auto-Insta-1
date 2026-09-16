@@ -14,6 +14,7 @@ settings = get_settings()
 configure_logging()
 app = FastAPI(title="Auto-Insta", version=settings.app_version)
 app.mount("/uploads", StaticFiles(directory="uploads", check_dir=False), name="uploads")
+app.mount("/static", StaticFiles(directory="app/static", check_dir=False), name="static")
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,

@@ -47,6 +47,9 @@ class InstagramAccount(Base):
     direct_reply_text: Mapped[str] = mapped_column(Text, default="")
     comment_reply_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     comment_reply_text: Mapped[str] = mapped_column(Text, default="")
+    connection_status: Mapped[str] = mapped_column(String(20), default="connected")
+    status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     owner: Mapped[User] = relationship(back_populates="instagram_accounts")
     scheduled_posts: Mapped[list["ScheduledPost"]] = relationship(
