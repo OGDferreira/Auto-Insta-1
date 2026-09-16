@@ -15,6 +15,7 @@ class Settings(BaseModel):
     database_url: str = "sqlite+aiosqlite:///./auto_insta.db"
     supabase_url: str = ""
     supabase_key: str = ""
+    supabase_service_role: str = ""
     supabase_storage_bucket: str = "media"
     sharkbot_webhook_url: str = "https://auto-insta-web.onrender.com/webhook/sharkbot"
     secret_key: str = "change-me-in-production"
@@ -39,6 +40,7 @@ def get_settings() -> Settings:
         "database_url": os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./auto_insta.db"),
         "supabase_url": os.getenv("SUPABASE_URL", ""),
         "supabase_key": os.getenv("SUPABASE_KEY", ""),
+        "supabase_service_role": os.getenv("SERVICE_ROLE", ""),
         "supabase_storage_bucket": os.getenv("SUPABASE_STORAGE_BUCKET", "media"),
         "sharkbot_webhook_url": os.getenv(
             "SHARKBOT_WEBHOOK_URL",

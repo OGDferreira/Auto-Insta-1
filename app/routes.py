@@ -153,11 +153,12 @@ async def upload_media(
     finally:
         await media.close()
     settings = get_settings()
-    if not settings.supabase_url or not settings.supabase_key:
+    storage_key = settings.supabase_service_role or settings.supabase_key
+    if not settings.supabase_url or not storage_key:
         raise HTTPException(status_code=503, detail="Supabase Storage não configurado")
 
     def upload_to_storage() -> str:
-        client = create_client(settings.supabase_url, settings.supabase_key)
+        client = create_client(settings.supabase_url, storage_key)
         path = f"{uuid4().hex}/{filename}"
         client.storage.from_(settings.supabase_storage_bucket).upload(
             path,

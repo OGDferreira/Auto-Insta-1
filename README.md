@@ -54,7 +54,7 @@ Defina `META_APP_ID`, `META_APP_SECRET`, `PUBLIC_BASE_URL`, `GRAPH_API_VERSION` 
 
 O worker cria um container em `/{ig_id}/media` e o publica em `/{ig_id}/media_publish` usando `https://graph.instagram.com/{GRAPH_API_VERSION}`. Vídeos são enviados como `REELS` e só são publicados após o container retornar `status_code=FINISHED`. Imagens são enviadas diretamente por `image_url`, sem polling. URLs de mídia precisam ser públicas para que o Instagram consiga buscá-las.
 
-O endpoint `/media/upload` envia os bytes originais para o bucket público `SUPABASE_STORAGE_BUCKET` do Supabase Storage e devolve a URL pública do objeto. Em produção, configure `SUPABASE_URL`, `SUPABASE_KEY` e `SUPABASE_STORAGE_BUCKET` no Render. O bucket precisa existir, estar público para leitura e ter uma policy de `INSERT` para a chave usada pela aplicação; uma chave `service_role` pode ser usada no servidor para não depender de policy da chave anônima. O disco local do Render não é usado para armazenar as mídias.
+O endpoint `/media/upload` envia os bytes originais para o bucket público `SUPABASE_STORAGE_BUCKET` do Supabase Storage e devolve a URL pública do objeto. Em produção, configure `SUPABASE_URL`, `SUPABASE_STORAGE_BUCKET` e a variável `SERVICE_ROLE` (preferencial) ou `SUPABASE_KEY` no Render. O bucket precisa existir e estar público para leitura; a chave `service_role` permite o upload no servidor sem depender de policy da chave anônima. O disco local do Render não é usado para armazenar as mídias.
 
 ## Meta Webhooks
 
