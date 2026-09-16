@@ -164,7 +164,7 @@ async def upload_media(
             content,
             file_options={
                 "content-type": upload_content_type,
-                "upsert": "false",
+                "upsert": False,
             },
         )
         return client.storage.from_(settings.supabase_storage_bucket).get_public_url(path)
@@ -173,7 +173,11 @@ async def upload_media(
         public_url = await asyncio.to_thread(upload_to_storage)
     except Exception as exc:
         logger.exception("Falha ao armazenar mídia %s no Supabase Storage", media.filename)
-        raise HTTPException(status_code=502, detail="Não foi possível armazenar a mídia") from exc
+        error_message = str(exc).strip().replace("\n", " ")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Falha no Supabase Storage: {error_message[:300]}",
+        ) from exc
     return {
         "url": public_url,
         "media_type": "VIDEO" if upload_content_type.startswith("video/") else "IMAGE",
