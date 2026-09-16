@@ -78,3 +78,34 @@ async def fetch_profile(access_token: str) -> dict:
         )
         response.raise_for_status()
         return response.json()
+
+
+async def fetch_instagram_business_account(access_token: str, stored_id: str | None = None) -> dict | None:
+    """Resolve the Instagram Business Account ID through connected Facebook Pages."""
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.get(
+            "https://graph.facebook.com/v19.0/me/accounts",
+            params={
+                "fields": "id,name,instagram_business_account",
+                "access_token": access_token,
+            },
+        )
+        if response.is_error:
+            return None
+        pages = response.json().get("data", [])
+        candidates = [
+            {
+                "page_id": page.get("id"),
+                "page_name": page.get("name"),
+                "instagram_user_id": str(page["instagram_business_account"]["id"]),
+            }
+            for page in pages
+            if isinstance(page, dict)
+            and isinstance(page.get("instagram_business_account"), dict)
+            and page["instagram_business_account"].get("id")
+        ]
+        if stored_id:
+            for candidate in candidates:
+                if candidate["instagram_user_id"] == str(stored_id):
+                    return candidate
+        return candidates[0] if candidates else None

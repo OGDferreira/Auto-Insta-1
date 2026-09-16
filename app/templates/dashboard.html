@@ -34,12 +34,10 @@
   .privacy-blur { filter:blur(10px); transition:filter .2s ease; }
   .account-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:.75rem; }
   .account-list .account-row { display:flex; min-width:0; align-items:center; gap:.6rem; padding:.8rem; border:1px solid var(--line); border-radius:14px; background:linear-gradient(145deg,rgba(17,24,39,.96),rgba(7,11,24,.96)); }
-  .account-list .account-row.suspended { border-color:var(--danger); }
-  .account-list .account-row.warning { border-color:#facc15; box-shadow:0 0 16px rgba(250,204,21,.18); }
-  .account-list .account-row.connected { border-color:#3b82f6; box-shadow:0 0 16px rgba(59,130,246,.18); }
-  .account-list .account-row strong { flex:1; min-width:0; overflow-wrap:anywhere; word-break:break-word; }
-  .account-list .account-row .account-status,.account-list .account-row .account-automation,.account-list .account-row form { flex:0 0 auto; }
-  .account-list .account-row .account-status { display:grid; place-items:center; width:20px; height:20px; color:transparent; font-size:0; }
+  .account-list .account-row.status-connected { border-color:#3b82f6; box-shadow:0 0 18px rgba(59,130,246,.26); }
+  .account-list .account-row.status-suspended { border-color:var(--danger); box-shadow:0 0 20px rgba(244,63,94,.24); }
+  .account-list .account-row.status-error { border-color:#facc15; box-shadow:0 0 20px rgba(250,204,21,.2); }
+  .account-list .account-row strong { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .account-list .account-row .account-automation { display:grid; place-items:center; color:var(--muted); font-size:0; }
   .account-list .account-row .account-automation small { display:none; }
   .account-list .profile-avatar { width:38px; height:38px; }
@@ -81,7 +79,7 @@
   <section id="overview" class="workspace-view active" data-panel="overview">
     <div class="section-heading"><div><h2>Dashboard</h2></div><div style="display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;justify-content:flex-end"><span class="section-note" id="views-updated-at">Atualizado agora</span><button class="button secondary" type="button" id="refresh-dashboard-views"><i data-lucide="refresh-cw"></i> Atualizar visualizações</button></div></div>
     <div class="metric-grid">
-      <div class="metric"><small>Total de visualizações</small><strong>{{ metrics.total_views }}</strong><span class="metric-detail">todas as contas conectadas</span></div>
+      <div class="metric"><small>Total de visualizações</small><strong data-metric="total_views">{{ metrics.total_views }}</strong><span class="metric-detail">todas as contas conectadas</span></div>
       <div class="metric"><small>Contas ativas</small><strong>{{ metrics.active_accounts }}</strong><span class="metric-detail">conectadas ao workspace</span></div>
       <div class="metric"><small>Posts hoje</small><strong>{{ metrics.today_posts }}</strong><span class="metric-detail">publicações criadas</span></div>
       <div class="metric"><small>Na fila</small><strong data-metric="pending">{{ metrics.pending }}</strong><span class="metric-detail">aguardando publicação</span></div>
@@ -90,7 +88,7 @@
       <div class="metric metric-sharkbot"><small>Pix gerados</small><strong data-sharkbot-metric="pix_generated">{{ metrics.funnel.pix_generated }}</strong><span class="metric-detail">pagamentos criados</span></div>
       <div class="metric metric-sharkbot"><small>Pix pagos</small><strong data-sharkbot-metric="pix_paid">{{ metrics.funnel.pix_paid }}</strong><span class="metric-detail">pagamentos aprovados</span></div>
     </div>
-    <div class="panel" style="margin-top:1rem"><div class="panel-header"><div><div class="eyebrow">Funil global</div><h3>Conversão do tráfego</h3></div></div><div class="status-line"><span>Visualizações → Leads</span><strong>{{ ((metrics.funnel.link_click / metrics.total_views * 100) if metrics.total_views else 0)|round(1) }}%</strong></div><div class="status-line"><span>Leads → Pix gerados</span><strong>{{ ((metrics.funnel.pix_generated / metrics.funnel.link_click * 100) if metrics.funnel.link_click else 0)|round(1) }}%</strong></div><div class="status-line"><span>Pix gerados → pagos</span><strong>{{ ((metrics.funnel.pix_paid / metrics.funnel.pix_generated * 100) if metrics.funnel.pix_generated else 0)|round(1) }}%</strong></div></div>
+    <div class="panel" style="margin-top:1rem"><div class="panel-header"><div><div class="eyebrow">Funil global</div><h3>Conversão do tráfego</h3></div></div><div class="status-line"><span>Visualizações → Leads</span><strong>{{ "%.2f"|format(metrics.funnel_rates.views_to_leads) }}%</strong></div><div class="status-line"><span>Leads → Pix gerados</span><strong>{{ "%.2f"|format(metrics.funnel_rates.leads_to_pix) }}%</strong></div><div class="status-line"><span>Pix gerados → pagos</span><strong>{{ "%.2f"|format(metrics.funnel_rates.pix_to_paid) }}%</strong></div></div>
     <div class="overview-grid"><div class="panel"><div class="panel-header"><h3>Status das publicações</h3></div><canvas id="status-chart" height="180"></canvas></div><div class="panel"><div class="panel-header"><h3>Últimos 7 dias</h3></div><canvas id="volume-chart" height="180"></canvas></div></div>
   </section>
 
@@ -144,7 +142,7 @@
 
   <section id="accounts" class="workspace-view" data-panel="accounts">
     <div class="section-heading"><div><div class="eyebrow">Conexões</div><h2>Hub de contas</h2></div><a class="button" href="/auth/instagram/start">+ Conectar conta</a></div>
-    <div class="account-list">{% if accounts %}{% for account in accounts %}{% set suspended = account.connection_status == "suspended" %}{% set connected = account.connection_status in ["connected", "active"] %}<div class="account-row{% if suspended %} suspended{% elif connected %} connected{% else %} warning{% endif %}" title="{{ account.status_reason or '' }}"><div class="profile-avatar small">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="Foto de @{{ account.username }}">{% else %}{{ account.username[:1]|upper }}{% endif %}</div><strong title="@{{ account.username }}">@{{ account.username }}<span class="account-views">{{ account_views.get(account.id, 0) }} visualizações</span></strong><span class="account-status" title="{% if suspended %}{{ account.status_reason or 'Acesso à conta indisponível.' }}{% elif connected %}Conta conectada{% else %}{{ account.status_reason or 'Verifique a conexão desta conta.' }}{% endif %}" aria-label="Status da conta"><i class="health{% if suspended %} warn{% endif %}"></i></span><form method="post" action="/accounts/{{ account.id }}/delete"><button class="text-button" type="submit" aria-label="Desconectar @{{ account.username }}"><i data-lucide="trash-2"></i></button></form></div>{% endfor %}{% else %}<div class="panel empty-state"><span>◎</span><h3>Nenhuma conta conectada</h3><p>Conecte uma conta Instagram para começar.</p><a class="button" href="/auth/instagram/start">Conectar conta</a></div>{% endif %}</div>
+    <div class="account-list">{% if accounts %}{% for account in accounts %}{% set status_class = account_status_classes.get(account.id, "error") %}<div class="account-row status-{{ status_class }}" title="{{ account.status_reason or 'Conta conectada e funcional.' }}"><div class="profile-avatar small">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="Foto de @{{ account.username }}">{% else %}{{ account.username[:1]|upper }}{% endif %}</div><strong title="@{{ account.username }}">@{{ account.username }}<span class="account-views">{{ account_views.get(account.id, 0) }} visualizações</span></strong><form method="post" action="/accounts/{{ account.id }}/delete"><button class="text-button" type="submit" aria-label="Desconectar @{{ account.username }}"><i data-lucide="trash-2"></i></button></form></div>{% endfor %}{% else %}<div class="panel empty-state"><span>◎</span><h3>Nenhuma conta conectada</h3><p>Conecte uma conta Instagram para começar.</p><a class="button" href="/auth/instagram/start">Conectar conta</a></div>{% endif %}</div>
   </section>
 
 

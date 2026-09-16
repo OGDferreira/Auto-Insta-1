@@ -62,6 +62,7 @@ async def init_db() -> None:
             existing = {row[1] for row in columns}
             new_columns = {
                 "profile_picture_url": "TEXT",
+                "facebook_page_id": "TEXT",
                 "direct_reply_enabled": "BOOLEAN NOT NULL DEFAULT 0",
                 "direct_reply_text": "TEXT NOT NULL DEFAULT ''",
                 "comment_reply_enabled": "BOOLEAN NOT NULL DEFAULT 0",
@@ -94,6 +95,7 @@ async def init_db() -> None:
             migrations = {
                 "instagram_accounts": {
                     "connection_status": "VARCHAR(20) NOT NULL DEFAULT 'connected'",
+                    "facebook_page_id": "VARCHAR(120)",
                     "status_reason": "TEXT",
                     "status_checked_at": "TIMESTAMP WITH TIME ZONE",
                 },

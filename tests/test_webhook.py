@@ -7,6 +7,8 @@ from app.config import get_settings
 from app.main import app
 from app.db import SessionLocal
 from app.models import BotEvent
+from app.jobs import _account_status_from_error
+from httpx import Response
 
 
 def test_webhook_verification_returns_plain_text_challenge(monkeypatch):
@@ -43,6 +45,18 @@ def test_webhook_verification_rejects_invalid_token(monkeypatch):
         )
 
     assert response.status_code == 403
+
+
+def test_account_status_classifies_meta_challenge_as_connection_error():
+    response = Response(
+        403,
+        json={"error": {"message": "Instagram checkpoint challenge required"}},
+    )
+
+    assert _account_status_from_error(response) == (
+        "error",
+        "Instagram checkpoint challenge required",
+    )
 
 
 def test_sharkbot_events_store_real_payload_data():
@@ -95,4 +109,3 @@ def test_sharkbot_events_store_real_payload_data():
     assert paid.customer_name == "João Silva"
     assert paid.transaction_id == "payment_id_123"
     assert paid.plan_name == "Plano Premium"
-

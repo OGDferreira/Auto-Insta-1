@@ -26,6 +26,7 @@ from .oauth import (
     authorization_url,
     exchange_code,
     exchange_long_lived_token,
+    fetch_instagram_business_account,
     fetch_profile,
     new_state,
 )
@@ -41,6 +42,49 @@ ALLOWED_UPLOAD_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov"}
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]{2,80}$")
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
+ACCOUNT_STATUS_CLASSES = {"connected", "suspended", "error"}
+
+
+def account_status_classes(accounts: list[InstagramAccount]) -> dict[int, str]:
+    return {
+        account.id: (
+            "connected"
+            if account.connection_status == "active"
+            else account.connection_status
+            if account.connection_status in ACCOUNT_STATUS_CLASSES
+            else "error"
+        )
+        for account in accounts
+    }
+
+
+def _metric_views_by_account(
+    metric_rows: list[InstagramMetric],
+    account_ids: list[int],
+) -> dict[int, int]:
+    local_today = datetime.now(LOCAL_TIMEZONE).date()
+    result: dict[int, int] = {}
+    for account_id in account_ids:
+        rows = sorted(
+            (row for row in metric_rows if row.account_id == account_id),
+            key=lambda row: row.metric_date,
+            reverse=True,
+        )
+        today_row = next(
+            (
+                row
+                for row in rows
+                if (
+                    row.metric_date.replace(tzinfo=timezone.utc)
+                    if row.metric_date.tzinfo is None
+                    else row.metric_date
+                ).astimezone(LOCAL_TIMEZONE).date() == local_today
+            ),
+            None,
+        )
+        selected_row = today_row if today_row is not None else (rows[0] if rows else None)
+        result[account_id] = int(selected_row.impressions if selected_row is not None else 0)
+    return result
 
 
 async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
@@ -306,13 +350,8 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
             )
         )
     ).all() if accounts else (await db.scalars(select(BotEvent).where(BotEvent.account_id.is_(None)))).all()
-    local_today = datetime.now(LOCAL_TIMEZONE).date()
-    today_metrics = [
-        metric for metric in metric_rows
-        if (metric.metric_date.replace(tzinfo=timezone.utc) if metric.metric_date.tzinfo is None else metric.metric_date)
-        .astimezone(LOCAL_TIMEZONE).date() == local_today
-    ]
-    total_views = sum(metric.impressions for metric in today_metrics)
+    views_by_account = _metric_views_by_account(metric_rows, [account.id for account in accounts])
+    total_views = sum(views_by_account.values())
     account_views = {
         account.id: next((
             metric.impressions for metric in today_metrics
@@ -323,6 +362,14 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
     event_counts = {event_type: sum(event.event_type == event_type for event in events) for event_type in (
         "link_click", "lead_initiated", "pix_generated", "pix_paid"
     )}
+    lead_count = event_counts["lead_initiated"]
+    generated_count = event_counts["pix_generated"]
+    paid_count = event_counts["pix_paid"]
+    funnel_rates = {
+        "views_to_leads": round(lead_count / total_views * 100, 2) if total_views else 0,
+        "leads_to_pix": round(generated_count / lead_count * 100, 2) if lead_count else 0,
+        "pix_to_paid": round(paid_count / generated_count * 100, 2) if generated_count else 0,
+    }
     metrics = {
         "active_accounts": len(accounts),
         "today_posts": len(today_posts),
@@ -330,6 +377,7 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
         "total_views": total_views,
         "average_views": round(total_views / max(len(accounts), 1)),
         "funnel": event_counts,
+        "funnel_rates": funnel_rates,
         "pix_status": {
             "paid": event_counts["pix_paid"],
             "pending": sum(event.event_type == "pix_pending" for event in events),
@@ -353,6 +401,7 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
             "request": request,
             "user": user,
             "accounts": accounts,
+            "account_status_classes": account_status_classes(accounts),
             "account_views": account_views,
             "posts": posts,
             "metrics": metrics,
@@ -380,12 +429,8 @@ async def hub(request: Request, user: User = Depends(current_user), db: AsyncSes
         rows = (await db.scalars(select(InstagramMetric).where(
             InstagramMetric.account_id == account.id
         ).order_by(InstagramMetric.metric_date.desc()).limit(10))).all()
-        account_views[account.id] = next((
-            row.impressions for row in rows
-            if (row.metric_date.replace(tzinfo=timezone.utc) if row.metric_date.tzinfo is None else row.metric_date)
-            .astimezone(LOCAL_TIMEZONE).date() == datetime.now(LOCAL_TIMEZONE).date()
-        ), 0)
-    response = templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_views": account_views, "notice": request.session.pop("access_notice", None)})
+        account_views[account.id] = _metric_views_by_account(rows, [account.id])[account.id]
+    response = templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_status_classes": account_status_classes(accounts), "account_views": account_views, "notice": request.session.pop("access_notice", None)})
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -488,6 +533,13 @@ async def api_status(user: User = Depends(current_user), db: AsyncSession = Depe
             or_(BotEvent.account_id.in_(account_ids), BotEvent.account_id.is_(None))
         )
     bot_events = (await db.scalars(bot_query)).all()
+    metric_rows = (
+        await db.scalars(
+            select(InstagramMetric).where(InstagramMetric.account_id.in_(account_ids))
+        )
+    ).all() if account_ids else []
+    account_views = _metric_views_by_account(metric_rows, account_ids)
+    total_views = sum(account_views.values())
     bot_counts = {
         event_type: sum(event.event_type == event_type for event in bot_events)
         for event_type in ("link_click", "lead_initiated", "pix_generated", "pix_paid", "pix_pending")
@@ -497,8 +549,10 @@ async def api_status(user: User = Depends(current_user), db: AsyncSession = Depe
             "pending": sum(post.status in {"scheduled", "processing", "aguardando", "pending"} for post in posts),
             "published": sum(post.status == "published" for post in posts),
             "failed": sum(post.status == "failed" for post in posts),
+            "total_views": total_views,
         },
         "sharkbot": bot_counts,
+        "account_views": account_views,
         "posts": [
             {
                 "id": post.id,
@@ -543,19 +597,30 @@ async def instagram_callback(
         short_token = token_data["access_token"]
         long_lived_token = await exchange_long_lived_token(short_token)
         profile = await fetch_profile(long_lived_token)
+        business_account = await fetch_instagram_business_account(
+            long_lived_token,
+            str(profile.get("user_id") or profile.get("id")),
+        )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha no OAuth do Instagram: {exc}") from exc
     user = await db.get(User, int(request.session["user_id"]))
     if not user:
         raise HTTPException(status_code=401, detail="Login required")
     owner_id = workspace_owner_id(user)
+    profile_id = str(profile.get("user_id") or profile["id"])
+    account_ids = {profile_id}
+    if business_account:
+        account_ids.add(business_account["instagram_user_id"])
     account = await db.scalar(
         select(InstagramAccount).where(
             InstagramAccount.owner_id == owner_id,
-            InstagramAccount.instagram_user_id == str(profile.get("user_id") or profile["id"]),
+            InstagramAccount.instagram_user_id.in_(account_ids),
         )
     )
     if account:
+        if business_account:
+            account.instagram_user_id = business_account["instagram_user_id"]
+            account.facebook_page_id = business_account.get("page_id")
         account.username = profile.get("username", account.username)
         account.profile_picture_url = profile.get("profile_picture_url", account.profile_picture_url)
         account.access_token_encrypted = encrypt_token(long_lived_token)
@@ -563,7 +628,12 @@ async def instagram_callback(
         db.add(
             InstagramAccount(
                 owner_id=owner_id,
-                instagram_user_id=str(profile.get("user_id") or profile["id"]),
+                instagram_user_id=(
+                    business_account["instagram_user_id"]
+                    if business_account
+                    else str(profile.get("user_id") or profile["id"])
+                ),
+                facebook_page_id=business_account.get("page_id") if business_account else None,
                 username=profile.get("username", ""),
                 profile_picture_url=profile.get("profile_picture_url"),
                 access_token_encrypted=encrypt_token(long_lived_token),

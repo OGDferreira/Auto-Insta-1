@@ -38,6 +38,7 @@ class InstagramAccount(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     instagram_user_id: Mapped[str] = mapped_column(String(120), index=True)
+    facebook_page_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     username: Mapped[str] = mapped_column(String(120))
     profile_picture_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     access_token_encrypted: Mapped[str] = mapped_column(Text)

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import asyncio
 import logging
 from urllib.parse import urlparse
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler(timezone="UTC")
 PENDING_STATUSES = ("scheduled", "aguardando", "pending")
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
+INSIGHTS_GRAPH_URL = "https://graph.facebook.com/v19.0"
 
 
 def _utc_datetime(value: datetime) -> datetime:
@@ -33,6 +34,136 @@ def _api_error(response: httpx.Response) -> str:
     except ValueError:
         payload = response.text
     return f"Instagram API {response.status_code}: {str(payload)[:900]}"
+
+
+def _account_status_from_error(response: httpx.Response) -> tuple[str, str]:
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {}
+    error = payload.get("error", {}) if isinstance(payload, dict) else {}
+    message = str(error.get("message") or response.text or "Falha ao verificar a conta")
+    normalized = message.lower()
+    if any(term in normalized for term in ("suspend", "disabled", "deactivated")):
+        return "suspended", message[:500]
+    if any(term in normalized for term in ("challenge", "checkpoint", "blocked", "restricted")):
+        return "error", message[:500]
+    return "error", message[:500]
+
+
+async def _refresh_account_status(
+    client: httpx.AsyncClient,
+    account: InstagramAccount,
+    token: str,
+    settings,
+) -> bool:
+    response = await client.get(
+        f"https://graph.instagram.com/{settings.graph_api_version}/me",
+        params={
+            "fields": "id,username",
+            "access_token": token,
+        },
+    )
+    if response.is_error:
+        account.connection_status, account.status_reason = _account_status_from_error(response)
+        account.status_checked_at = datetime.now(timezone.utc)
+        logger.error(
+            "Status da conta Instagram %s retornou %s: %s",
+            account.instagram_user_id,
+            response.status_code,
+            account.status_reason,
+        )
+        return False
+    account.connection_status = "connected"
+    account.status_reason = None
+    account.status_checked_at = datetime.now(timezone.utc)
+    return True
+
+
+async def _resolve_business_account_id(
+    client: httpx.AsyncClient,
+    account: InstagramAccount,
+    token: str,
+) -> tuple[str | None, str | None]:
+    """Resolve the IG Business ID and its Facebook Page before requesting Insights."""
+    response = await client.get(
+        f"{INSIGHTS_GRAPH_URL}/me/accounts",
+        params={
+            "fields": "id,name,instagram_business_account",
+            "access_token": token,
+        },
+    )
+    if response.is_error:
+        logger.error(
+            "Não foi possível resolver o Instagram Business ID da conta %s: %s",
+            account.instagram_user_id,
+            _api_error(response),
+        )
+        return None, None
+    pages = response.json().get("data", [])
+    candidates = [
+        page for page in pages
+        if isinstance(page, dict)
+        and isinstance(page.get("instagram_business_account"), dict)
+        and page["instagram_business_account"].get("id")
+    ]
+    selected = next(
+        (
+            page for page in candidates
+            if str(page["instagram_business_account"]["id"]) == str(account.instagram_user_id)
+        ),
+        candidates[0] if len(candidates) == 1 else None,
+    )
+    if not selected:
+        logger.error(
+            "Nenhuma Página conectada possui Instagram Business ID para a conta %s",
+            account.instagram_user_id,
+        )
+        return None, None
+    instagram_business_id = str(selected["instagram_business_account"]["id"])
+    page_id = str(selected["id"]) if selected.get("id") else None
+    if account.instagram_user_id != instagram_business_id:
+        logger.warning(
+            "ID Instagram corrigido para a conta %s: %s -> %s",
+            account.id,
+            account.instagram_user_id,
+            instagram_business_id,
+        )
+        account.instagram_user_id = instagram_business_id
+    if account.facebook_page_id != page_id:
+        account.facebook_page_id = page_id
+    return instagram_business_id, page_id
+
+
+def _local_day_start(value) -> datetime:
+    return datetime.combine(value, datetime.min.time(), tzinfo=LOCAL_TIMEZONE).astimezone(timezone.utc)
+
+
+def _insight_values(payload: dict, today) -> list[tuple[datetime, int, int]]:
+    values_by_date: dict[object, dict[str, int]] = {}
+    for item in payload.get("data", []):
+        name = item.get("name")
+        if name not in {"impressions", "reach"}:
+            continue
+        for entry in item.get("values", []):
+            raw_date = entry.get("end_time")
+            try:
+                metric_date = (
+                    datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                    .astimezone(LOCAL_TIMEZONE)
+                    .date()
+                    if raw_date
+                    else today
+                )
+            except (AttributeError, ValueError):
+                metric_date = today
+            values_by_date.setdefault(metric_date, {})[name] = int(entry.get("value", 0) or 0)
+    if not values_by_date:
+        values_by_date[today] = {"impressions": 0, "reach": 0}
+    return [
+        (_local_day_start(metric_date), values.get("impressions", 0), values.get("reach", 0))
+        for metric_date, values in values_by_date.items()
+    ]
 
 
 def _validate_media_url(media_url: str) -> None:
@@ -107,60 +238,56 @@ async def collect_instagram_insights() -> None:
     """Collect daily Instagram impressions and reach for every connected account."""
     settings = get_settings()
     local_today = datetime.now(LOCAL_TIMEZONE).date()
-    today = datetime.combine(local_today, datetime.min.time(), tzinfo=LOCAL_TIMEZONE).astimezone(timezone.utc)
+    until_date = local_today + timedelta(days=1)
     async with SessionLocal() as db:
         accounts = (await db.scalars(select(InstagramAccount))).all()
         async with httpx.AsyncClient(timeout=30) as client:
             for account in accounts:
-                response = None
                 try:
-                    response = await client.get(
-                        f"https://graph.facebook.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
+                    token = decrypt_token(account.access_token_encrypted)
+                    if not await _refresh_account_status(client, account, token, settings):
+                        continue
+                    instagram_business_id, _ = await _resolve_business_account_id(client, account, token)
+                    if not instagram_business_id:
+                        continue
+                    created_at = account.created_at or datetime.now(timezone.utc)
+                    connected_date = (
+                        created_at.astimezone(LOCAL_TIMEZONE).date()
+                        if created_at.tzinfo
+                        else created_at.replace(tzinfo=timezone.utc).astimezone(LOCAL_TIMEZONE).date()
+                    )
+                    insights = await client.get(
+                        f"{INSIGHTS_GRAPH_URL}/{instagram_business_id}/insights",
                         params={
-                            # `views` replaced `impressions` for current Instagram
-                            # Insights responses; both are normalized below.
-                            "metric": "views,reach",
+                            "metric": "impressions,reach",
                             "period": "day",
-                            "access_token": decrypt_token(account.access_token_encrypted),
+                            "since": connected_date.isoformat(),
+                            "until": until_date.isoformat(),
+                            "access_token": token,
                         },
                     )
-                    if response.is_error:
-                        try:
-                            error_payload = response.json()
-                        except ValueError:
-                            error_payload = response.text[:900]
-                        logger.error(
-                            "Instagram Insights retornou %s para %s: %s",
-                            response.status_code,
+                    if insights.is_error:
+                        logger.warning(
+                            "Insights indisponíveis para a conta Instagram %s: %s",
                             account.instagram_user_id,
-                            error_payload,
+                            _api_error(insights),
                         )
-                        response.raise_for_status()
-                    payload = response.json()
-                    values = {
-                        item.get("name"): item.get("values", [{}])[-1].get("value", 0)
-                        for item in payload.get("data", [])
-                    }
-                    metric = await db.scalar(select(InstagramMetric).where(
-                        InstagramMetric.account_id == account.id,
-                        InstagramMetric.metric_date == today,
-                    ))
-                    if metric is None:
-                        metric = InstagramMetric(account_id=account.id, metric_date=today)
-                        db.add(metric)
-                    metric.impressions = int(
-                        values.get("views", values.get("impressions", 0)) or 0
-                    )
-                    metric.reach = int(values.get("reach", 0) or 0)
-                    account.connection_status = "connected"
-                    account.status_reason = None
-                    account.status_checked_at = datetime.now(timezone.utc)
+                        continue
+                    payload = insights.json()
+                    for metric_date, impressions, reach in _insight_values(payload, local_today):
+                        metric = await db.scalar(select(InstagramMetric).where(
+                            InstagramMetric.account_id == account.id,
+                            InstagramMetric.metric_date == metric_date,
+                        ))
+                        if metric is None:
+                            metric = InstagramMetric(account_id=account.id, metric_date=metric_date)
+                            db.add(metric)
+                        metric.impressions = impressions
+                        metric.reach = reach
                 except Exception:
                     account.status_checked_at = datetime.now(timezone.utc)
-                    account.connection_status = "suspended"
-                    account.status_reason = str(
-                        response.text if response is not None else "Falha de acesso à conta."
-                    )[:500]
+                    account.connection_status = "error"
+                    account.status_reason = "Não foi possível verificar a conexão da conta."
                     logger.exception("Falha ao coletar Insights da conta %s", account.instagram_user_id)
         await db.commit()
 
