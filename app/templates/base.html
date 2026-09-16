@@ -30,31 +30,43 @@
     @media(max-width:850px){.queue-layout,.overview-grid{grid-template-columns:1fr}.account-grid{grid-template-columns:repeat(2,1fr)}.automation-card{grid-template-columns:1fr}.automation-card button{justify-self:start}}@media(max-width:600px){.dashboard-hero{display:block}.live-indicator{width:max-content;margin-top:1rem}.metric-grid{grid-template-columns:repeat(2,1fr)}.account-grid,.automation-fields{grid-template-columns:1fr}.metric{padding:.9rem}.metric strong{font-size:1.6rem}.workspace-tab{padding:.8rem .65rem;font-size:.84rem}.section-heading{align-items:flex-start;flex-direction:column}.section-heading .button{width:100%}}
   </style>
   <style>
-    :root{--bg:#070b12;--panel:rgba(16,24,34,.68);--panel-2:rgba(21,32,43,.78);--line:rgba(151,213,220,.16);--text:#edf8f8;--muted:#82999e;--primary:#74e0db;--cyan:#93f1e8;--danger:#ff8291;--success:#6ff0af}
-    body{font-family:"Inter","DM Sans",sans-serif;max-width:1240px;padding:0 1.5rem 2.5rem;background:radial-gradient(ellipse at 78% -8%,rgba(62,48,132,.42),transparent 38%),radial-gradient(ellipse at 2% 42%,rgba(0,148,155,.12),transparent 34%),#070b12}
-    body:before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(120deg,transparent 20%,rgba(93,220,210,.035) 48%,transparent 66%);z-index:-1}
+    :root{--bg:#030712;--panel:#0b1220;--panel-2:#111827;--line:#1e293b;--text:#f8fafc;--muted:#94a3b8;--primary:#2563eb;--cyan:#60a5fa;--danger:#f43f5e;--success:#22c55e}
+    body{font-family:"Inter","DM Sans",sans-serif;max-width:1240px;padding:0 1.5rem 2.5rem;background:radial-gradient(ellipse at 78% -8%,rgba(37,99,235,.24),transparent 38%),radial-gradient(ellipse at 2% 42%,rgba(14,55,120,.16),transparent 34%),#030712}
+    body:before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(120deg,transparent 20%,rgba(37,99,235,.08) 48%,transparent 66%);z-index:-1}
     nav{padding:.55rem 0;border-bottom:1px solid var(--line);margin-bottom:.7rem;min-height:40px;background:rgba(7,11,18,.42);backdrop-filter:blur(18px)}
-    .brand{font-family:"Inter","DM Sans",sans-serif;font-size:1.05rem;font-weight:750;color:var(--cyan)}
-    .card,.panel,.metric,.account-card,.queue-card{background:linear-gradient(145deg,rgba(24,37,49,.72),rgba(10,17,26,.76));border:1px solid var(--line);box-shadow:0 18px 60px rgba(0,0,0,.18),inset 0 1px rgba(255,255,255,.035);backdrop-filter:blur(20px)}
+    .brand{font-family:"Inter","DM Sans",sans-serif;font-size:1.2rem;font-weight:750;color:var(--text)}
+    .card,.panel,.metric,.account-card,.queue-card{background:linear-gradient(145deg,rgba(17,24,39,.96),rgba(7,11,24,.96));border:1px solid var(--line);box-shadow:0 18px 60px rgba(0,0,0,.28),inset 0 1px rgba(255,255,255,.035);backdrop-filter:blur(20px)}
     .card{border-radius:18px}.panel{border-radius:16px}.metric{border-radius:13px}
     h1,h2,h3{font-family:"Inter","DM Sans",sans-serif;letter-spacing:-.035em}h1{font-weight:750}h2{font-size:1.45rem}
     input,select,textarea{background:rgba(5,11,17,.64);border-color:var(--line);border-radius:9px}
-    button,.button{background:linear-gradient(135deg,#7ee9df,#49bfc0);color:#061317;border-radius:9px;font-weight:750;box-shadow:0 8px 24px rgba(65,201,194,.18)}
-    button.secondary,.button.secondary{background:rgba(22,35,45,.72);color:var(--text);border-color:var(--line)}
-    .workspace-tabs{border-color:var(--line);margin-bottom:1.35rem}.workspace-tab{padding:.7rem .9rem}.workspace-tab:hover,.workspace-tab.active{border-color:var(--cyan);color:var(--text)}
+    button,.button{background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#f8fafc;border-radius:9px;font-weight:750;box-shadow:0 8px 24px rgba(37,99,235,.24)}
+    button.secondary,.button.secondary{background:#111827;color:var(--text);border-color:var(--line)}
+    .workspace-tabs{border-color:var(--line);margin-bottom:1.35rem}.workspace-tab{padding:.75rem .95rem;font-size:.9rem}.workspace-tab:hover,.workspace-tab.active{border-color:var(--primary);color:var(--text);background:rgba(37,99,235,.1)}
     .dashboard-hero{padding:.55rem 0 .45rem}.dashboard-hero h1{font-size:1.35rem;font-weight:650;margin:.2rem 0}.dashboard-hero p{margin:.25rem 0;font-size:.78rem;max-width:520px}
     .tool-header{padding:.8rem 0 1rem}.tool-header h1{font-size:1.35rem;margin:0}
     .eyebrow,.panel-kicker{font-size:.66rem;letter-spacing:.14em}.live-indicator{padding:.4rem .65rem;font-size:.72rem}
-    .metric{padding:1rem}.metric strong{font-size:1.65rem}.section-heading{margin-bottom:.85rem}
+    .metric{padding:1.15rem}.metric small{font-size:.8rem}.metric strong{font-size:1.9rem}.metric-detail{font-size:.78rem}.section-heading{margin-bottom:.85rem}
     .auth-card{max-width:460px;margin:8vh auto}
     [data-lucide]{width:16px;height:16px;stroke-width:2;vertical-align:-3px}.queue-delete [data-lucide]{width:15px;height:15px}
     @media(max-width:600px){body{padding:0 1rem 2rem}.dashboard-hero{padding-top:.35rem}.dashboard-hero h1{font-size:1.2rem}}
   </style>
+  <style>
+    body{font-size:16px;background:radial-gradient(circle at 82% -12%,rgba(37,99,235,.2),transparent 36%),var(--bg)}
+    .brand-tagline{display:none}
+    .tool-header h1{font-size:1.45rem;letter-spacing:-.02em}
+    .toast-region{position:fixed;right:1.25rem;bottom:1.25rem;z-index:100;display:grid;gap:.65rem;width:min(360px,calc(100vw - 2rem));pointer-events:none}
+    .toast{display:flex;align-items:flex-start;gap:.65rem;padding:.85rem 1rem;border:1px solid var(--line);border-left:3px solid var(--primary);border-radius:12px;background:rgba(11,18,32,.96);box-shadow:0 18px 45px rgba(0,0,0,.35);color:var(--text);font-size:.86rem;animation:toast-in .2s ease}
+    .toast.error{border-left-color:var(--danger)}.toast.success{border-left-color:var(--success)}.toast button{margin-left:auto;padding:0;background:transparent;box-shadow:none;color:var(--muted)}
+    @keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    .profile-dialog,.card,.panel,.metric{border-color:#1e3a63}
+    @media(max-width:650px){.toast-region{right:1rem;bottom:5.5rem}.brand{font-size:1.05rem}}
+  </style>
   <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
-<nav><a class="brand" href="/"><img class="brand-mark" src="/static/favicon.svg" alt=""> Auto<span>·</span>Insta <small class="brand-tagline">conteúdo no ritmo certo</small></a>{% if request.session.get("user_id") %}<div class="top-actions"><button id="profile-trigger" class="profile-trigger secondary" type="button" aria-label="Abrir perfil"><i data-lucide="user-round"></i></button></div>{% endif %}</nav>
+<nav><a class="brand" href="/"><img class="brand-mark" src="/static/favicon.svg" alt=""> Auto<span>·</span>Insta</a>{% if request.session.get("user_id") %}<div class="top-actions"><button id="profile-trigger" class="profile-trigger secondary" type="button" aria-label="Abrir perfil"><i data-lucide="user-round"></i></button></div>{% endif %}</nav>
 {% block content %}{% endblock %}
+<div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
 {% if request.session.get("user_id") %}
 <div id="profile-modal" class="profile-modal" hidden>
   <div class="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title">
@@ -69,5 +81,22 @@
 <script>const profileModal=document.getElementById("profile-modal"),profileTrigger=document.getElementById("profile-trigger"),profileClose=document.getElementById("profile-close");if(profileTrigger){profileTrigger.addEventListener("click",()=>profileModal.hidden=false);profileClose.addEventListener("click",()=>profileModal.hidden=true);profileModal.addEventListener("click",event=>{if(event.target===profileModal)profileModal.hidden=true});document.addEventListener("keydown",event=>{if(event.key==="Escape")profileModal.hidden=true})}</script>
 {% endif %}
 <script>if(window.lucide){lucide.createIcons();}</script>
+<script>
+  (() => {
+    const region = document.getElementById("toast-region");
+    window.showToast = (message, type = "info") => {
+      if (!region || !message) return;
+      const toast = document.createElement("div");
+      toast.className = `toast ${type}`;
+      toast.innerHTML = `<span>${message}</span><button type="button" aria-label="Fechar notificação">×</button>`;
+      toast.querySelector("button").addEventListener("click", () => toast.remove());
+      region.appendChild(toast);
+      window.setTimeout(() => toast.remove(), 4500);
+    };
+    document.querySelectorAll("form").forEach((form) => {
+      form.addEventListener("submit", () => showToast("Processando sua solicitação...", "info"));
+    });
+  })();
+</script>
 </body>
 </html>
