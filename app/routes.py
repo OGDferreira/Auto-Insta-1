@@ -40,9 +40,11 @@ from .oauth import (
     authorization_url,
     exchange_code,
     exchange_long_lived_token,
+    decode_signed_state,
     fetch_instagram_business_account,
     fetch_profile,
     new_state,
+    signed_state,
 )
 from .observability import get_recent_logs
 from .security import decrypt_token, encrypt_token, hash_password, verify_password
@@ -983,7 +985,7 @@ async def test_meta_connection(
 
 @router.get("/auth/instagram/start")
 async def instagram_start(request: Request, user: User = Depends(current_user)):
-    state = new_state()
+    state = signed_state(user.id) if getattr(user, "id", None) else new_state()
     request.session["instagram_oauth_state"] = state
     redirect_url = authorization_url(state)
     logger.warning("Instagram OAuth authorization URL: %s", redirect_url)
@@ -994,22 +996,34 @@ async def instagram_start(request: Request, user: User = Depends(current_user)):
 async def instagram_callback(
     request: Request, code: str | None = None, state: str | None = None, db: AsyncSession = Depends(get_db)
 ):
-    if not request.session.get("user_id") or not state or state != request.session.pop("instagram_oauth_state", None):
+    session_user_id = request.session.get("user_id")
+    expected_state = request.session.pop("instagram_oauth_state", None)
+    state_user_id = decode_signed_state(state) if state else None
+    if not state or state_user_id is None or (
+        expected_state is not None and state != expected_state
+    ):
         raise HTTPException(status_code=400, detail="OAuth state inválido")
     if not code:
         raise HTTPException(status_code=400, detail="Código OAuth ausente")
     try:
         token_data = await exchange_code(code)
         short_token = token_data["access_token"]
-        long_lived_token = await exchange_long_lived_token(short_token)
-        profile = await fetch_profile(long_lived_token)
+        try:
+            access_token = await exchange_long_lived_token(short_token)
+        except httpx.HTTPStatusError as exc:
+            access_token = short_token
+            logger.warning(
+                "Meta recusou a troca para token longo (HTTP %s); usando token curto.",
+                exc.response.status_code,
+            )
+        profile = await fetch_profile(access_token)
         business_account = await fetch_instagram_business_account(
-            long_lived_token,
+            access_token,
             str(profile.get("user_id") or profile.get("id")),
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha no OAuth do Instagram: {exc}") from exc
-    user = await db.get(User, int(request.session["user_id"]))
+    user = await db.get(User, int(session_user_id or state_user_id))
     if not user:
         raise HTTPException(status_code=401, detail="Login required")
     owner_id = workspace_owner_id(user)
@@ -1029,7 +1043,7 @@ async def instagram_callback(
             account.facebook_page_id = business_account.get("page_id")
         account.username = profile.get("username", account.username)
         account.profile_picture_url = profile.get("profile_picture_url", account.profile_picture_url)
-        account.access_token_encrypted = encrypt_token(long_lived_token)
+        account.access_token_encrypted = encrypt_token(access_token)
     else:
         account = InstagramAccount(
             owner_id=owner_id,
@@ -1041,12 +1055,12 @@ async def instagram_callback(
             facebook_page_id=business_account.get("page_id") if business_account else None,
             username=profile.get("username", ""),
             profile_picture_url=profile.get("profile_picture_url"),
-            access_token_encrypted=encrypt_token(long_lived_token),
+            access_token_encrypted=encrypt_token(access_token),
         )
         db.add(account)
     await db.flush()
     async with httpx.AsyncClient(timeout=30) as client:
-        await _refresh_account_status(client, account, long_lived_token, get_settings())
+        await _refresh_account_status(client, account, access_token, get_settings())
     await db.commit()
     return RedirectResponse("/hub" if user.role == "collaborator" else "/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 

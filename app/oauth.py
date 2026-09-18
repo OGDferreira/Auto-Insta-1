@@ -2,6 +2,7 @@ import secrets
 from urllib.parse import urlencode
 
 import httpx
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from .config import get_settings
 
@@ -37,6 +38,23 @@ def new_state() -> str:
     return secrets.token_urlsafe(32)
 
 
+def signed_state(user_id: int) -> str:
+    settings = get_settings()
+    serializer = URLSafeTimedSerializer(settings.secret_key, salt="instagram-oauth")
+    return serializer.dumps({"nonce": new_state(), "user_id": user_id})
+
+
+def decode_signed_state(state: str) -> int | None:
+    settings = get_settings()
+    serializer = URLSafeTimedSerializer(settings.secret_key, salt="instagram-oauth")
+    try:
+        payload = serializer.loads(state, max_age=600)
+    except (BadSignature, SignatureExpired):
+        return None
+    user_id = payload.get("user_id") if isinstance(payload, dict) else None
+    return user_id if isinstance(user_id, int) and user_id > 0 else None
+
+
 async def exchange_code(code: str) -> dict:
     settings = get_settings()
     async with httpx.AsyncClient(timeout=20) as client:
@@ -58,7 +76,7 @@ async def exchange_long_lived_token(short_token: str) -> str:
     settings = get_settings()
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.get(
-            f"https://graph.instagram.com/{settings.graph_api_version}/access_token",
+            "https://graph.instagram.com/access_token",
             params={
                 "grant_type": "ig_exchange_token",
                 "client_secret": settings.meta_app_secret,
