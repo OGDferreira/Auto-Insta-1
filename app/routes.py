@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from supabase import create_client
@@ -1023,6 +1023,14 @@ async def instagram_callback(
             InstagramAccount.instagram_user_id.in_(account_ids),
         )
     )
+    if account is None and profile.get("username"):
+        account = await db.scalar(
+            select(InstagramAccount).where(
+                InstagramAccount.owner_id == owner_id,
+                InstagramAccount.connection_status == "pending",
+                func.lower(InstagramAccount.username) == profile["username"].strip().lower(),
+            )
+        )
     if account:
         if business_account:
             account.instagram_user_id = business_account["instagram_user_id"]
@@ -1047,6 +1055,18 @@ async def instagram_callback(
     await db.flush()
     async with httpx.AsyncClient(timeout=30) as client:
         await _refresh_account_status(client, account, long_lived_token, get_settings())
+    duplicate_pending = (
+        await db.scalars(
+            select(InstagramAccount).where(
+                InstagramAccount.owner_id == owner_id,
+                InstagramAccount.id != account.id,
+                InstagramAccount.connection_status == "pending",
+                func.lower(InstagramAccount.username) == account.username.strip().lower(),
+            )
+        )
+    ).all()
+    for pending_account in duplicate_pending:
+        await db.delete(pending_account)
     await db.commit()
     return RedirectResponse("/hub" if user.role == "collaborator" else "/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
