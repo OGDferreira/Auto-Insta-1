@@ -522,7 +522,12 @@ async def logout(request: Request):
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+async def dashboard(
+    request: Request,
+    period_days: int = 7,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
     if user.role == "collaborator":
         return RedirectResponse("/hub", status_code=status.HTTP_303_SEE_OTHER)
     owner_id = workspace_owner_id(user)
@@ -537,9 +542,15 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
     ).all()
     today = datetime.now(timezone.utc).date()
     today_posts = [post for post in posts if post.created_at and post.created_at.date() == today]
+    if period_days not in {7, 30, 90}:
+        period_days = 7
+    metric_start = datetime.now(timezone.utc) - timedelta(days=period_days - 1)
     metric_rows = (
         await db.scalars(
-            select(InstagramMetric).where(InstagramMetric.account_id.in_([a.id for a in accounts]))
+            select(InstagramMetric).where(
+                InstagramMetric.account_id.in_([a.id for a in accounts]),
+                InstagramMetric.metric_date >= metric_start,
+            )
         )
     ).all() if accounts else []
     events = (
@@ -584,7 +595,7 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
         "failed": sum(post.status == "failed" for post in posts),
     }
     volume_days = []
-    for offset in range(6, -1, -1):
+    for offset in range(period_days - 1, -1, -1):
         day = datetime.now(timezone.utc).date() - timedelta(days=offset)
         volume_days.append({
             "label": day.strftime("%d/%m"),
@@ -609,6 +620,7 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
                 "failed": sum(post.status == "failed" for post in posts),
             },
             "volume_days": volume_days,
+            "period_days": period_days,
         },
     )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -649,6 +661,7 @@ async def import_accounts(
 @router.post("/accounts/delete-selected")
 async def delete_selected_accounts(
     account_ids: list[int] = Form(...),
+    return_to: str = Form("/dashboard#accounts"),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -659,7 +672,8 @@ async def delete_selected_accounts(
         InstagramAccount.owner_id == workspace_owner_id(user),
     ))
     await db.commit()
-    return RedirectResponse("/dashboard#accounts", status_code=status.HTTP_303_SEE_OTHER)
+    destination = return_to if return_to in {"/dashboard#accounts", "/hub"} else "/dashboard#accounts"
+    return RedirectResponse(destination, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/hub", response_class=HTMLResponse)
@@ -890,7 +904,10 @@ async def instagram_callback(
 
 @router.post("/accounts/{account_id}/delete")
 async def delete_account(
-    account_id: int, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)
+    account_id: int,
+    return_to: str = Form("/hub"),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     owner_id = workspace_owner_id(user)
     account = await db.scalar(
@@ -902,7 +919,9 @@ async def delete_account(
         raise HTTPException(status_code=404, detail="Conta não encontrada")
     await db.delete(account)
     await db.commit()
-    return RedirectResponse("/hub" if user.role == "collaborator" else "/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    default_destination = "/hub" if user.role == "collaborator" else "/dashboard#accounts"
+    destination = return_to if return_to in {"/dashboard#accounts", "/hub"} else default_destination
+    return RedirectResponse(destination, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/accounts/{account_id}/auto-reply")
