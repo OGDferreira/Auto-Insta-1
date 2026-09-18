@@ -2,7 +2,6 @@ import secrets
 from urllib.parse import urlencode
 
 import httpx
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from .config import get_settings
 
@@ -36,23 +35,6 @@ def authorization_url(state: str) -> str:
 
 def new_state() -> str:
     return secrets.token_urlsafe(32)
-
-
-def signed_state(user_id: int) -> str:
-    settings = get_settings()
-    serializer = URLSafeTimedSerializer(settings.secret_key, salt="instagram-oauth")
-    return serializer.dumps({"nonce": new_state(), "user_id": user_id})
-
-
-def decode_signed_state(state: str) -> int | None:
-    settings = get_settings()
-    serializer = URLSafeTimedSerializer(settings.secret_key, salt="instagram-oauth")
-    try:
-        payload = serializer.loads(state, max_age=600)
-    except (BadSignature, SignatureExpired):
-        return None
-    user_id = payload.get("user_id") if isinstance(payload, dict) else None
-    return user_id if isinstance(user_id, int) and user_id > 0 else None
 
 
 async def exchange_code(code: str) -> dict:

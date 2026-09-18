@@ -52,7 +52,18 @@ def _webhook_events(payload: dict) -> list[dict]:
     """Accept Sharkbot's flat events as well as nested `data`/`payload` bodies."""
     if isinstance(payload.get("data"), dict):
         data = payload["data"]
-        return [{**payload, **data, "data": data, "event": payload.get("event") or data.get("event")}]
+        return [{
+            **payload,
+            **data,
+            "data": data,
+            "event": (
+                payload.get("event")
+                or payload.get("event_type")
+                or payload.get("event_name")
+                or data.get("event")
+                or data.get("event_type")
+            ),
+        }]
     if isinstance(payload.get("payload"), dict):
         return [{**payload, **payload["payload"]}]
     if any(payload.get(key) for key in ("event_type", "event_name", "type", "event", "name")):
@@ -65,6 +76,36 @@ def _webhook_events(payload: dict) -> list[dict]:
             for change in entry.get("changes", [])
         )
     return events
+
+
+def _event_transaction(value: dict) -> dict:
+    transaction = value.get("transaction")
+    return transaction if isinstance(transaction, dict) else {}
+
+
+def _event_amount(value: dict, transaction: dict) -> float:
+    raw_amount = value.get(
+        "value",
+        value.get("amount", value.get("price", transaction.get("amount", 0))),
+    )
+    try:
+        return float(raw_amount or 0)
+    except (TypeError, ValueError):
+        logger.warning("Valor inválido recebido pelo Sharkbot: %r", raw_amount)
+        return 0.0
+
+
+def _event_timestamp(value: dict) -> datetime:
+    raw_timestamp = value.get("timestamp")
+    if isinstance(raw_timestamp, (int, float)):
+        return datetime.fromtimestamp(raw_timestamp, tz=timezone.utc)
+    if isinstance(raw_timestamp, str):
+        try:
+            parsed = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            logger.warning("Timestamp inválido recebido pelo Sharkbot: %s", raw_timestamp)
+    return datetime.now(timezone.utc)
 
 
 @router.get("")
@@ -148,10 +189,12 @@ async def receive_webhook(request: Request):
             if not isinstance(value, dict):
                 value = event
             event_type = normalize_event_type(
-                value.get("event_type")
+                event.get("event")
+                or event.get("event_type")
+                or event.get("event_name")
+                or value.get("event_type")
                 or value.get("event_name")
                 or value.get("type")
-                or value.get("event")
                 or value.get("name")
             )
             logger.info("Evento Sharkbot recebido: tipo=%s", event_type)
@@ -169,9 +212,7 @@ async def receive_webhook(request: Request):
                             InstagramAccount.instagram_user_id == str(account_key)
                         )
                     )
-                transaction = value.get("transaction")
-                if not isinstance(transaction, dict):
-                    transaction = {}
+                transaction = _event_transaction(value)
                 customer = value.get("customer")
                 if not isinstance(customer, dict):
                     customer = {}
@@ -183,37 +224,42 @@ async def receive_webhook(request: Request):
                     for part in (customer.get("first_name"), customer.get("last_name"))
                     if part
                 ) or None
-                try:
-                    event_value = float(
-                        value.get(
-                            "value",
-                            value.get(
-                                "amount",
-                                value.get("price", transaction.get("amount", 0)),
-                            ),
-                        )
-                        or 0
+                event_value = _event_amount(value, transaction)
+                timestamp = _event_timestamp(event)
+                webhook_id = str(event.get("webhook_id")) if event.get("webhook_id") else None
+                transaction_id = str(
+                    transaction.get("id") or transaction.get("external_id")
+                ) if transaction.get("id") or transaction.get("external_id") else None
+                duplicate_query = select(BotEvent).where(
+                    BotEvent.webhook_id == webhook_id,
+                    BotEvent.event_type == event_type,
+                )
+                if transaction_id:
+                    duplicate_query = duplicate_query.where(
+                        BotEvent.transaction_id == transaction_id
                     )
-                except (TypeError, ValueError):
-                    event_value = 0.0
-                raw_timestamp = value.get("timestamp")
-                timestamp = datetime.now(timezone.utc)
-                if isinstance(raw_timestamp, (int, float)):
-                    timestamp = datetime.fromtimestamp(raw_timestamp, tz=timezone.utc)
-                elif isinstance(raw_timestamp, str):
-                    try:
-                        timestamp = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
-                    except ValueError:
-                        logger.warning("Timestamp inválido recebido pelo Sharkbot: %s", raw_timestamp)
+                else:
+                    duplicate_query = duplicate_query.where(
+                        BotEvent.timestamp == timestamp,
+                        BotEvent.value == event_value,
+                    )
+                duplicate = await db.scalar(duplicate_query) if webhook_id else None
+                if duplicate:
+                    logger.info(
+                        "Evento Sharkbot duplicado ignorado: webhook_id=%s tipo=%s",
+                        webhook_id,
+                        event_type,
+                    )
+                    continue
                 db.add(BotEvent(
                     account_id=account.id if account else None,
                     event_type=event_type,
                     value=event_value,
-                    webhook_id=str(event.get("webhook_id")) if event.get("webhook_id") else None,
+                    webhook_id=webhook_id,
                     customer_name=customer_name,
                     customer_username=str(customer.get("username")) if customer.get("username") else None,
                     bot_name=str(bot.get("name")) if bot.get("name") else None,
-                    transaction_id=str(transaction.get("id")) if transaction.get("id") else None,
+                    transaction_id=transaction_id,
                     plan_name=str(transaction.get("plan_name")) if transaction.get("plan_name") else None,
                     timestamp=timestamp,
                 ))

@@ -4,7 +4,7 @@ Aplicação multi-tenant para conectar contas pelo **Instagram Login for Busines
 
 Envios em massa são organizados como **lotes**. Cada lote pode ser nomeado, pausado e retomado sem apagar as publicações pendentes. A configuração do lote também permite adicionar ou remover contas: remoções afetam somente posts ainda pendentes, enquanto novas contas recebem os mesmos conteúdos e horários do lote.
 
-No Dashboard, clique em uma conta para abrir suas publicações; o filtro também permite exibir todas as contas conectadas. É possível selecionar e excluir publicações individualmente, em massa ou todas as publicações da visualização atual. Ao conectar uma conta, a aplicação consulta a Meta e só considera a conta apta quando confirma `instagram_business_content_publish`.
+No Dashboard, clique em uma conta para abrir suas publicações; o filtro também permite exibir todas as contas conectadas sem recarregar a página. É possível selecionar e excluir publicações individualmente, em massa ou todas as publicações da visualização atual, além de tentar novamente posts bloqueados ou com falha. O modo privacidade e os filtros da fila são mantidos no navegador. Ao conectar uma conta, a aplicação consulta a Meta e considera o perfil válido como ativo; somente falhas reais de autenticação, como o código 190, desconectam a conta.
 
 Publicações impedidas por autorização ficam como `blocked`, podem ser verificadas novamente depois que o usuário for adicionado como testador no Meta App Dashboard e possuem ação de tentativa novamente. A API não fornece uma consulta pública para confirmar diretamente a lista de testadores do aplicativo; por isso a aplicação valida o token, o perfil e as permissões efetivamente retornadas pela Meta.
 

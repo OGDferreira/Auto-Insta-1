@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta, timezone
-from urllib.parse import quote
 
 import logging
 import io
@@ -15,7 +14,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from supabase import create_client
@@ -40,11 +39,9 @@ from .oauth import (
     authorization_url,
     exchange_code,
     exchange_long_lived_token,
-    decode_signed_state,
     fetch_instagram_business_account,
     fetch_profile,
     new_state,
-    signed_state,
 )
 from .observability import get_recent_logs
 from .security import decrypt_token, encrypt_token, hash_password, verify_password
@@ -58,6 +55,43 @@ GOOGLE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]{2,80}$")
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 ACCOUNT_STATUS_CLASSES = {"connected", "disconnected", "error", "pending"}
+
+
+async def _remove_stale_pending_accounts(db: AsyncSession, owner_id: int) -> None:
+    accounts = (
+        await db.scalars(
+            select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
+        )
+    ).all()
+    connected_by_username = {
+        account.username.strip().lower(): account
+        for account in accounts
+        if account.connection_status != "pending" and account.username.strip()
+    }
+    changed = False
+    for pending_account in accounts:
+        target = connected_by_username.get(pending_account.username.strip().lower())
+        if pending_account.connection_status != "pending" or target is None or target.id == pending_account.id:
+            continue
+        await db.execute(
+            update(ScheduledPost)
+            .where(ScheduledPost.account_id == pending_account.id)
+            .values(account_id=target.id)
+        )
+        await db.execute(
+            update(InstagramMetric)
+            .where(InstagramMetric.account_id == pending_account.id)
+            .values(account_id=target.id)
+        )
+        await db.execute(
+            update(BotEvent)
+            .where(BotEvent.account_id == pending_account.id)
+            .values(account_id=target.id)
+        )
+        await db.delete(pending_account)
+        changed = True
+    if changed:
+        await db.commit()
 
 
 def account_status_classes(accounts: list[InstagramAccount]) -> dict[int, str]:
@@ -144,6 +178,25 @@ templates.env.globals["local_scheduled_datetime"] = local_scheduled_datetime
 
 def _notification_payload(total_views: int, account_count: int) -> str:
     return f"Auto-Insta: {total_views:,} visualizações em {account_count} conta(s).".replace(",", ".")
+
+
+async def _media_is_public(media_url: str | None) -> tuple[bool, str | None]:
+    if not media_url:
+        return False, "A publicação não possui uma URL de mídia armazenada."
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            response = await client.head(media_url)
+            if response.status_code in {405, 403}:
+                response = await client.get(
+                    media_url,
+                    headers={"Range": "bytes=0-1023"},
+                )
+            if response.status_code >= 400:
+                return False, f"A mídia não está acessível (HTTP {response.status_code})."
+            return True, None
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("Mídia indisponível para retry: %s", exc)
+        return False, "A mídia não está acessível pela internet."
 
 
 async def _send_web_push_notifications(db: AsyncSession, user_id: int, message: str) -> int:
@@ -541,6 +594,7 @@ async def dashboard(
     if user.role == "collaborator":
         return RedirectResponse("/hub", status_code=status.HTTP_303_SEE_OTHER)
     owner_id = workspace_owner_id(user)
+    await _remove_stale_pending_accounts(db, owner_id)
     accounts = (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == owner_id))).all()
     batches = (
         await db.scalars(
@@ -560,8 +614,6 @@ async def dashboard(
         .options(selectinload(ScheduledPost.account))
         .where(ScheduledPost.owner_id == owner_id)
     )
-    if account_id is not None:
-        posts_query = posts_query.where(ScheduledPost.account_id == account_id)
     posts = (
         await db.scalars(
             posts_query.order_by(ScheduledPost.scheduled_for.desc())
@@ -569,7 +621,7 @@ async def dashboard(
     ).all()
     today = datetime.now(timezone.utc).date()
     today_posts = [post for post in posts if post.created_at and post.created_at.date() == today]
-    if period_days not in {7, 30, 90}:
+    if period_days not in {1, 7, 30, 90}:
         period_days = 7
     metric_start = datetime.now(timezone.utc) - timedelta(days=period_days - 1)
     metric_rows = (
@@ -710,6 +762,7 @@ async def delete_selected_accounts(
 @router.get("/hub", response_class=HTMLResponse)
 async def hub(request: Request, status_filter: str = "", user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     owner_id = workspace_owner_id(user)
+    await _remove_stale_pending_accounts(db, owner_id)
     query = select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
     if status_filter in ACCOUNT_STATUS_CLASSES:
         query = query.where(InstagramAccount.connection_status == status_filter)
@@ -803,7 +856,13 @@ async def create_collaborator(
 
 
 @router.get("/api/status")
-async def api_status(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+async def api_status(
+    period_days: int = 7,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if period_days not in {1, 7, 30, 90}:
+        period_days = 7
     posts = (
         await db.scalars(
             select(ScheduledPost)
@@ -825,7 +884,10 @@ async def api_status(user: User = Depends(current_user), db: AsyncSession = Depe
     bot_events = (await db.scalars(bot_query)).all()
     metric_rows = (
         await db.scalars(
-            select(InstagramMetric).where(InstagramMetric.account_id.in_(account_ids))
+            select(InstagramMetric).where(
+                InstagramMetric.account_id.in_(account_ids),
+                InstagramMetric.metric_date >= datetime.now(timezone.utc) - timedelta(days=period_days - 1),
+            )
         )
     ).all() if account_ids else []
     account_views = _metric_views_by_account(metric_rows, account_ids)
@@ -834,6 +896,15 @@ async def api_status(user: User = Depends(current_user), db: AsyncSession = Depe
         event_type: sum(event.event_type == event_type for event in bot_events)
         for event_type in ("link_click", "lead_initiated", "pix_generated", "pix_paid", "pix_pending")
     }
+    paid_events = [
+        event for event in bot_events
+        if event.event_type == "pix_paid"
+    ]
+    latest_paid = max(
+        paid_events,
+        key=lambda event: (event.timestamp or datetime.min.replace(tzinfo=timezone.utc), event.id),
+        default=None,
+    )
     response = JSONResponse({
         "metrics": {
             "pending": sum(post.status in {"scheduled", "processing", "aguardando", "pending"} for post in posts),
@@ -847,6 +918,11 @@ async def api_status(user: User = Depends(current_user), db: AsyncSession = Depe
             "total_views": total_views,
         },
         "sharkbot": bot_counts,
+        "latest_sale": {
+            "value": latest_paid.value,
+            "customer_name": latest_paid.customer_name,
+            "timestamp": latest_paid.timestamp.isoformat() if latest_paid and latest_paid.timestamp else None,
+        } if latest_paid else None,
         "account_views": account_views,
         "account_statuses": {
             account.id: {
@@ -929,7 +1005,7 @@ async def test_meta_connection(
                     profile_payload,
                 )
                 insight_results = []
-                for metric_name in ("views", "impressions", "reach"):
+                for metric_name in ("views", "content_views", "reach"):
                     insight_params = {
                         "metric": metric_name,
                         "period": "day",
@@ -984,9 +1060,23 @@ async def test_meta_connection(
 
 
 @router.get("/auth/instagram/start")
-async def instagram_start(request: Request, user: User = Depends(current_user)):
-    state = signed_state(user.id) if getattr(user, "id", None) else new_state()
+async def instagram_start(
+    request: Request,
+    reconnect_account_id: int | None = None,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    state = new_state()
     request.session["instagram_oauth_state"] = state
+    if reconnect_account_id is not None:
+        account = await db.scalar(
+            select(InstagramAccount).where(
+                InstagramAccount.id == reconnect_account_id,
+                InstagramAccount.owner_id == workspace_owner_id(user),
+            )
+        )
+        if account:
+            request.session["instagram_reconnect_account_id"] = account.id
     redirect_url = authorization_url(state)
     logger.warning("Instagram OAuth authorization URL: %s", redirect_url)
     return RedirectResponse(redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
@@ -994,15 +1084,29 @@ async def instagram_start(request: Request, user: User = Depends(current_user)):
 
 @router.get("/auth/callback")
 async def instagram_callback(
-    request: Request, code: str | None = None, state: str | None = None, db: AsyncSession = Depends(get_db)
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_reason: str | None = None,
+    error_description: str | None = None,
+    db: AsyncSession = Depends(get_db),
 ):
     session_user_id = request.session.get("user_id")
     expected_state = request.session.pop("instagram_oauth_state", None)
-    state_user_id = decode_signed_state(state) if state else None
-    if not state or state_user_id is None or (
-        expected_state is not None and state != expected_state
-    ):
+    if not session_user_id or not state or state != expected_state:
+        logger.warning(
+            "Instagram OAuth callback rejected before token exchange: "
+            "session_user=%s callback_state=%s expected_state=%s",
+            bool(session_user_id),
+            bool(state),
+            bool(expected_state),
+        )
         raise HTTPException(status_code=400, detail="OAuth state inválido")
+    if error:
+        request.session.pop("instagram_reconnect_account_id", None)
+        detail = error_description or error_reason or error
+        raise HTTPException(status_code=400, detail=f"Autorização do Instagram não concluída: {detail}")
     if not code:
         raise HTTPException(status_code=400, detail="Código OAuth ausente")
     try:
@@ -1013,7 +1117,7 @@ async def instagram_callback(
         except httpx.HTTPStatusError as exc:
             access_token = short_token
             logger.warning(
-                "Meta recusou a troca para token longo (HTTP %s); usando token curto.",
+                "Meta recusou a troca para token longo (HTTP %s); usando token curto para concluir OAuth.",
                 exc.response.status_code,
             )
         profile = await fetch_profile(access_token)
@@ -1023,20 +1127,43 @@ async def instagram_callback(
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha no OAuth do Instagram: {exc}") from exc
-    user = await db.get(User, int(session_user_id or state_user_id))
+    user = await db.get(User, int(request.session["user_id"]))
     if not user:
         raise HTTPException(status_code=401, detail="Login required")
     owner_id = workspace_owner_id(user)
+    reconnect_account_id = request.session.pop("instagram_reconnect_account_id", None)
     profile_id = str(profile.get("user_id") or profile["id"])
     account_ids = {profile_id}
     if business_account:
         account_ids.add(business_account["instagram_user_id"])
-    account = await db.scalar(
-        select(InstagramAccount).where(
-            InstagramAccount.owner_id == owner_id,
-            InstagramAccount.instagram_user_id.in_(account_ids),
+    account = None
+    if reconnect_account_id is not None:
+        reconnect_account = await db.scalar(
+            select(InstagramAccount).where(
+                InstagramAccount.id == int(reconnect_account_id),
+                InstagramAccount.owner_id == owner_id,
+            )
         )
-    )
+        if reconnect_account and (
+            reconnect_account.connection_status in {"error", "disconnected", "pending"}
+            or reconnect_account.username.strip().lower() == str(profile.get("username", "")).strip().lower()
+        ):
+            account = reconnect_account
+    if account is None:
+        account = await db.scalar(
+            select(InstagramAccount).where(
+                InstagramAccount.owner_id == owner_id,
+                InstagramAccount.instagram_user_id.in_(account_ids),
+            )
+        )
+    if account is None and profile.get("username"):
+        account = await db.scalar(
+            select(InstagramAccount).where(
+                InstagramAccount.owner_id == owner_id,
+                InstagramAccount.connection_status == "pending",
+                func.lower(func.trim(InstagramAccount.username)) == profile["username"].strip().lower(),
+            )
+        )
     if account:
         if business_account:
             account.instagram_user_id = business_account["instagram_user_id"]
@@ -1061,6 +1188,33 @@ async def instagram_callback(
     await db.flush()
     async with httpx.AsyncClient(timeout=30) as client:
         await _refresh_account_status(client, account, access_token, get_settings())
+    duplicate_pending = (
+        await db.scalars(
+            select(InstagramAccount).where(
+                InstagramAccount.owner_id == owner_id,
+                InstagramAccount.id != account.id,
+                InstagramAccount.connection_status == "pending",
+                func.lower(func.trim(InstagramAccount.username)) == account.username.strip().lower(),
+            )
+        )
+    ).all()
+    for pending_account in duplicate_pending:
+        await db.execute(
+            update(ScheduledPost)
+            .where(ScheduledPost.account_id == pending_account.id)
+            .values(account_id=account.id)
+        )
+        await db.execute(
+            update(InstagramMetric)
+            .where(InstagramMetric.account_id == pending_account.id)
+            .values(account_id=account.id)
+        )
+        await db.execute(
+            update(BotEvent)
+            .where(BotEvent.account_id == pending_account.id)
+            .values(account_id=account.id)
+        )
+        await db.delete(pending_account)
     await db.commit()
     return RedirectResponse("/hub" if user.role == "collaborator" else "/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -1143,6 +1297,7 @@ async def verify_account(
     if not account.access_token_encrypted:
         account.connection_status = "pending"
         account.status_reason = "A conta ainda não possui um token autorizado."
+        account.status_checked_at = datetime.now(timezone.utc)
         await db.commit()
         if "application/json" in request.headers.get("accept", ""):
             return {
@@ -1150,8 +1305,12 @@ async def verify_account(
                 "status": account.connection_status,
                 "reason": account.status_reason,
                 "checked_at": account.status_checked_at.isoformat() if account.status_checked_at else None,
+                "reconnect_url": f"/auth/instagram/start?reconnect_account_id={account.id}",
             }
-        return RedirectResponse("/dashboard#accounts", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(
+            f"/auth/instagram/start?reconnect_account_id={account.id}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
     try:
         token = decrypt_token(account.access_token_encrypted)
         async with httpx.AsyncClient(timeout=30) as client:
@@ -1159,8 +1318,24 @@ async def verify_account(
     except Exception as exc:
         account.connection_status = "error"
         account.status_reason = f"Falha ao verificar a autorização na Meta: {str(exc)[:400]}"
+        account.status_checked_at = datetime.now(timezone.utc)
         logger.exception("Falha na verificação manual da conta %s", account.instagram_user_id)
     await db.commit()
+    if "application/json" in request.headers.get("accept", ""):
+        response = {
+            "account_id": account.id,
+            "status": account.connection_status,
+            "reason": account.status_reason,
+            "checked_at": account.status_checked_at.isoformat() if account.status_checked_at else None,
+        }
+        if account.connection_status != "connected":
+            response["reconnect_url"] = f"/auth/instagram/start?reconnect_account_id={account.id}"
+        return response
+    if account.connection_status != "connected":
+        return RedirectResponse(
+            f"/auth/instagram/start?reconnect_account_id={account.id}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
     return RedirectResponse("/dashboard#accounts", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -1260,9 +1435,16 @@ async def retry_post(
         post.error_message = account.status_reason or "A conta ainda não está autorizada para publicar."
         await db.commit()
         raise HTTPException(status_code=400, detail=post.error_message)
+    media_url = post.original_media_url or post.media_url
+    media_available, media_error = await _media_is_public(media_url)
+    if not media_available:
+        post.status = "failed"
+        post.error_message = media_error
+        await db.commit()
+        raise HTTPException(status_code=400, detail=media_error)
     post.status = "scheduled"
     post.error_message = None
-    post.scheduled_for = datetime.now(timezone.utc)
+    post.scheduled_for = datetime.now(timezone.utc) + timedelta(seconds=2)
     await db.commit()
     schedule_post(post.id, post.scheduled_for)
     return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
@@ -1296,10 +1478,65 @@ async def retry_blocked_posts(
     posts_query = select(ScheduledPost).where(
         ScheduledPost.owner_id == owner_id,
         ScheduledPost.status.in_({"failed", "blocked"}),
-        ScheduledPost.account_id.in_(authorized_ids) if authorized_ids else False,
+        ScheduledPost.account_id.in_(authorized_ids) if authorized_ids else ScheduledPost.id == -1,
     )
     posts = (await db.scalars(posts_query)).all()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc) + timedelta(seconds=2)
+    available_posts = []
+    for post in posts:
+        media_available, media_error = await _media_is_public(
+            post.original_media_url or post.media_url
+        )
+        if media_available:
+            available_posts.append(post)
+        else:
+            post.error_message = media_error
+    for post in available_posts:
+        post.status = "scheduled"
+        post.error_message = None
+        post.scheduled_for = now
+    await db.commit()
+    for post in available_posts:
+        schedule_post(post.id, post.scheduled_for)
+    destination = f"/dashboard?account_id={account_id}#queue" if account_id else "/dashboard#queue"
+    return RedirectResponse(destination, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/posts/retry-failed")
+async def retry_failed_posts(
+    account_id: int | None = Form(None),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    accounts_query = select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
+    if account_id is not None:
+        accounts_query = accounts_query.where(InstagramAccount.id == account_id)
+    accounts = (await db.scalars(accounts_query)).all()
+    if account_id is not None and not accounts:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+
+    authorized_ids = set()
+    async with httpx.AsyncClient(timeout=30) as client:
+        for account in accounts:
+            if not account.access_token_encrypted:
+                continue
+            try:
+                token = decrypt_token(account.access_token_encrypted)
+                if await _refresh_account_status(client, account, token, get_settings()):
+                    authorized_ids.add(account.id)
+            except Exception as exc:
+                logger.exception("Falha ao verificar autorização para retry da conta %s", account.id)
+                account.connection_status = "error"
+                account.status_reason = f"Falha ao verificar a autorização na Meta: {str(exc)[:400]}"
+
+    posts_query = select(ScheduledPost).where(
+        ScheduledPost.owner_id == owner_id,
+        ScheduledPost.status == "failed",
+        ScheduledPost.account_id.in_(authorized_ids) if authorized_ids else ScheduledPost.id == -1,
+    )
+    posts = (await db.scalars(posts_query)).all()
+    now = datetime.now(timezone.utc) + timedelta(seconds=2)
     for post in posts:
         post.status = "scheduled"
         post.error_message = None
