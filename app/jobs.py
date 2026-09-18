@@ -122,7 +122,7 @@ def _insight_values(payload: dict, today) -> list[tuple[datetime, int, int]]:
     return [
         (
             _local_day_start(metric_date),
-            values.get("impressions", values.get("views", 0)),
+            values.get("views") or values.get("impressions") or values.get("reach", 0),
             values.get("reach", 0),
         )
         for metric_date, values in values_by_date.items()
@@ -219,7 +219,7 @@ async def collect_instagram_insights() -> None:
                         else created_at.replace(tzinfo=timezone.utc).astimezone(LOCAL_TIMEZONE).date()
                     )
                     insights = None
-                    for metric_names in ("views,reach", "impressions,reach"):
+                    for metric_names in ("views,reach", "reach"):
                         candidate = await client.get(
                             f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
                             params={
@@ -266,9 +266,6 @@ async def collect_instagram_insights() -> None:
                         metric.impressions = impressions
                         metric.reach = reach
                 except Exception:
-                    account.status_checked_at = datetime.now(timezone.utc)
-                    account.connection_status = "error"
-                    account.status_reason = "Não foi possível verificar a conexão da conta."
                     logger.exception("Falha ao coletar Insights da conta %s", account.instagram_user_id)
         await db.commit()
 

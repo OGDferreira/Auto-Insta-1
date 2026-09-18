@@ -927,7 +927,7 @@ async def test_meta_connection(
                     profile_payload,
                 )
                 insight_results = []
-                for metric_name in ("views", "impressions", "reach"):
+                for metric_name in ("views", "reach"):
                     insight_params = {
                         "metric": metric_name,
                         "period": "day",
@@ -1282,6 +1282,52 @@ async def retry_blocked_posts(
     posts_query = select(ScheduledPost).where(
         ScheduledPost.owner_id == owner_id,
         ScheduledPost.status.in_({"failed", "blocked"}),
+        ScheduledPost.account_id.in_(authorized_ids) if authorized_ids else False,
+    )
+    posts = (await db.scalars(posts_query)).all()
+    now = datetime.now(timezone.utc)
+    for post in posts:
+        post.status = "scheduled"
+        post.error_message = None
+        post.scheduled_for = now
+    await db.commit()
+    for post in posts:
+        schedule_post(post.id, post.scheduled_for)
+    destination = f"/dashboard?account_id={account_id}#queue" if account_id else "/dashboard#queue"
+    return RedirectResponse(destination, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/posts/retry-failed")
+async def retry_failed_posts(
+    account_id: int | None = Form(None),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    accounts_query = select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
+    if account_id is not None:
+        accounts_query = accounts_query.where(InstagramAccount.id == account_id)
+    accounts = (await db.scalars(accounts_query)).all()
+    if account_id is not None and not accounts:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+
+    authorized_ids = set()
+    async with httpx.AsyncClient(timeout=30) as client:
+        for account in accounts:
+            if not account.access_token_encrypted:
+                continue
+            try:
+                token = decrypt_token(account.access_token_encrypted)
+                if await _refresh_account_status(client, account, token, get_settings()):
+                    authorized_ids.add(account.id)
+            except Exception as exc:
+                logger.exception("Falha ao verificar autorização para retry da conta %s", account.id)
+                account.connection_status = "error"
+                account.status_reason = f"Falha ao verificar a autorização na Meta: {str(exc)[:400]}"
+
+    posts_query = select(ScheduledPost).where(
+        ScheduledPost.owner_id == owner_id,
+        ScheduledPost.status == "failed",
         ScheduledPost.account_id.in_(authorized_ids) if authorized_ids else False,
     )
     posts = (await db.scalars(posts_query)).all()
