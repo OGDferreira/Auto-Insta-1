@@ -5,6 +5,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import get_settings
 from .db import init_db
+from . import jobs
 from .jobs import collect_instagram_insights, reset_scheduler, schedule_pending_posts
 from .routes import router
 from .webhooks import router as webhook_router
@@ -33,14 +34,10 @@ async def startup() -> None:
     reset_scheduler()
     await schedule_pending_posts()
     await collect_instagram_insights()
-    from . import jobs
-
     jobs.scheduler.start()
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
-    from . import jobs
-
     if jobs.scheduler.running:
         jobs.scheduler.shutdown(wait=False)

@@ -120,8 +120,7 @@ async def init_db() -> None:
                     "bot_name": "VARCHAR(180)",
                     "transaction_id": "VARCHAR(120)",
                     "plan_name": "VARCHAR(180)",
-                }
-                ,
+                },
                 "scheduled_posts": {
                     "original_media_url": "TEXT",
                     "thumbnail_url": "TEXT",

@@ -1,4 +1,4 @@
-const CACHE_NAME = "auto-insta-shell-v1";
+const CACHE_NAME = "auto-insta-shell-v2";
 const APP_SHELL = ["/static/favicon.svg", "/static/manifest.webmanifest"];
 
 self.addEventListener("install", event => {
@@ -17,6 +17,8 @@ self.addEventListener("activate", event => {
 
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET" || new URL(event.request.url).origin !== self.location.origin) return;
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.pathname !== "/static/favicon.svg" && requestUrl.pathname !== "/static/manifest.webmanifest") return;
   event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
 });
 
