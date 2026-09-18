@@ -1092,7 +1092,16 @@ async def instagram_callback(
     error_description: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    if not request.session.get("user_id") or not state or state != request.session.pop("instagram_oauth_state", None):
+    session_user_id = request.session.get("user_id")
+    expected_state = request.session.pop("instagram_oauth_state", None)
+    if not session_user_id or not state or state != expected_state:
+        logger.warning(
+            "Instagram OAuth callback rejected before token exchange: "
+            "session_user=%s callback_state=%s expected_state=%s",
+            bool(session_user_id),
+            bool(state),
+            bool(expected_state),
+        )
         raise HTTPException(status_code=400, detail="OAuth state inválido")
     if error:
         request.session.pop("instagram_reconnect_account_id", None)
