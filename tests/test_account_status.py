@@ -77,31 +77,3 @@ async def test_refresh_account_status_marks_only_code_190_as_disconnected():
     assert current.connection_status == "disconnected"
     assert "expired" in current.status_reason
     assert current.status_checked_at is not None
-
-
-@pytest.mark.asyncio
-async def test_refresh_account_status_keeps_api_access_blocked_as_error():
-    current = account()
-    client = FakeClient([
-        FakeResponse(
-            {
-                "error": {
-                    "code": 10,
-                    "message": "API access blocked",
-                }
-            },
-            status_code=403,
-        )
-    ])
-
-    result = await _refresh_account_status(
-        client,
-        current,
-        "token",
-        SimpleNamespace(graph_api_version="v22.0"),
-    )
-
-    assert result is False
-    assert current.connection_status == "error"
-    assert current.status_reason == "API access blocked"
-    assert current.status_checked_at is not None

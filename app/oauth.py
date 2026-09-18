@@ -58,7 +58,7 @@ async def exchange_long_lived_token(short_token: str) -> str:
     settings = get_settings()
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.get(
-            "https://graph.instagram.com/access_token",
+            f"https://graph.instagram.com/{settings.graph_api_version}/access_token",
             params={
                 "grant_type": "ig_exchange_token",
                 "client_secret": settings.meta_app_secret,

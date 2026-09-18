@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 import logging
 import io
@@ -178,25 +179,6 @@ templates.env.globals["local_scheduled_datetime"] = local_scheduled_datetime
 
 def _notification_payload(total_views: int, account_count: int) -> str:
     return f"Auto-Insta: {total_views:,} visualizações em {account_count} conta(s).".replace(",", ".")
-
-
-async def _media_is_public(media_url: str | None) -> tuple[bool, str | None]:
-    if not media_url:
-        return False, "A publicação não possui uma URL de mídia armazenada."
-    try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            response = await client.head(media_url)
-            if response.status_code in {405, 403}:
-                response = await client.get(
-                    media_url,
-                    headers={"Range": "bytes=0-1023"},
-                )
-            if response.status_code >= 400:
-                return False, f"A mídia não está acessível (HTTP {response.status_code})."
-            return True, None
-    except (httpx.HTTPError, ValueError) as exc:
-        logger.warning("Mídia indisponível para retry: %s", exc)
-        return False, "A mídia não está acessível pela internet."
 
 
 async def _send_web_push_notifications(db: AsyncSession, user_id: int, message: str) -> int:
@@ -614,6 +596,8 @@ async def dashboard(
         .options(selectinload(ScheduledPost.account))
         .where(ScheduledPost.owner_id == owner_id)
     )
+    if account_id is not None:
+        posts_query = posts_query.where(ScheduledPost.account_id == account_id)
     posts = (
         await db.scalars(
             posts_query.order_by(ScheduledPost.scheduled_for.desc())
@@ -896,15 +880,6 @@ async def api_status(
         event_type: sum(event.event_type == event_type for event in bot_events)
         for event_type in ("link_click", "lead_initiated", "pix_generated", "pix_paid", "pix_pending")
     }
-    paid_events = [
-        event for event in bot_events
-        if event.event_type == "pix_paid"
-    ]
-    latest_paid = max(
-        paid_events,
-        key=lambda event: (event.timestamp or datetime.min.replace(tzinfo=timezone.utc), event.id),
-        default=None,
-    )
     response = JSONResponse({
         "metrics": {
             "pending": sum(post.status in {"scheduled", "processing", "aguardando", "pending"} for post in posts),
@@ -918,11 +893,6 @@ async def api_status(
             "total_views": total_views,
         },
         "sharkbot": bot_counts,
-        "latest_sale": {
-            "value": latest_paid.value,
-            "customer_name": latest_paid.customer_name,
-            "timestamp": latest_paid.timestamp.isoformat() if latest_paid and latest_paid.timestamp else None,
-        } if latest_paid else None,
         "account_views": account_views,
         "account_statuses": {
             account.id: {
@@ -1060,23 +1030,9 @@ async def test_meta_connection(
 
 
 @router.get("/auth/instagram/start")
-async def instagram_start(
-    request: Request,
-    reconnect_account_id: int | None = None,
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
+async def instagram_start(request: Request, user: User = Depends(current_user)):
     state = new_state()
     request.session["instagram_oauth_state"] = state
-    if reconnect_account_id is not None:
-        account = await db.scalar(
-            select(InstagramAccount).where(
-                InstagramAccount.id == reconnect_account_id,
-                InstagramAccount.owner_id == workspace_owner_id(user),
-            )
-        )
-        if account:
-            request.session["instagram_reconnect_account_id"] = account.id
     redirect_url = authorization_url(state)
     logger.warning("Instagram OAuth authorization URL: %s", redirect_url)
     return RedirectResponse(redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
@@ -1084,45 +1040,19 @@ async def instagram_start(
 
 @router.get("/auth/callback")
 async def instagram_callback(
-    request: Request,
-    code: str | None = None,
-    state: str | None = None,
-    error: str | None = None,
-    error_reason: str | None = None,
-    error_description: str | None = None,
-    db: AsyncSession = Depends(get_db),
+    request: Request, code: str | None = None, state: str | None = None, db: AsyncSession = Depends(get_db)
 ):
-    session_user_id = request.session.get("user_id")
-    expected_state = request.session.pop("instagram_oauth_state", None)
-    if not session_user_id or not state or state != expected_state:
-        logger.warning(
-            "Instagram OAuth callback rejected before token exchange: "
-            "session_user=%s callback_state=%s expected_state=%s",
-            bool(session_user_id),
-            bool(state),
-            bool(expected_state),
-        )
+    if not request.session.get("user_id") or not state or state != request.session.pop("instagram_oauth_state", None):
         raise HTTPException(status_code=400, detail="OAuth state inválido")
-    if error:
-        request.session.pop("instagram_reconnect_account_id", None)
-        detail = error_description or error_reason or error
-        raise HTTPException(status_code=400, detail=f"Autorização do Instagram não concluída: {detail}")
     if not code:
         raise HTTPException(status_code=400, detail="Código OAuth ausente")
     try:
         token_data = await exchange_code(code)
         short_token = token_data["access_token"]
-        try:
-            access_token = await exchange_long_lived_token(short_token)
-        except httpx.HTTPStatusError as exc:
-            access_token = short_token
-            logger.warning(
-                "Meta recusou a troca para token longo (HTTP %s); usando token curto para concluir OAuth.",
-                exc.response.status_code,
-            )
-        profile = await fetch_profile(access_token)
+        long_lived_token = await exchange_long_lived_token(short_token)
+        profile = await fetch_profile(long_lived_token)
         business_account = await fetch_instagram_business_account(
-            access_token,
+            long_lived_token,
             str(profile.get("user_id") or profile.get("id")),
         )
     except Exception as exc:
@@ -1131,31 +1061,16 @@ async def instagram_callback(
     if not user:
         raise HTTPException(status_code=401, detail="Login required")
     owner_id = workspace_owner_id(user)
-    reconnect_account_id = request.session.pop("instagram_reconnect_account_id", None)
     profile_id = str(profile.get("user_id") or profile["id"])
     account_ids = {profile_id}
     if business_account:
         account_ids.add(business_account["instagram_user_id"])
-    account = None
-    if reconnect_account_id is not None:
-        reconnect_account = await db.scalar(
-            select(InstagramAccount).where(
-                InstagramAccount.id == int(reconnect_account_id),
-                InstagramAccount.owner_id == owner_id,
-            )
+    account = await db.scalar(
+        select(InstagramAccount).where(
+            InstagramAccount.owner_id == owner_id,
+            InstagramAccount.instagram_user_id.in_(account_ids),
         )
-        if reconnect_account and (
-            reconnect_account.connection_status in {"error", "disconnected", "pending"}
-            or reconnect_account.username.strip().lower() == str(profile.get("username", "")).strip().lower()
-        ):
-            account = reconnect_account
-    if account is None:
-        account = await db.scalar(
-            select(InstagramAccount).where(
-                InstagramAccount.owner_id == owner_id,
-                InstagramAccount.instagram_user_id.in_(account_ids),
-            )
-        )
+    )
     if account is None and profile.get("username"):
         account = await db.scalar(
             select(InstagramAccount).where(
@@ -1170,7 +1085,7 @@ async def instagram_callback(
             account.facebook_page_id = business_account.get("page_id")
         account.username = profile.get("username", account.username)
         account.profile_picture_url = profile.get("profile_picture_url", account.profile_picture_url)
-        account.access_token_encrypted = encrypt_token(access_token)
+        account.access_token_encrypted = encrypt_token(long_lived_token)
     else:
         account = InstagramAccount(
             owner_id=owner_id,
@@ -1182,12 +1097,12 @@ async def instagram_callback(
             facebook_page_id=business_account.get("page_id") if business_account else None,
             username=profile.get("username", ""),
             profile_picture_url=profile.get("profile_picture_url"),
-            access_token_encrypted=encrypt_token(access_token),
+            access_token_encrypted=encrypt_token(long_lived_token),
         )
         db.add(account)
     await db.flush()
     async with httpx.AsyncClient(timeout=30) as client:
-        await _refresh_account_status(client, account, access_token, get_settings())
+        await _refresh_account_status(client, account, long_lived_token, get_settings())
     duplicate_pending = (
         await db.scalars(
             select(InstagramAccount).where(
@@ -1297,7 +1212,6 @@ async def verify_account(
     if not account.access_token_encrypted:
         account.connection_status = "pending"
         account.status_reason = "A conta ainda não possui um token autorizado."
-        account.status_checked_at = datetime.now(timezone.utc)
         await db.commit()
         if "application/json" in request.headers.get("accept", ""):
             return {
@@ -1305,12 +1219,8 @@ async def verify_account(
                 "status": account.connection_status,
                 "reason": account.status_reason,
                 "checked_at": account.status_checked_at.isoformat() if account.status_checked_at else None,
-                "reconnect_url": f"/auth/instagram/start?reconnect_account_id={account.id}",
             }
-        return RedirectResponse(
-            f"/auth/instagram/start?reconnect_account_id={account.id}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
+        return RedirectResponse("/dashboard#accounts", status_code=status.HTTP_303_SEE_OTHER)
     try:
         token = decrypt_token(account.access_token_encrypted)
         async with httpx.AsyncClient(timeout=30) as client:
@@ -1318,24 +1228,8 @@ async def verify_account(
     except Exception as exc:
         account.connection_status = "error"
         account.status_reason = f"Falha ao verificar a autorização na Meta: {str(exc)[:400]}"
-        account.status_checked_at = datetime.now(timezone.utc)
         logger.exception("Falha na verificação manual da conta %s", account.instagram_user_id)
     await db.commit()
-    if "application/json" in request.headers.get("accept", ""):
-        response = {
-            "account_id": account.id,
-            "status": account.connection_status,
-            "reason": account.status_reason,
-            "checked_at": account.status_checked_at.isoformat() if account.status_checked_at else None,
-        }
-        if account.connection_status != "connected":
-            response["reconnect_url"] = f"/auth/instagram/start?reconnect_account_id={account.id}"
-        return response
-    if account.connection_status != "connected":
-        return RedirectResponse(
-            f"/auth/instagram/start?reconnect_account_id={account.id}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
     return RedirectResponse("/dashboard#accounts", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -1435,16 +1329,9 @@ async def retry_post(
         post.error_message = account.status_reason or "A conta ainda não está autorizada para publicar."
         await db.commit()
         raise HTTPException(status_code=400, detail=post.error_message)
-    media_url = post.original_media_url or post.media_url
-    media_available, media_error = await _media_is_public(media_url)
-    if not media_available:
-        post.status = "failed"
-        post.error_message = media_error
-        await db.commit()
-        raise HTTPException(status_code=400, detail=media_error)
     post.status = "scheduled"
     post.error_message = None
-    post.scheduled_for = datetime.now(timezone.utc) + timedelta(seconds=2)
+    post.scheduled_for = datetime.now(timezone.utc)
     await db.commit()
     schedule_post(post.id, post.scheduled_for)
     return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
@@ -1482,21 +1369,12 @@ async def retry_blocked_posts(
     )
     posts = (await db.scalars(posts_query)).all()
     now = datetime.now(timezone.utc) + timedelta(seconds=2)
-    available_posts = []
     for post in posts:
-        media_available, media_error = await _media_is_public(
-            post.original_media_url or post.media_url
-        )
-        if media_available:
-            available_posts.append(post)
-        else:
-            post.error_message = media_error
-    for post in available_posts:
         post.status = "scheduled"
         post.error_message = None
         post.scheduled_for = now
     await db.commit()
-    for post in available_posts:
+    for post in posts:
         schedule_post(post.id, post.scheduled_for)
     destination = f"/dashboard?account_id={account_id}#queue" if account_id else "/dashboard#queue"
     return RedirectResponse(destination, status_code=status.HTTP_303_SEE_OTHER)

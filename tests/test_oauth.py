@@ -1,8 +1,5 @@
 from urllib.parse import parse_qs, urlparse
 
-import httpx
-import pytest
-
 from app.oauth import OAUTH_SCOPES, authorization_url, new_state
 
 
@@ -37,36 +34,3 @@ def test_authorization_url_requires_app_id(monkeypatch):
 def test_oauth_state_is_unpredictable():
     assert new_state() != new_state()
     assert len(new_state()) >= 32
-
-
-@pytest.mark.asyncio
-async def test_exchange_long_lived_token_uses_unversioned_instagram_endpoint(monkeypatch):
-    monkeypatch.setenv("META_APP_SECRET", "test-secret")
-    monkeypatch.setenv("GRAPH_API_VERSION", "v25.0")
-    from app.config import get_settings
-
-    get_settings.cache_clear()
-    requests = []
-    async_client = httpx.AsyncClient
-
-    async def handler(request):
-        requests.append(request)
-        return httpx.Response(200, json={"access_token": "long-lived-token"})
-
-    monkeypatch.setattr(
-        httpx,
-        "AsyncClient",
-        lambda **kwargs: async_client(
-            transport=httpx.MockTransport(handler),
-            **kwargs,
-        ),
-    )
-
-    from app.oauth import exchange_long_lived_token
-
-    assert await exchange_long_lived_token("short-token") == "long-lived-token"
-    assert len(requests) == 1
-    assert str(requests[0].url) == (
-        "https://graph.instagram.com/access_token"
-        "?grant_type=ig_exchange_token&client_secret=test-secret&access_token=short-token"
-    )
