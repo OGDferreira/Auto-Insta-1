@@ -33,22 +33,22 @@
     @media(max-width:850px){.queue-layout,.overview-grid{grid-template-columns:1fr}.account-grid{grid-template-columns:repeat(2,1fr)}.automation-card{grid-template-columns:1fr}.automation-card button{justify-self:start}}@media(max-width:600px){.dashboard-hero{display:block}.live-indicator{width:max-content;margin-top:1rem}.metric-grid{grid-template-columns:repeat(2,1fr)}.account-grid,.automation-fields{grid-template-columns:1fr}.metric{padding:.9rem}.metric strong{font-size:1.6rem}.workspace-tab{padding:.8rem .65rem;font-size:.84rem}.section-heading{align-items:flex-start;flex-direction:column}.section-heading .button{width:100%}}
   </style>
   <style>
-    :root{--bg:#090612;--panel:#120d1f;--panel-2:#1a1230;--line:#30204c;--text:#f7f2ff;--muted:#a99cbd;--primary:#8b5cf6;--cyan:#c084fc;--danger:#fb7185;--success:#4ade80}
-    body{font-family:"Inter","DM Sans",sans-serif;width:100%;max-width:none;margin:0;padding:0 1.5rem 2.5rem;background:radial-gradient(ellipse at 78% -8%,rgba(124,58,237,.2),transparent 38%),radial-gradient(ellipse at 2% 42%,rgba(76,29,149,.16),transparent 34%),var(--bg)}
+    :root{--bg:#030712;--panel:#0b1220;--panel-2:#111827;--line:#1e293b;--text:#f8fafc;--muted:#94a3b8;--primary:#2563eb;--cyan:#60a5fa;--danger:#f43f5e;--success:#22c55e}
+    body{font-family:"Inter","DM Sans",sans-serif;width:100%;max-width:none;margin:0;padding:0 1.5rem 2.5rem;background:radial-gradient(ellipse at 78% -8%,rgba(37,99,235,.24),transparent 38%),radial-gradient(ellipse at 2% 42%,rgba(14,55,120,.16),transparent 34%),#030712}
     body:before,body:after{content:"";position:fixed;pointer-events:none;z-index:-1;border-radius:999px;filter:blur(1px);opacity:.45}
     body:before{width:28vw;height:28vw;left:-10vw;top:28vh;background:radial-gradient(circle,rgba(56,189,248,.18),transparent 68%);animation:float-shape 18s ease-in-out infinite}
     body:after{width:24vw;height:24vw;right:-8vw;top:8vh;background:radial-gradient(circle,rgba(99,102,241,.2),transparent 68%);animation:float-shape 22s ease-in-out -7s infinite reverse}
     @keyframes float-shape{0%,100%{transform:translate3d(0,0,0) rotate(0)}50%{transform:translate3d(5vw,4vh,0) rotate(18deg)}}
-    nav{padding:.55rem 0;border-bottom:1px solid var(--line);margin-bottom:.7rem;min-height:40px;background:rgba(12,7,23,.42);backdrop-filter:blur(18px)}
+    nav{padding:.55rem 0;border-bottom:1px solid var(--line);margin-bottom:.7rem;min-height:40px;background:rgba(7,11,18,.42);backdrop-filter:blur(18px)}
     .brand{font-family:"Inter","DM Sans",sans-serif;font-size:1.2rem;font-weight:750;color:var(--text)}
-    .card,.panel,.metric,.account-card,.queue-card{background:rgba(18,13,31,.68);border:1px solid rgba(139,92,246,.18);box-shadow:0 18px 60px rgba(0,0,0,.28),inset 0 1px rgba(255,255,255,.035);backdrop-filter:blur(20px);transition:transform .25s ease,border-color .25s ease,box-shadow .25s ease}
-    .card:hover,.panel:hover,.metric:hover,.account-card:hover,.queue-card:hover{transform:translateY(-3px);border-color:rgba(192,132,252,.72);box-shadow:0 24px 70px rgba(0,0,0,.36),0 0 30px rgba(124,58,237,.2)}
+    .card,.panel,.metric,.account-card,.queue-card{background:linear-gradient(145deg,rgba(17,24,39,.96),rgba(7,11,24,.96));border:1px solid var(--line);box-shadow:0 18px 60px rgba(0,0,0,.28),inset 0 1px rgba(255,255,255,.035);backdrop-filter:blur(20px);transition:transform .25s ease,border-color .25s ease,box-shadow .25s ease}
+    .card:hover,.panel:hover,.metric:hover,.account-card:hover,.queue-card:hover{transform:translateY(-3px);border-color:rgba(96,165,250,.7);box-shadow:0 24px 70px rgba(0,0,0,.36),0 0 24px rgba(37,99,235,.12)}
     .card{border-radius:18px}.panel{border-radius:16px}.metric{border-radius:13px}
     h1,h2,h3{font-family:"Inter","DM Sans",sans-serif;letter-spacing:-.035em}h1{font-weight:750}h2{font-size:1.45rem}
-    input,select,textarea{background:rgba(10,6,18,.72);border-color:var(--line);border-radius:9px}
-    button,.button{background:linear-gradient(135deg,#a855f7,#6d28d9);color:#fdfaff;border-radius:9px;font-weight:750;box-shadow:0 8px 24px rgba(124,58,237,.24)}
-    button.secondary,.button.secondary{background:rgba(26,18,48,.78);color:var(--text);border-color:var(--line)}
-    .workspace-tabs{border-color:var(--line);margin-bottom:1.35rem}.workspace-tab{padding:.75rem .95rem;font-size:.9rem}.workspace-tab:hover,.workspace-tab.active{border-color:var(--primary);color:var(--text);background:rgba(124,58,237,.12)}
+    input,select,textarea{background:rgba(5,11,17,.64);border-color:var(--line);border-radius:9px}
+    button,.button{background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#f8fafc;border-radius:9px;font-weight:750;box-shadow:0 8px 24px rgba(37,99,235,.24)}
+    button.secondary,.button.secondary{background:#111827;color:var(--text);border-color:var(--line)}
+    .workspace-tabs{border-color:var(--line);margin-bottom:1.35rem}.workspace-tab{padding:.75rem .95rem;font-size:.9rem}.workspace-tab:hover,.workspace-tab.active{border-color:var(--primary);color:var(--text);background:rgba(37,99,235,.1)}
     .dashboard-hero{padding:.55rem 0 .45rem}.dashboard-hero h1{font-size:1.35rem;font-weight:650;margin:.2rem 0}.dashboard-hero p{margin:.25rem 0;font-size:.78rem;max-width:520px}
     .tool-header{padding:.8rem 0 1rem}.tool-header h1{font-size:1.35rem;margin:0}
     .eyebrow,.panel-kicker{font-size:.66rem;letter-spacing:.14em}.live-indicator{padding:.4rem .65rem;font-size:.72rem}
@@ -65,7 +65,7 @@
     .toast{display:flex;align-items:flex-start;gap:.65rem;padding:.85rem 1rem;border:1px solid var(--line);border-left:3px solid var(--primary);border-radius:12px;background:rgba(11,18,32,.96);box-shadow:0 18px 45px rgba(0,0,0,.35);color:var(--text);font-size:.86rem;animation:toast-in .2s ease}
     .toast.error{border-left-color:var(--danger)}.toast.success{border-left-color:var(--success)}.toast button{margin-left:auto;padding:0;background:transparent;box-shadow:none;color:var(--muted)}
     @keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-    .profile-dialog,.card,.panel,.metric{border-color:rgba(139,92,246,.2)}
+    .profile-dialog,.card,.panel,.metric{border-color:#1e3a63}
     @media(max-width:650px){.toast-region{right:1rem;bottom:5.5rem}.brand{font-size:1.05rem}}
   </style>
   <script src="https://unpkg.com/lucide@latest"></script>
