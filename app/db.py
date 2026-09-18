@@ -76,6 +76,19 @@ async def init_db() -> None:
                     await connection.exec_driver_sql(
                         f"ALTER TABLE instagram_accounts ADD COLUMN {name} {definition}"
                     )
+            columns = await connection.exec_driver_sql("PRAGMA table_info(scheduled_posts)")
+            existing = {row[1] for row in columns}
+            new_columns = {
+                "original_media_url": "TEXT",
+                "thumbnail_url": "TEXT",
+                "storage_path": "TEXT",
+                "thumbnail_storage_path": "TEXT",
+            }
+            for name, definition in new_columns.items():
+                if name not in existing:
+                    await connection.exec_driver_sql(
+                        f"ALTER TABLE scheduled_posts ADD COLUMN {name} {definition}"
+                    )
             columns = await connection.exec_driver_sql("PRAGMA table_info(bot_events)")
             existing = {row[1] for row in columns}
             new_columns = {
@@ -107,6 +120,13 @@ async def init_db() -> None:
                     "transaction_id": "VARCHAR(120)",
                     "plan_name": "VARCHAR(180)",
                 }
+                ,
+                "scheduled_posts": {
+                    "original_media_url": "TEXT",
+                    "thumbnail_url": "TEXT",
+                    "storage_path": "TEXT",
+                    "thumbnail_storage_path": "TEXT",
+                },
             }
             from sqlalchemy import inspect
             for table_name, columns in migrations.items():

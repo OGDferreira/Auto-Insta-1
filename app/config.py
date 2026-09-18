@@ -23,6 +23,9 @@ class Settings(BaseModel):
     webhook_verify_token: str = "change-me"
     graph_api_version: str = "v25.0"
     cookie_secure: bool = False
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = ""
 
     @property
     def oauth_redirect_uri(self) -> str:
@@ -51,5 +54,11 @@ def get_settings() -> Settings:
         "webhook_verify_token": os.getenv("WEBHOOK_VERIFY_TOKEN", "change-me"),
         "graph_api_version": os.getenv("GRAPH_API_VERSION", "v25.0"),
         "cookie_secure": os.getenv("COOKIE_SECURE", "false").lower() == "true",
+        "google_client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
+        "google_client_secret": os.getenv("GOOGLE_CLIENT_SECRET", ""),
+        "google_redirect_uri": os.getenv(
+            "GOOGLE_REDIRECT_URI",
+            f"{os.getenv('PUBLIC_BASE_URL', 'http://localhost:8000')}/auth/google/callback",
+        ),
     }
     return Settings(**values)

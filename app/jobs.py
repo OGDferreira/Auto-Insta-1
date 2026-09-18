@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from supabase import create_client
 from sqlalchemy import select, update
 
 from .config import get_settings
@@ -367,6 +368,19 @@ async def _publish(post_id: int) -> None:
                     
             post.status = "published"
             post.error_message = None
+            if post.storage_path and post.thumbnail_storage_path and post.thumbnail_url:
+                try:
+                    storage_key = settings.supabase_service_role or settings.supabase_key
+                    if settings.supabase_url and storage_key:
+                        def remove_original() -> None:
+                            client = create_client(settings.supabase_url, storage_key)
+                            client.storage.from_(settings.supabase_storage_bucket).remove([post.storage_path])
+                        await asyncio.to_thread(remove_original)
+                        post.media_url = post.thumbnail_url
+                        post.original_media_url = None
+                        post.storage_path = None
+                except Exception:
+                    logger.exception("Falha ao remover mídia original do post %s", post_id)
             
         except Exception as exc:
             post.status = "failed"

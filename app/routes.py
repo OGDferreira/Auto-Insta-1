@@ -2,6 +2,8 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 import logging
+import io
+import json
 import asyncio
 import re
 from mimetypes import guess_type
@@ -16,6 +18,11 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from supabase import create_client
+from PIL import Image, ImageDraw
+from google_auth_oauthlib.flow import Flow
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 
 from .config import get_settings
 from .db import get_db
@@ -37,6 +44,7 @@ templates = Jinja2Templates(directory="app/templates")
 logger = logging.getLogger(__name__)
 UPLOAD_DIR = Path("uploads")
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
+GOOGLE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]{2,80}$")
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 ACCOUNT_STATUS_CLASSES = {"connected", "suspended", "error"}
@@ -124,6 +132,37 @@ def local_scheduled_datetime(value: datetime) -> str:
 templates.env.globals["local_scheduled_datetime"] = local_scheduled_datetime
 
 
+def _google_flow(state: str | None = None) -> Flow:
+    settings = get_settings()
+    if not settings.google_client_id or not settings.google_client_secret:
+        raise HTTPException(status_code=503, detail="GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET não configurados")
+    client_config = {
+        "web": {
+            "client_id": settings.google_client_id,
+            "client_secret": settings.google_client_secret,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "redirect_uris": [settings.google_redirect_uri],
+        }
+    }
+    flow = Flow.from_client_config(client_config, scopes=GOOGLE_SCOPES, state=state)
+    flow.redirect_uri = settings.google_redirect_uri
+    return flow
+
+
+def _thumbnail_bytes(content: bytes, media_type: str) -> bytes:
+    if media_type.startswith("image/"):
+        image = Image.open(io.BytesIO(content)).convert("RGB")
+        image.thumbnail((640, 640))
+    else:
+        image = Image.new("RGB", (640, 360), "#111827")
+        draw = ImageDraw.Draw(image)
+        draw.text((24, 160), "Pré-visualização do vídeo", fill="#38bdf8")
+    output = io.BytesIO()
+    image.save(output, format="JPEG", quality=72, optimize=True)
+    return output.getvalue()
+
+
 @router.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
@@ -157,9 +196,12 @@ async def upload_media(
     if not settings.supabase_url or not storage_key:
         raise HTTPException(status_code=503, detail="Supabase Storage não configurado")
 
-    def upload_to_storage() -> str:
+    thumbnail_content = _thumbnail_bytes(content, upload_content_type)
+    def upload_to_storage() -> dict[str, str]:
         client = create_client(settings.supabase_url, storage_key)
-        path = f"{uuid4().hex}/{filename}"
+        folder = uuid4().hex
+        path = f"{folder}/{filename}"
+        thumbnail_path = f"{folder}/thumbnail.jpg"
         client.storage.from_(settings.supabase_storage_bucket).upload(
             path,
             content,
@@ -168,10 +210,20 @@ async def upload_media(
                 "upsert": False,
             },
         )
-        return client.storage.from_(settings.supabase_storage_bucket).get_public_url(path)
+        client.storage.from_(settings.supabase_storage_bucket).upload(
+            thumbnail_path, thumbnail_content,
+            file_options={"content-type": "image/jpeg", "upsert": False},
+        )
+        bucket = client.storage.from_(settings.supabase_storage_bucket)
+        return {
+            "url": bucket.get_public_url(path),
+            "thumbnail_url": bucket.get_public_url(thumbnail_path),
+            "storage_path": path,
+            "thumbnail_storage_path": thumbnail_path,
+        }
 
     try:
-        public_url = await asyncio.to_thread(upload_to_storage)
+        stored = await asyncio.to_thread(upload_to_storage)
     except Exception as exc:
         logger.exception("Falha ao armazenar mídia %s no Supabase Storage", media.filename)
         error_message = str(exc).strip().replace("\n", " ")
@@ -180,9 +232,101 @@ async def upload_media(
             detail=f"Falha no Supabase Storage: {error_message[:300]}",
         ) from exc
     return {
-        "url": public_url,
+        **stored,
         "media_type": "VIDEO" if upload_content_type.startswith("video/") else "IMAGE",
     }
+
+
+@router.get("/auth/google/start")
+async def google_start(request: Request, user: User = Depends(current_user)):
+    state = new_state()
+    flow = _google_flow(state)
+    request.session["google_oauth_state"] = state
+    authorization_url, _ = flow.authorization_url(
+        access_type="offline", include_granted_scopes="true", prompt="consent"
+    )
+    return RedirectResponse(authorization_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+@router.get("/auth/google/callback")
+async def google_callback(request: Request):
+    state = request.session.pop("google_oauth_state", None)
+    if not state or request.query_params.get("state") != state:
+        raise HTTPException(status_code=400, detail="Estado OAuth Google inválido")
+    flow = _google_flow(state)
+    try:
+        flow.fetch_token(authorization_response=str(request.url))
+    except Exception as exc:
+        logger.exception("Falha no callback OAuth Google")
+        raise HTTPException(status_code=502, detail="Não foi possível autenticar no Google") from exc
+    request.session["google_credentials"] = flow.credentials.to_json()
+    return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/api/drive/files")
+async def drive_files(request: Request, user: User = Depends(current_user)):
+    serialized = request.session.get("google_credentials")
+    if not serialized:
+        raise HTTPException(status_code=401, detail="Autentique-se no Google antes de importar do Drive")
+    credentials = Credentials.from_authorized_user_info(json.loads(serialized), GOOGLE_SCOPES)
+    def list_files():
+        service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+        return service.files().list(
+            q="trashed = false and (mimeType contains 'image/' or mimeType contains 'video/')",
+            fields="files(id,name,mimeType,size,thumbnailLink,modifiedTime)",
+            orderBy="modifiedTime desc", pageSize=100,
+        ).execute().get("files", [])
+    try:
+        return {"files": await asyncio.to_thread(list_files)}
+    except Exception as exc:
+        logger.exception("Falha ao listar arquivos do Google Drive")
+        raise HTTPException(status_code=502, detail="Não foi possível listar o Google Drive") from exc
+
+
+@router.post("/api/drive/import")
+async def drive_import(
+    request: Request,
+    file_id: str = Form(...),
+    user: User = Depends(current_user),
+):
+    serialized = request.session.get("google_credentials")
+    if not serialized:
+        raise HTTPException(status_code=401, detail="Autentique-se no Google antes de importar do Drive")
+    credentials = Credentials.from_authorized_user_info(json.loads(serialized), GOOGLE_SCOPES)
+    settings = get_settings()
+    storage_key = settings.supabase_service_role or settings.supabase_key
+    if not settings.supabase_url or not storage_key:
+        raise HTTPException(status_code=503, detail="Supabase Storage não configurado")
+    def download_and_upload() -> dict[str, str]:
+        service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+        metadata = service.files().get(fileId=file_id, fields="name,mimeType").execute()
+        buffer = io.BytesIO()
+        downloader = MediaIoBaseDownload(buffer, service.files().get_media(fileId=file_id))
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        content = buffer.getvalue()
+        if len(content) > MAX_UPLOAD_SIZE:
+            raise ValueError("Arquivo excede o limite de 50 MB")
+        media_type = metadata["mimeType"]
+        filename = f"{uuid4().hex}{Path(metadata['name']).suffix.lower()}"
+        folder = uuid4().hex
+        path, thumb_path = f"{folder}/{filename}", f"{folder}/thumbnail.jpg"
+        client = create_client(settings.supabase_url, storage_key)
+        bucket = client.storage.from_(settings.supabase_storage_bucket)
+        bucket.upload(path, content, file_options={"content-type": media_type, "upsert": False})
+        bucket.upload(thumb_path, _thumbnail_bytes(content, media_type),
+                      file_options={"content-type": "image/jpeg", "upsert": False})
+        return {"url": bucket.get_public_url(path), "thumbnail_url": bucket.get_public_url(thumb_path),
+                "storage_path": path, "thumbnail_storage_path": thumb_path,
+                "media_type": "VIDEO" if media_type.startswith("video/") else "IMAGE"}
+    try:
+        return await asyncio.to_thread(download_and_upload)
+    except ValueError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Falha ao importar arquivo do Google Drive")
+        raise HTTPException(status_code=502, detail="Não foi possível importar o arquivo") from exc
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -379,17 +523,66 @@ async def dashboard(request: Request, user: User = Depends(current_user), db: As
     return response
 
 
-@router.get("/hub", response_class=HTMLResponse)
-async def hub(request: Request, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+@router.post("/accounts/import")
+async def import_accounts(
+    request: Request,
+    accounts_text: str = Form(...),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
     owner_id = workspace_owner_id(user)
-    accounts = (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == owner_id))).all()
+    created = 0
+    for line in accounts_text.splitlines():
+        parts = [part.strip() for part in line.split(";", 1)]
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            continue
+        username, _password = parts
+        db.add(InstagramAccount(
+            owner_id=owner_id,
+            instagram_user_id=f"pending-{uuid4().hex}",
+            username=username[:120],
+            access_token_encrypted="",
+            connection_status="error",
+            status_reason="Conta importada. Conecte-a para validar o acesso.",
+        ))
+        created += 1
+    if not created:
+        raise HTTPException(status_code=400, detail="Use uma conta por linha no formato usuario;senha")
+    await db.commit()
+    request.session["access_notice"] = f"{created} conta(s) importada(s) como pendente(s)."
+    return RedirectResponse("/dashboard#accounts", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/accounts/delete-selected")
+async def delete_selected_accounts(
+    account_ids: list[int] = Form(...),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not account_ids:
+        raise HTTPException(status_code=400, detail="Nenhuma conta selecionada")
+    await db.execute(delete(InstagramAccount).where(
+        InstagramAccount.id.in_(set(account_ids)),
+        InstagramAccount.owner_id == workspace_owner_id(user),
+    ))
+    await db.commit()
+    return RedirectResponse("/dashboard#accounts", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/hub", response_class=HTMLResponse)
+async def hub(request: Request, status_filter: str = "", user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    owner_id = workspace_owner_id(user)
+    query = select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
+    if status_filter in ACCOUNT_STATUS_CLASSES:
+        query = query.where(InstagramAccount.connection_status == status_filter)
+    accounts = (await db.scalars(query)).all()
     account_views = {}
     for account in accounts:
         rows = (await db.scalars(select(InstagramMetric).where(
             InstagramMetric.account_id == account.id
         ).order_by(InstagramMetric.metric_date.desc()).limit(10))).all()
         account_views[account.id] = _metric_views_by_account(rows, [account.id])[account.id]
-    response = templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_status_classes": account_status_classes(accounts), "account_views": account_views, "notice": request.session.pop("access_notice", None)})
+    response = templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_status_classes": account_status_classes(accounts), "account_views": account_views, "status_filter": status_filter, "notice": request.session.pop("access_notice", None)})
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -785,6 +978,9 @@ async def create_bulk_posts(
     account_ids: list[int] = Form(...),
     media_urls: list[str] = Form(...),
     media_types: list[str] = Form(...),
+    thumbnail_urls: list[str] = Form(default=[]),
+    storage_paths: list[str] = Form(default=[]),
+    thumbnail_storage_paths: list[str] = Form(default=[]),
     captions: list[str] = Form(default=[]),
     caption_mode: str = Form("global"),
     caption: str = Form(""),
@@ -832,6 +1028,10 @@ async def create_bulk_posts(
                 owner_id=owner_id,
                 account_id=account.id,
                 media_url=media_url,
+                original_media_url=media_url,
+                thumbnail_url=thumbnail_urls[media_index] if media_index < len(thumbnail_urls) else media_url,
+                storage_path=storage_paths[media_index] if media_index < len(storage_paths) else None,
+                thumbnail_storage_path=thumbnail_storage_paths[media_index] if media_index < len(thumbnail_storage_paths) else None,
                 media_type=normalized_type,
                 caption=caption,
                 scheduled_for=first_time + timedelta(minutes=sequence_index * interval_minutes),

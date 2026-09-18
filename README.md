@@ -56,6 +56,8 @@ O worker cria um container em `/{ig_id}/media` e o publica em `/{ig_id}/media_pu
 
 O endpoint `/media/upload` envia os bytes originais para o bucket público `SUPABASE_STORAGE_BUCKET` do Supabase Storage e devolve a URL pública do objeto. Em produção, configure `SUPABASE_URL`, `SUPABASE_STORAGE_BUCKET` e a variável `SERVICE_ROLE` (preferencial) ou `SUPABASE_KEY` no Render. O bucket precisa existir e estar público para leitura; a chave `service_role` permite o upload no servidor sem depender de policy da chave anônima. O disco local do Render não é usado para armazenar as mídias.
 
+Uploads também geram uma miniatura JPEG leve. Após uma publicação bem-sucedida, o worker remove o original do bucket e mantém a miniatura para o histórico. Para importar mídias do Google Drive, configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` e `GOOGLE_REDIRECT_URI` no `.env` e cadastre o redirect URI no OAuth Client do Google Cloud Console.
+
 ## Meta Webhooks
 
 Cadastre `https://SEU_HOST/webhook` no produto Instagram e use o mesmo `WEBHOOK_VERIFY_TOKEN`. O GET responde ao desafio `hub.challenge`; o POST aceita eventos `messaging` e `changes`, encontra a conta pelo `instagram_user_id` e, quando habilitado no dashboard, envia uma resposta automática pela API do Instagram. Configure também os campos de mensagens/comentários exigidos pelo painel Meta.
@@ -71,6 +73,12 @@ O endpoint aceita os payloads `payment_created`, `payment_approved` e `user_join
 ## Deploy no Render
 
 `render.yaml` cria apenas um Web Service Docker no plano gratuito. O SQLite e o APScheduler rodam na própria instância, sem serviços externos. Faça o blueprint apontar para este repositório, preencha os valores `sync: false` e defina `PUBLIC_BASE_URL` com a URL HTTPS do web service. O health check é `/health`.
+
+Depois de atualizar as dependências localmente:
+
+```bash
+python -m pip install -r requirements.txt
+```
 
 ## Estrutura
 
