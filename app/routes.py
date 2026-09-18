@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from supabase import create_client
@@ -56,6 +56,43 @@ GOOGLE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]{2,80}$")
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 ACCOUNT_STATUS_CLASSES = {"connected", "disconnected", "error", "pending"}
+
+
+async def _remove_stale_pending_accounts(db: AsyncSession, owner_id: int) -> None:
+    accounts = (
+        await db.scalars(
+            select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
+        )
+    ).all()
+    connected_by_username = {
+        account.username.strip().lower(): account
+        for account in accounts
+        if account.connection_status != "pending" and account.username.strip()
+    }
+    changed = False
+    for pending_account in accounts:
+        target = connected_by_username.get(pending_account.username.strip().lower())
+        if pending_account.connection_status != "pending" or target is None or target.id == pending_account.id:
+            continue
+        await db.execute(
+            update(ScheduledPost)
+            .where(ScheduledPost.account_id == pending_account.id)
+            .values(account_id=target.id)
+        )
+        await db.execute(
+            update(InstagramMetric)
+            .where(InstagramMetric.account_id == pending_account.id)
+            .values(account_id=target.id)
+        )
+        await db.execute(
+            update(BotEvent)
+            .where(BotEvent.account_id == pending_account.id)
+            .values(account_id=target.id)
+        )
+        await db.delete(pending_account)
+        changed = True
+    if changed:
+        await db.commit()
 
 
 def account_status_classes(accounts: list[InstagramAccount]) -> dict[int, str]:
@@ -539,6 +576,7 @@ async def dashboard(
     if user.role == "collaborator":
         return RedirectResponse("/hub", status_code=status.HTTP_303_SEE_OTHER)
     owner_id = workspace_owner_id(user)
+    await _remove_stale_pending_accounts(db, owner_id)
     accounts = (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == owner_id))).all()
     batches = (
         await db.scalars(
@@ -567,7 +605,7 @@ async def dashboard(
     ).all()
     today = datetime.now(timezone.utc).date()
     today_posts = [post for post in posts if post.created_at and post.created_at.date() == today]
-    if period_days not in {7, 30, 90}:
+    if period_days not in {1, 7, 30, 90}:
         period_days = 7
     metric_start = datetime.now(timezone.utc) - timedelta(days=period_days - 1)
     metric_rows = (
@@ -708,6 +746,7 @@ async def delete_selected_accounts(
 @router.get("/hub", response_class=HTMLResponse)
 async def hub(request: Request, status_filter: str = "", user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     owner_id = workspace_owner_id(user)
+    await _remove_stale_pending_accounts(db, owner_id)
     query = select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
     if status_filter in ACCOUNT_STATUS_CLASSES:
         query = query.where(InstagramAccount.connection_status == status_filter)
@@ -801,7 +840,13 @@ async def create_collaborator(
 
 
 @router.get("/api/status")
-async def api_status(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+async def api_status(
+    period_days: int = 7,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if period_days not in {1, 7, 30, 90}:
+        period_days = 7
     posts = (
         await db.scalars(
             select(ScheduledPost)
@@ -823,7 +868,10 @@ async def api_status(user: User = Depends(current_user), db: AsyncSession = Depe
     bot_events = (await db.scalars(bot_query)).all()
     metric_rows = (
         await db.scalars(
-            select(InstagramMetric).where(InstagramMetric.account_id.in_(account_ids))
+            select(InstagramMetric).where(
+                InstagramMetric.account_id.in_(account_ids),
+                InstagramMetric.metric_date >= datetime.now(timezone.utc) - timedelta(days=period_days - 1),
+            )
         )
     ).all() if account_ids else []
     account_views = _metric_views_by_account(metric_rows, account_ids)
@@ -927,7 +975,7 @@ async def test_meta_connection(
                     profile_payload,
                 )
                 insight_results = []
-                for metric_name in ("views", "reach"):
+                for metric_name in ("views", "content_views", "reach"):
                     insight_params = {
                         "metric": metric_name,
                         "period": "day",
@@ -1028,7 +1076,7 @@ async def instagram_callback(
             select(InstagramAccount).where(
                 InstagramAccount.owner_id == owner_id,
                 InstagramAccount.connection_status == "pending",
-                func.lower(InstagramAccount.username) == profile["username"].strip().lower(),
+                func.lower(func.trim(InstagramAccount.username)) == profile["username"].strip().lower(),
             )
         )
     if account:
@@ -1061,11 +1109,26 @@ async def instagram_callback(
                 InstagramAccount.owner_id == owner_id,
                 InstagramAccount.id != account.id,
                 InstagramAccount.connection_status == "pending",
-                func.lower(InstagramAccount.username) == account.username.strip().lower(),
+                func.lower(func.trim(InstagramAccount.username)) == account.username.strip().lower(),
             )
         )
     ).all()
     for pending_account in duplicate_pending:
+        await db.execute(
+            update(ScheduledPost)
+            .where(ScheduledPost.account_id == pending_account.id)
+            .values(account_id=account.id)
+        )
+        await db.execute(
+            update(InstagramMetric)
+            .where(InstagramMetric.account_id == pending_account.id)
+            .values(account_id=account.id)
+        )
+        await db.execute(
+            update(BotEvent)
+            .where(BotEvent.account_id == pending_account.id)
+            .values(account_id=account.id)
+        )
         await db.delete(pending_account)
     await db.commit()
     return RedirectResponse("/hub" if user.role == "collaborator" else "/dashboard", status_code=status.HTTP_303_SEE_OTHER)
@@ -1302,10 +1365,10 @@ async def retry_blocked_posts(
     posts_query = select(ScheduledPost).where(
         ScheduledPost.owner_id == owner_id,
         ScheduledPost.status.in_({"failed", "blocked"}),
-        ScheduledPost.account_id.in_(authorized_ids) if authorized_ids else False,
+        ScheduledPost.account_id.in_(authorized_ids) if authorized_ids else ScheduledPost.id == -1,
     )
     posts = (await db.scalars(posts_query)).all()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc) + timedelta(seconds=2)
     for post in posts:
         post.status = "scheduled"
         post.error_message = None
@@ -1348,10 +1411,10 @@ async def retry_failed_posts(
     posts_query = select(ScheduledPost).where(
         ScheduledPost.owner_id == owner_id,
         ScheduledPost.status == "failed",
-        ScheduledPost.account_id.in_(authorized_ids) if authorized_ids else False,
+        ScheduledPost.account_id.in_(authorized_ids) if authorized_ids else ScheduledPost.id == -1,
     )
     posts = (await db.scalars(posts_query)).all()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc) + timedelta(seconds=2)
     for post in posts:
         post.status = "scheduled"
         post.error_message = None

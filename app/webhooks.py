@@ -52,7 +52,18 @@ def _webhook_events(payload: dict) -> list[dict]:
     """Accept Sharkbot's flat events as well as nested `data`/`payload` bodies."""
     if isinstance(payload.get("data"), dict):
         data = payload["data"]
-        return [{**payload, **data, "data": data, "event": payload.get("event") or data.get("event")}]
+        return [{
+            **payload,
+            **data,
+            "data": data,
+            "event": (
+                payload.get("event")
+                or payload.get("event_type")
+                or payload.get("event_name")
+                or data.get("event")
+                or data.get("event_type")
+            ),
+        }]
     if isinstance(payload.get("payload"), dict):
         return [{**payload, **payload["payload"]}]
     if any(payload.get(key) for key in ("event_type", "event_name", "type", "event", "name")):
@@ -205,15 +216,33 @@ async def receive_webhook(request: Request):
                         timestamp = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
                     except ValueError:
                         logger.warning("Timestamp inválido recebido pelo Sharkbot: %s", raw_timestamp)
+                webhook_id = str(event.get("webhook_id")) if event.get("webhook_id") else None
+                transaction_id = str(transaction.get("id")) if transaction.get("id") else None
+                duplicate_query = select(BotEvent).where(
+                    BotEvent.webhook_id == webhook_id,
+                    BotEvent.event_type == event_type,
+                )
+                if transaction_id:
+                    duplicate_query = duplicate_query.where(
+                        BotEvent.transaction_id == transaction_id
+                    )
+                duplicate = await db.scalar(duplicate_query) if webhook_id else None
+                if duplicate:
+                    logger.info(
+                        "Evento Sharkbot duplicado ignorado: webhook_id=%s tipo=%s",
+                        webhook_id,
+                        event_type,
+                    )
+                    continue
                 db.add(BotEvent(
                     account_id=account.id if account else None,
                     event_type=event_type,
                     value=event_value,
-                    webhook_id=str(event.get("webhook_id")) if event.get("webhook_id") else None,
+                    webhook_id=webhook_id,
                     customer_name=customer_name,
                     customer_username=str(customer.get("username")) if customer.get("username") else None,
                     bot_name=str(bot.get("name")) if bot.get("name") else None,
-                    transaction_id=str(transaction.get("id")) if transaction.get("id") else None,
+                    transaction_id=transaction_id,
                     plan_name=str(transaction.get("plan_name")) if transaction.get("plan_name") else None,
                     timestamp=timestamp,
                 ))

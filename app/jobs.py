@@ -1,17 +1,27 @@
 from datetime import datetime, timedelta, timezone
 import asyncio
+import json
 import logging
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from pywebpush import WebPushException, webpush
 from supabase import create_client
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from .config import get_settings
 from .db import SessionLocal
-from .models import InstagramAccount, InstagramMetric, PostingBatch, ScheduledPost
+from .models import (
+    InstagramAccount,
+    InstagramMetric,
+    NotificationSubscription,
+    PostingBatch,
+    ScheduledPost,
+    User,
+)
 from .security import decrypt_token
 
 
@@ -99,7 +109,7 @@ def _insight_values(payload: dict, today) -> list[tuple[datetime, int, int]]:
     values_by_date: dict[object, dict[str, int]] = {}
     for item in payload.get("data", []):
         name = item.get("name")
-        if name not in {"impressions", "views", "reach"}:
+        if name not in {"impressions", "views", "content_views", "reach"}:
             continue
         entries = item.get("values", [])
         if not entries and isinstance(item.get("total_value"), dict):
@@ -122,7 +132,7 @@ def _insight_values(payload: dict, today) -> list[tuple[datetime, int, int]]:
     return [
         (
             _local_day_start(metric_date),
-            values.get("views") or values.get("impressions") or values.get("reach", 0),
+            values.get("views") or values.get("content_views") or values.get("impressions") or values.get("reach", 0),
             values.get("reach", 0),
         )
         for metric_date, values in values_by_date.items()
@@ -195,6 +205,100 @@ def reset_scheduler() -> None:
         coalesce=True,
         max_instances=1,
     )
+    scheduler.add_job(
+        send_daily_summary_notifications,
+        CronTrigger(hour=21, minute=0, timezone=LOCAL_TIMEZONE),
+        id="send-daily-summary-notifications",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+
+
+async def send_daily_summary_notifications() -> None:
+    """Send each subscribed user a daily summary of today's activity."""
+    settings = get_settings()
+    if not settings.vapid_private_key or not settings.vapid_subject:
+        logger.warning("Resumo diário não enviado: VAPID não configurado.")
+        return
+    today = datetime.now(LOCAL_TIMEZONE).date()
+    day_start = _local_day_start(today)
+    next_day = day_start + timedelta(days=1)
+    async with SessionLocal() as db:
+        users = (
+            await db.scalars(
+                select(User).where(User.role == "admin")
+            )
+        ).all()
+        for user in users:
+            accounts = (
+                await db.scalars(
+                    select(InstagramAccount).where(InstagramAccount.owner_id == user.id)
+                )
+            ).all()
+            account_ids = [account.id for account in accounts]
+            if not account_ids:
+                continue
+            published_count = await db.scalar(
+                select(func.count(ScheduledPost.id)).where(
+                    ScheduledPost.owner_id == user.id,
+                    ScheduledPost.status == "published",
+                    ScheduledPost.created_at >= day_start,
+                    ScheduledPost.created_at < next_day,
+                )
+            )
+            metric_rows = (
+                await db.scalars(
+                    select(InstagramMetric).where(
+                        InstagramMetric.account_id.in_(account_ids),
+                        InstagramMetric.metric_date >= day_start,
+                        InstagramMetric.metric_date < next_day,
+                    )
+                )
+            ).all()
+            total_views = sum(int(row.impressions or row.reach or 0) for row in metric_rows)
+            message = (
+                f"Resumo do dia\n"
+                f"{published_count or 0} publicações em {len(accounts)} conta(s). "
+                f"{total_views:,} visualizações hoje."
+            ).replace(",", ".")
+            subscriptions = (
+                await db.scalars(
+                    select(NotificationSubscription).where(
+                        NotificationSubscription.user_id == user.id
+                    )
+                )
+            ).all()
+            for subscription in subscriptions:
+                try:
+                    await asyncio.to_thread(
+                        webpush,
+                        subscription_info={
+                            "endpoint": subscription.endpoint,
+                            "keys": {
+                                "p256dh": subscription.p256dh,
+                                "auth": subscription.auth,
+                            },
+                        },
+                        data=json.dumps({
+                            "title": "Auto-Insta",
+                            "body": message,
+                            "url": "/dashboard#overview",
+                        }),
+                        vapid_private_key=settings.vapid_private_key,
+                        vapid_claims={"sub": settings.vapid_subject},
+                    )
+                except WebPushException as exc:
+                    response = getattr(exc, "response", None)
+                    if response is not None and response.status_code in {404, 410}:
+                        await db.delete(subscription)
+                    else:
+                        logger.warning(
+                            "Falha ao enviar resumo diário para usuário %s: %s",
+                            user.id,
+                            exc,
+                        )
+        await db.commit()
 
 
 async def collect_instagram_insights() -> None:
@@ -219,7 +323,7 @@ async def collect_instagram_insights() -> None:
                         else created_at.replace(tzinfo=timezone.utc).astimezone(LOCAL_TIMEZONE).date()
                     )
                     insights = None
-                    for metric_names in ("views,reach", "reach"):
+                    for metric_names in ("views,content_views,reach", "content_views,reach", "views,reach", "reach"):
                         candidate = await client.get(
                             f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
                             params={

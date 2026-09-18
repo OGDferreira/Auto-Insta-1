@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Auto-Insta{% endblock %}</title><link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <title>{% block title %}Auto-Insta{% endblock %}</title><link rel="icon" type="image/svg+xml" href="/static/favicon.svg"><link rel="manifest" href="/static/manifest.webmanifest"><meta name="theme-color" content="#030712"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Auto-Insta">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -94,6 +94,7 @@ document.getElementById("enable-notifications")?.addEventListener("click",()=>re
 </script>
 {% endif %}
 <script>if(window.lucide){lucide.createIcons();}</script>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("/static/service-worker.js").catch(error=>console.debug("PWA indisponível",error)));}</script>
 <script>
   (() => {
     const region = document.getElementById("toast-region");
