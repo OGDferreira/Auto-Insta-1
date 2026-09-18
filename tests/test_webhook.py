@@ -109,3 +109,36 @@ def test_sharkbot_events_store_real_payload_data():
     assert paid.customer_name == "João Silva"
     assert paid.transaction_id == "payment_id_123"
     assert paid.plan_name == "Plano Premium"
+
+
+def test_sharkbot_accepts_new_events_from_same_webhook_without_transaction_id():
+    payloads = [
+        {
+            "event": "payment_created",
+            "timestamp": 1789754430,
+            "webhook_id": "same-webhook",
+            "data": {"transaction": {"amount": 10}},
+        },
+        {
+            "event": "payment_created",
+            "timestamp": 1789754431,
+            "webhook_id": "same-webhook",
+            "data": {"transaction": {"amount": 20}},
+        },
+    ]
+
+    with TestClient(app) as client:
+        responses = [client.post("/webhook/sharkbot", json=payload) for payload in payloads]
+
+    assert [response.status_code for response in responses] == [200, 200]
+
+    async def read_events():
+        async with SessionLocal() as db:
+            return (await db.scalars(
+                select(BotEvent)
+                .where(BotEvent.webhook_id == "same-webhook")
+                .order_by(BotEvent.id)
+            )).all()
+
+    events = asyncio.run(read_events())
+    assert [event.value for event in events] == [10, 20]

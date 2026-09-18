@@ -1077,20 +1077,27 @@ async def instagram_start(
         )
         if account:
             request.session["instagram_reconnect_account_id"] = account.id
-    redirect_url = authorization_url(
-        state,
-        reauthorize=reconnect_account_id is not None,
-    )
+    redirect_url = authorization_url(state)
     logger.warning("Instagram OAuth authorization URL: %s", redirect_url)
     return RedirectResponse(redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 @router.get("/auth/callback")
 async def instagram_callback(
-    request: Request, code: str | None = None, state: str | None = None, db: AsyncSession = Depends(get_db)
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_reason: str | None = None,
+    error_description: str | None = None,
+    db: AsyncSession = Depends(get_db),
 ):
     if not request.session.get("user_id") or not state or state != request.session.pop("instagram_oauth_state", None):
         raise HTTPException(status_code=400, detail="OAuth state inválido")
+    if error:
+        request.session.pop("instagram_reconnect_account_id", None)
+        detail = error_description or error_reason or error
+        raise HTTPException(status_code=400, detail=f"Autorização do Instagram não concluída: {detail}")
     if not code:
         raise HTTPException(status_code=400, detail="Código OAuth ausente")
     try:

@@ -14,7 +14,7 @@ OAUTH_SCOPES = (
 )
 
 
-def authorization_url(state: str, *, reauthorize: bool = False) -> str:
+def authorization_url(state: str) -> str:
     settings = get_settings()
     client_id = settings.meta_app_id.strip()
     redirect_uri = settings.oauth_redirect_uri
@@ -28,7 +28,6 @@ def authorization_url(state: str, *, reauthorize: bool = False) -> str:
             "response_type": "code",
             "scope": scope,
             "state": state,
-            **({"auth_type": "rerequest"} if reauthorize else {}),
         }
     )
     return f"https://www.instagram.com/oauth/authorize?{query}"
