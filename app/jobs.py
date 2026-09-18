@@ -11,7 +11,7 @@ from sqlalchemy import select, update
 
 from .config import get_settings
 from .db import SessionLocal
-from .models import InstagramAccount, InstagramMetric, ScheduledPost
+from .models import InstagramAccount, InstagramMetric, PostingBatch, ScheduledPost
 from .security import decrypt_token
 
 
@@ -73,6 +73,33 @@ async def _refresh_account_status(
             response.status_code,
             account.status_reason,
         )
+        return False
+    permissions = await client.get(
+        f"https://graph.instagram.com/{settings.graph_api_version}/me/permissions",
+        params={"access_token": token},
+    )
+    if permissions.is_error:
+        account.connection_status = "error"
+        account.status_reason = (
+            "A Meta não confirmou a permissão de publicação para esta conta. "
+            f"{_api_error(permissions)}"
+        )[:500]
+        account.status_checked_at = datetime.now(timezone.utc)
+        logger.error("Permissão de publicação não confirmada para %s: %s", account.instagram_user_id, account.status_reason)
+        return False
+    try:
+        granted = {
+            item.get("permission")
+            for item in permissions.json().get("data", [])
+            if item.get("status") == "granted"
+        }
+    except (ValueError, AttributeError):
+        granted = set()
+    if "instagram_business_content_publish" not in granted:
+        account.connection_status = "error"
+        account.status_reason = "A conta está conectada, mas não autorizou a publicação de conteúdo no novo aplicativo."
+        account.status_checked_at = datetime.now(timezone.utc)
+        logger.error("Conta %s sem instagram_business_content_publish", account.instagram_user_id)
         return False
     account.connection_status = "connected"
     account.status_reason = None
@@ -281,13 +308,20 @@ def schedule_post(post_id: int, scheduled_for: datetime) -> str:
     return job_id
 
 
+def unschedule_post(post_id: int) -> None:
+    job_id = f"scheduled-post-{post_id}"
+    if scheduler.get_job(job_id):
+        scheduler.remove_job(job_id)
+
+
 async def schedule_pending_posts() -> None:
     """Restore pending schedules after a process restart."""
     async with SessionLocal() as db:
         posts = (
             await db.scalars(
-                select(ScheduledPost).where(
+                select(ScheduledPost).outerjoin(PostingBatch).where(
                     ScheduledPost.status.in_(PENDING_STATUSES),
+                    (PostingBatch.status.is_(None) | (PostingBatch.status == "active")),
                 )
             )
         ).all()
@@ -310,6 +344,12 @@ async def _publish(post_id: int) -> None:
         post = await db.get(ScheduledPost, post_id)
         if post is None:
             return
+        if post.batch_id:
+            batch = await db.get(PostingBatch, post.batch_id)
+            if batch is not None and batch.status == "paused":
+                post.status = "scheduled"
+                await db.commit()
+                return
             
         account = await db.get(InstagramAccount, post.account_id)
         if account is None or account.owner_id != post.owner_id:
@@ -317,9 +357,14 @@ async def _publish(post_id: int) -> None:
             post.error_message = "Instagram account no longer belongs to this owner"
             await db.commit()
             return
-            
         try:
             token = decrypt_token(account.access_token_encrypted)
+            async with httpx.AsyncClient(timeout=30) as status_client:
+                if not await _refresh_account_status(status_client, account, token, settings):
+                    post.status = "blocked"
+                    post.error_message = account.status_reason or "A conta não está autorizada para publicar."
+                    await db.commit()
+                    return
             
             # Este projeto usa Instagram Login, cujo token é válido em graph.instagram.com.
             base = f"https://graph.instagram.com/{settings.graph_api_version}"
@@ -385,7 +430,7 @@ async def _publish(post_id: int) -> None:
                     logger.exception("Falha ao remover mídia original do post %s", post_id)
             
         except Exception as exc:
-            post.status = "failed"
+            post.status = "blocked" if account.connection_status in {"error", "suspended"} else "failed"
             post.error_message = str(exc)[:1000]
             account.connection_status = "suspended" if "permission" in str(exc).lower() or "token" in str(exc).lower() else account.connection_status
             account.status_reason = str(exc)[:500] if account.connection_status == "suspended" else account.status_reason

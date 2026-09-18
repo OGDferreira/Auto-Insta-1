@@ -6,6 +6,7 @@ import io
 import json
 import asyncio
 import re
+import httpx
 from mimetypes import guess_type
 from pathlib import Path
 from uuid import uuid4
@@ -26,8 +27,14 @@ from googleapiclient.http import MediaIoBaseDownload
 
 from .config import get_settings
 from .db import get_db
-from .jobs import PENDING_STATUSES, collect_instagram_insights, schedule_post
-from .models import BotEvent, InstagramAccount, InstagramMetric, ScheduledPost, User
+from .jobs import (
+    PENDING_STATUSES,
+    _refresh_account_status,
+    collect_instagram_insights,
+    schedule_post,
+    unschedule_post,
+)
+from .models import BotEvent, InstagramAccount, InstagramMetric, PostingBatch, ScheduledPost, User
 from .models import NotificationSubscription
 from .oauth import (
     authorization_url,
@@ -38,7 +45,7 @@ from .oauth import (
     new_state,
 )
 from .observability import get_recent_logs
-from .security import encrypt_token, hash_password, verify_password
+from .security import decrypt_token, encrypt_token, hash_password, verify_password
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -525,6 +532,7 @@ async def logout(request: Request):
 async def dashboard(
     request: Request,
     period_days: int = 7,
+    account_id: int | None = None,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -532,12 +540,29 @@ async def dashboard(
         return RedirectResponse("/hub", status_code=status.HTTP_303_SEE_OTHER)
     owner_id = workspace_owner_id(user)
     accounts = (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == owner_id))).all()
+    batches = (
+        await db.scalars(
+            select(PostingBatch)
+            .where(PostingBatch.owner_id == owner_id)
+            .order_by(PostingBatch.created_at.desc())
+        )
+    ).all()
+    batch_account_ids = {
+        batch.id: set(json.loads(batch.account_ids or "[]"))
+        for batch in batches
+    }
+    if account_id is not None and not any(account.id == account_id for account in accounts):
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    posts_query = (
+        select(ScheduledPost)
+        .options(selectinload(ScheduledPost.account))
+        .where(ScheduledPost.owner_id == owner_id)
+    )
+    if account_id is not None:
+        posts_query = posts_query.where(ScheduledPost.account_id == account_id)
     posts = (
         await db.scalars(
-            select(ScheduledPost)
-            .options(selectinload(ScheduledPost.account))
-            .where(ScheduledPost.owner_id == owner_id)
-            .order_by(ScheduledPost.scheduled_for.desc())
+            posts_query.order_by(ScheduledPost.scheduled_for.desc())
         )
     ).all()
     today = datetime.now(timezone.utc).date()
@@ -579,6 +604,7 @@ async def dashboard(
     }
     metrics = {
         "active_accounts": len(accounts),
+        "error_accounts": sum(account.connection_status == "error" for account in accounts),
         "today_posts": len(today_posts),
         "daily_views": total_views,
         "total_views": total_views,
@@ -611,6 +637,9 @@ async def dashboard(
             "account_status_classes": account_status_classes(accounts),
             "account_views": account_views,
             "posts": posts,
+            "batches": batches,
+            "batch_account_ids": batch_account_ids,
+            "selected_account_id": account_id,
             "metrics": metrics,
             "app_version": get_settings().app_version,
             "deploy_timestamp": get_settings().deploy_timestamp or "não informado",
@@ -808,16 +837,36 @@ async def api_status(user: User = Depends(current_user), db: AsyncSession = Depe
             "pending": sum(post.status in {"scheduled", "processing", "aguardando", "pending"} for post in posts),
             "published": sum(post.status == "published" for post in posts),
             "failed": sum(post.status == "failed" for post in posts),
+            "error_accounts": sum(account.connection_status == "error" for account in (
+                await db.scalars(select(InstagramAccount).where(
+                    InstagramAccount.owner_id == workspace_owner_id(user)
+                ))
+            ).all()),
             "total_views": total_views,
         },
         "sharkbot": bot_counts,
         "account_views": account_views,
+        "account_statuses": {
+            account.id: {
+                "status": account.connection_status,
+                "reason": account.status_reason,
+                "checked_at": account.status_checked_at.isoformat() if account.status_checked_at else None,
+            }
+            for account in (
+                await db.scalars(
+                    select(InstagramAccount).where(
+                        InstagramAccount.owner_id == workspace_owner_id(user)
+                    )
+                )
+            ).all()
+        },
         "posts": [
             {
                 "id": post.id,
                 "media_url": post.media_url,
                 "media_type": post.media_type,
                 "status": post.status,
+                "error_message": post.error_message,
                 "scheduled_for": local_scheduled_datetime(post.scheduled_for),
                 "account": post.account.username if post.account else "",
             }
@@ -832,6 +881,104 @@ async def api_status(user: User = Depends(current_user), db: AsyncSession = Depe
 @router.get("/api/logs")
 async def api_logs(user: User = Depends(current_user)):
     return {"logs": get_recent_logs()}
+
+
+@router.post("/api/meta/test")
+async def test_meta_connection(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Run a safe Meta diagnostic and expose the exact non-secret API responses."""
+    settings = get_settings()
+    accounts = (
+        await db.scalars(
+            select(InstagramAccount)
+            .where(
+                InstagramAccount.owner_id == workspace_owner_id(user),
+                InstagramAccount.connection_status != "pending",
+                InstagramAccount.access_token_encrypted != "",
+            )
+            .order_by(InstagramAccount.id)
+        )
+    ).all()
+    if not accounts:
+        raise HTTPException(status_code=400, detail="Nenhuma conta Instagram conectada para testar.")
+
+    results = []
+    async with httpx.AsyncClient(timeout=30) as client:
+        for account in accounts:
+            try:
+                token = decrypt_token(account.access_token_encrypted)
+                base = f"https://graph.instagram.com/{settings.graph_api_version}"
+                profile_params = {
+                    "fields": "id,username,account_type,media_count",
+                }
+                profile = await client.get(
+                    f"{base}/me",
+                    params={**profile_params, "access_token": token},
+                )
+                profile_payload = profile.json() if profile.headers.get("content-type", "").startswith("application/json") else profile.text[:2000]
+                logger.info(
+                    "META_TEST profile account=%s method=GET path=/%s/me status=%s params=%s response=%s",
+                    account.instagram_user_id,
+                    "me",
+                    profile.status_code,
+                    profile_params,
+                    profile_payload,
+                )
+                insight_results = []
+                for metric_name in ("views", "impressions", "reach"):
+                    insight_params = {
+                        "metric": metric_name,
+                        "period": "day",
+                    }
+                    insights = await client.get(
+                        f"{base}/{account.instagram_user_id}/insights",
+                        params={**insight_params, "access_token": token},
+                    )
+                    insight_payload = (
+                        insights.json()
+                        if insights.headers.get("content-type", "").startswith("application/json")
+                        else insights.text[:2000]
+                    )
+                    insight_keys = (
+                        sorted(insight_payload.keys())
+                        if isinstance(insight_payload, dict)
+                        else []
+                    )
+                    logger.info(
+                        "META_TEST insights account=%s method=GET path=/%s/insights status=%s params=%s response_keys=%s response=%s",
+                        account.instagram_user_id,
+                        account.instagram_user_id,
+                        insights.status_code,
+                        insight_params,
+                        insight_keys,
+                        insight_payload,
+                    )
+                    insight_results.append({
+                        "metric_requested": metric_name,
+                        "status": insights.status_code,
+                        "response_keys": insight_keys,
+                        "response": insight_payload,
+                    })
+                results.append({
+                    "account": account.username,
+                    "profile": {
+                        "status": profile.status_code,
+                        "requested_fields": profile_params["fields"].split(","),
+                        "response_keys": (
+                            sorted(profile_payload.keys())
+                            if isinstance(profile_payload, dict)
+                            else []
+                        ),
+                        "response": profile_payload,
+                    },
+                    "insights": insight_results,
+                })
+            except Exception as exc:
+                logger.exception("META_TEST failed account=%s", account.instagram_user_id)
+                results.append({"account": account.username, "error": str(exc)})
+    return {"results": results, "message": "Diagnóstico concluído. Consulte Logs & Sistema para o retorno completo."}
 
 
 @router.get("/auth/instagram/start")
@@ -884,20 +1031,22 @@ async def instagram_callback(
         account.profile_picture_url = profile.get("profile_picture_url", account.profile_picture_url)
         account.access_token_encrypted = encrypt_token(long_lived_token)
     else:
-        db.add(
-            InstagramAccount(
-                owner_id=owner_id,
-                instagram_user_id=(
-                    business_account["instagram_user_id"]
-                    if business_account
-                    else str(profile.get("user_id") or profile["id"])
-                ),
-                facebook_page_id=business_account.get("page_id") if business_account else None,
-                username=profile.get("username", ""),
-                profile_picture_url=profile.get("profile_picture_url"),
-                access_token_encrypted=encrypt_token(long_lived_token),
-            )
+        account = InstagramAccount(
+            owner_id=owner_id,
+            instagram_user_id=(
+                business_account["instagram_user_id"]
+                if business_account
+                else str(profile.get("user_id") or profile["id"])
+            ),
+            facebook_page_id=business_account.get("page_id") if business_account else None,
+            username=profile.get("username", ""),
+            profile_picture_url=profile.get("profile_picture_url"),
+            access_token_encrypted=encrypt_token(long_lived_token),
         )
+        db.add(account)
+    await db.flush()
+    async with httpx.AsyncClient(timeout=30) as client:
+        await _refresh_account_status(client, account, long_lived_token, get_settings())
     await db.commit()
     return RedirectResponse("/hub" if user.role == "collaborator" else "/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -963,6 +1112,44 @@ async def update_auto_reply(
     return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.post("/accounts/{account_id}/verify")
+async def verify_account(
+    account_id: int,
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    account = await db.scalar(select(InstagramAccount).where(
+        InstagramAccount.id == account_id,
+        InstagramAccount.owner_id == owner_id,
+    ))
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    if not account.access_token_encrypted:
+        account.connection_status = "pending"
+        account.status_reason = "A conta ainda não possui um token autorizado."
+        await db.commit()
+        if "application/json" in request.headers.get("accept", ""):
+            return {
+                "account_id": account.id,
+                "status": account.connection_status,
+                "reason": account.status_reason,
+                "checked_at": account.status_checked_at.isoformat() if account.status_checked_at else None,
+            }
+        return RedirectResponse("/dashboard#accounts", status_code=status.HTTP_303_SEE_OTHER)
+    try:
+        token = decrypt_token(account.access_token_encrypted)
+        async with httpx.AsyncClient(timeout=30) as client:
+            await _refresh_account_status(client, account, token, get_settings())
+    except Exception as exc:
+        account.connection_status = "error"
+        account.status_reason = f"Falha ao verificar a autorização na Meta: {str(exc)[:400]}"
+        logger.exception("Falha na verificação manual da conta %s", account.instagram_user_id)
+    await db.commit()
+    return RedirectResponse("/dashboard#accounts", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.post("/posts")
 async def create_post(
     request: Request,
@@ -1020,9 +1207,94 @@ async def delete_post(
     )
     if not post:
         raise HTTPException(status_code=404, detail="Publicação não encontrada")
+    unschedule_post(post.id)
     await db.delete(post)
     await db.commit()
     return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/posts/{post_id}/retry")
+async def retry_post(
+    post_id: int,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    post = await db.scalar(select(ScheduledPost).where(
+        ScheduledPost.id == post_id,
+        ScheduledPost.owner_id == owner_id,
+    ))
+    if not post:
+        raise HTTPException(status_code=404, detail="Publicação não encontrada")
+    if post.status not in {"failed", "blocked"}:
+        raise HTTPException(status_code=400, detail="Somente publicações com falha podem ser tentadas novamente")
+    account = await db.get(InstagramAccount, post.account_id)
+    if not account or account.owner_id != owner_id:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    if not account.access_token_encrypted:
+        raise HTTPException(status_code=400, detail="A conta ainda não foi autorizada")
+    try:
+        token = decrypt_token(account.access_token_encrypted)
+        async with httpx.AsyncClient(timeout=30) as client:
+            authorized = await _refresh_account_status(client, account, token, get_settings())
+    except Exception as exc:
+        authorized = False
+        account.connection_status = "error"
+        account.status_reason = f"Falha ao verificar a autorização na Meta: {str(exc)[:400]}"
+    if not authorized:
+        post.status = "blocked"
+        post.error_message = account.status_reason or "A conta ainda não está autorizada para publicar."
+        await db.commit()
+        raise HTTPException(status_code=400, detail=post.error_message)
+    post.status = "scheduled"
+    post.error_message = None
+    post.scheduled_for = datetime.now(timezone.utc)
+    await db.commit()
+    schedule_post(post.id, post.scheduled_for)
+    return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/posts/retry-blocked")
+async def retry_blocked_posts(
+    account_id: int | None = Form(None),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    accounts_query = select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
+    if account_id is not None:
+        accounts_query = accounts_query.where(InstagramAccount.id == account_id)
+    accounts = (await db.scalars(accounts_query)).all()
+    if account_id is not None and not accounts:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    authorized_ids = set()
+    async with httpx.AsyncClient(timeout=30) as client:
+        for account in accounts:
+            if not account.access_token_encrypted:
+                continue
+            try:
+                token = decrypt_token(account.access_token_encrypted)
+                if await _refresh_account_status(client, account, token, get_settings()):
+                    authorized_ids.add(account.id)
+            except Exception as exc:
+                account.connection_status = "error"
+                account.status_reason = f"Falha ao verificar a autorização na Meta: {str(exc)[:400]}"
+    posts_query = select(ScheduledPost).where(
+        ScheduledPost.owner_id == owner_id,
+        ScheduledPost.status.in_({"failed", "blocked"}),
+        ScheduledPost.account_id.in_(authorized_ids) if authorized_ids else False,
+    )
+    posts = (await db.scalars(posts_query)).all()
+    now = datetime.now(timezone.utc)
+    for post in posts:
+        post.status = "scheduled"
+        post.error_message = None
+        post.scheduled_for = now
+    await db.commit()
+    for post in posts:
+        schedule_post(post.id, post.scheduled_for)
+    destination = f"/dashboard?account_id={account_id}#queue" if account_id else "/dashboard#queue"
+    return RedirectResponse(destination, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/posts/delete-selected")
@@ -1034,6 +1306,12 @@ async def delete_selected_posts(
     if not post_ids:
         raise HTTPException(status_code=400, detail="Nenhuma publicação selecionada")
     owner_id = workspace_owner_id(user)
+    selected_posts = (await db.scalars(select(ScheduledPost).where(
+        ScheduledPost.id.in_(set(post_ids)),
+        ScheduledPost.owner_id == owner_id,
+    ))).all()
+    for post in selected_posts:
+        unschedule_post(post.id)
     await db.execute(
         delete(ScheduledPost).where(
             ScheduledPost.id.in_(set(post_ids)),
@@ -1044,16 +1322,46 @@ async def delete_selected_posts(
     return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.post("/posts/delete-all")
+async def delete_all_posts(
+    account_id: int | None = Form(None),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    conditions = [ScheduledPost.owner_id == owner_id]
+    if account_id is not None:
+        account = await db.scalar(select(InstagramAccount).where(
+            InstagramAccount.id == account_id, InstagramAccount.owner_id == owner_id
+        ))
+        if not account:
+            raise HTTPException(status_code=404, detail="Conta não encontrada")
+        conditions.append(ScheduledPost.account_id == account_id)
+    posts = (await db.scalars(select(ScheduledPost).where(*conditions))).all()
+    for post in posts:
+        unschedule_post(post.id)
+    await db.execute(delete(ScheduledPost).where(*conditions))
+    await db.commit()
+    destination = f"/dashboard?account_id={account_id}#queue" if account_id else "/dashboard#queue"
+    return RedirectResponse(destination, status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.post("/posts/clear-failed")
 async def clear_failed_posts(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
     owner_id = workspace_owner_id(user)
+    failed_posts = (await db.scalars(select(ScheduledPost).where(
+        ScheduledPost.owner_id == owner_id,
+        ScheduledPost.status.in_({"failed", "blocked"}),
+    ))).all()
+    for post in failed_posts:
+        unschedule_post(post.id)
     await db.execute(
         delete(ScheduledPost).where(
             ScheduledPost.owner_id == owner_id,
-            ScheduledPost.status == "failed",
+            ScheduledPost.status.in_({"failed", "blocked"}),
         )
     )
     await db.commit()
@@ -1098,6 +1406,7 @@ async def create_bulk_posts(
     caption: str = Form(""),
     scheduled_for: str = Form(...),
     interval_minutes: int = Form(1),
+    batch_name: str = Form(""),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1127,6 +1436,13 @@ async def create_bulk_posts(
     if first_time <= datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="O horário do agendamento deve estar no futuro")
 
+    batch = PostingBatch(
+        owner_id=owner_id,
+        name=batch_name.strip()[:160] or f"Lote de {first_time.astimezone(LOCAL_TIMEZONE).strftime('%d/%m %H:%M')}",
+        account_ids=json.dumps(list(dict.fromkeys(account_ids))),
+    )
+    db.add(batch)
+    await db.flush()
     posts_to_schedule = []
     for media_index, (media_url, media_type, caption) in enumerate(zip(media_urls, media_types, captions)):
         normalized_type = media_type.upper()
@@ -1139,6 +1455,7 @@ async def create_bulk_posts(
             post = ScheduledPost(
                 owner_id=owner_id,
                 account_id=account.id,
+                batch_id=batch.id,
                 media_url=media_url,
                 original_media_url=media_url,
                 thumbnail_url=thumbnail_urls[media_index] if media_index < len(thumbnail_urls) else media_url,
@@ -1154,4 +1471,117 @@ async def create_bulk_posts(
     await db.commit()
     for post in posts_to_schedule:
         schedule_post(post.id, post.scheduled_for)
+    return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/batches/{batch_id}/pause")
+async def pause_batch(
+    batch_id: int,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    batch = await db.scalar(select(PostingBatch).where(
+        PostingBatch.id == batch_id, PostingBatch.owner_id == owner_id
+    ))
+    if not batch:
+        raise HTTPException(status_code=404, detail="Lote não encontrado")
+    batch.status = "paused"
+    posts = (await db.scalars(select(ScheduledPost).where(
+        ScheduledPost.batch_id == batch.id,
+        ScheduledPost.status.in_(PENDING_STATUSES),
+    ))).all()
+    await db.commit()
+    for post in posts:
+        unschedule_post(post.id)
+    return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/batches/{batch_id}/resume")
+async def resume_batch(
+    batch_id: int,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    batch = await db.scalar(select(PostingBatch).where(
+        PostingBatch.id == batch_id, PostingBatch.owner_id == owner_id
+    ))
+    if not batch:
+        raise HTTPException(status_code=404, detail="Lote não encontrado")
+    batch.status = "active"
+    posts = (await db.scalars(select(ScheduledPost).where(
+        ScheduledPost.batch_id == batch.id,
+        ScheduledPost.status.in_(PENDING_STATUSES),
+    ))).all()
+    await db.commit()
+    for post in posts:
+        schedule_post(post.id, post.scheduled_for)
+    return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/batches/{batch_id}/accounts")
+async def update_batch_accounts(
+    batch_id: int,
+    account_ids: list[int] = Form(default=[]),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    batch = await db.scalar(select(PostingBatch).where(
+        PostingBatch.id == batch_id, PostingBatch.owner_id == owner_id
+    ))
+    if not batch:
+        raise HTTPException(status_code=404, detail="Lote não encontrado")
+    selected_ids = list(dict.fromkeys(account_ids))
+    if not selected_ids:
+        raise HTTPException(status_code=400, detail="Selecione pelo menos uma conta")
+    valid_ids = set((await db.scalars(select(InstagramAccount.id).where(
+        InstagramAccount.id.in_(selected_ids), InstagramAccount.owner_id == owner_id
+    ))).all())
+    if valid_ids != set(selected_ids):
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    previous_ids = set(json.loads(batch.account_ids or "[]"))
+    added_ids = set(selected_ids) - previous_ids
+    removed_ids = previous_ids - set(selected_ids)
+    pending_posts = (await db.scalars(select(ScheduledPost).where(
+        ScheduledPost.batch_id == batch.id,
+        ScheduledPost.status.in_(PENDING_STATUSES),
+    ))).all()
+    if removed_ids:
+        for post in pending_posts:
+            if post.account_id in removed_ids:
+                await db.delete(post)
+    if added_ids and pending_posts:
+        templates_by_media = {}
+        for post in pending_posts:
+            templates_by_media.setdefault(
+                (post.media_url, post.media_type, post.caption, post.scheduled_for),
+                post,
+            )
+        for account_id in added_ids:
+            for template in templates_by_media.values():
+                db.add(ScheduledPost(
+                    owner_id=owner_id,
+                    account_id=account_id,
+                    batch_id=batch.id,
+                    media_url=template.media_url,
+                    original_media_url=template.original_media_url,
+                    thumbnail_url=template.thumbnail_url,
+                    storage_path=template.storage_path,
+                    thumbnail_storage_path=template.thumbnail_storage_path,
+                    media_type=template.media_type,
+                    caption=template.caption,
+                    scheduled_for=template.scheduled_for,
+                ))
+    batch.account_ids = json.dumps(selected_ids)
+    await db.commit()
+    new_posts = (await db.scalars(select(ScheduledPost).where(
+        ScheduledPost.batch_id == batch.id,
+        ScheduledPost.account_id.in_(added_ids),
+        ScheduledPost.status.in_(PENDING_STATUSES),
+    ))).all() if added_ids else []
+    for post in new_posts:
+        if batch.status == "active":
+            schedule_post(post.id, post.scheduled_for)
     return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)

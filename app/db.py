@@ -83,6 +83,7 @@ async def init_db() -> None:
                 "thumbnail_url": "TEXT",
                 "storage_path": "TEXT",
                 "thumbnail_storage_path": "TEXT",
+                "batch_id": "INTEGER",
             }
             for name, definition in new_columns.items():
                 if name not in existing:
@@ -126,6 +127,7 @@ async def init_db() -> None:
                     "thumbnail_url": "TEXT",
                     "storage_path": "TEXT",
                     "thumbnail_storage_path": "TEXT",
+                    "batch_id": "INTEGER",
                 },
             }
             from sqlalchemy import inspect

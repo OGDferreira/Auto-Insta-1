@@ -25,6 +25,9 @@ class User(Base):
     scheduled_posts: Mapped[list["ScheduledPost"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
     )
+    posting_batches: Mapped[list["PostingBatch"]] = relationship(
+        back_populates="owner", cascade="all, delete-orphan"
+    )
     parent: Mapped["User | None"] = relationship(
         remote_side="User.id", back_populates="collaborators"
     )
@@ -51,7 +54,7 @@ class InstagramAccount(Base):
     direct_reply_text: Mapped[str] = mapped_column(Text, default="")
     comment_reply_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     comment_reply_text: Mapped[str] = mapped_column(Text, default="")
-    connection_status: Mapped[str] = mapped_column(String(20), default="connected")
+    connection_status: Mapped[str] = mapped_column(String(20), default="pending")
     status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     status_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -67,12 +70,29 @@ class InstagramAccount(Base):
     )
 
 
+class PostingBatch(Base):
+    __tablename__ = "posting_batches"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(160), default="Lote de publicações")
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    account_ids: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    owner: Mapped[User] = relationship(back_populates="posting_batches")
+    scheduled_posts: Mapped[list["ScheduledPost"]] = relationship(
+        back_populates="batch", cascade="all, delete-orphan"
+    )
+
+
 class ScheduledPost(Base):
     __tablename__ = "scheduled_posts"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     account_id: Mapped[int] = mapped_column(
         ForeignKey("instagram_accounts.id", ondelete="CASCADE"), index=True
+    )
+    batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("posting_batches.id", ondelete="SET NULL"), nullable=True, index=True
     )
     media_url: Mapped[str] = mapped_column(Text)
     original_media_url: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -87,6 +107,7 @@ class ScheduledPost(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     owner: Mapped[User] = relationship(back_populates="scheduled_posts")
     account: Mapped[InstagramAccount] = relationship(back_populates="scheduled_posts")
+    batch: Mapped[PostingBatch | None] = relationship(back_populates="scheduled_posts")
 
 
 class NotificationSubscription(Base):
