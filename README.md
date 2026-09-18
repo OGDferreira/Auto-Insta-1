@@ -58,6 +58,8 @@ O endpoint `/media/upload` envia os bytes originais para o bucket público `SUPA
 
 Uploads também geram uma miniatura JPEG leve. Após uma publicação bem-sucedida, o worker remove o original do bucket e mantém a miniatura para o histórico. Para importar mídias do Google Drive, configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` e `GOOGLE_REDIRECT_URI` no `.env` e cadastre o redirect URI no OAuth Client do Google Cloud Console.
 
+Para notificações em celular e desktop, gere um par de chaves VAPID e configure `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` e `VAPID_SUBJECT`. No menu de perfil, ative as notificações e use "Testar notificações". O navegador precisa estar em HTTPS (exceto localhost) e permitir notificações; em celulares, o navegador precisa aceitar Push API.
+
 ## Meta Webhooks
 
 Cadastre `https://SEU_HOST/webhook` no produto Instagram e use o mesmo `WEBHOOK_VERIFY_TOKEN`. O GET responde ao desafio `hub.challenge`; o POST aceita eventos `messaging` e `changes`, encontra a conta pelo `instagram_user_id` e, quando habilitado no dashboard, envia uma resposta automática pela API do Instagram. Configure também os campos de mensagens/comentários exigidos pelo painel Meta.

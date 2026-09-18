@@ -196,6 +196,8 @@ async def collect_instagram_insights() -> None:
         async with httpx.AsyncClient(timeout=30) as client:
             for account in accounts:
                 try:
+                    if account.connection_status == "pending" or not account.access_token_encrypted:
+                        continue
                     token = decrypt_token(account.access_token_encrypted)
                     if not await _refresh_account_status(client, account, token, settings):
                         continue

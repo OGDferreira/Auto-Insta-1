@@ -26,6 +26,9 @@ class Settings(BaseModel):
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = ""
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    vapid_subject: str = ""
 
     @property
     def oauth_redirect_uri(self) -> str:
@@ -60,5 +63,8 @@ def get_settings() -> Settings:
             "GOOGLE_REDIRECT_URI",
             f"{os.getenv('PUBLIC_BASE_URL', 'http://localhost:8000')}/auth/google/callback",
         ),
+        "vapid_public_key": os.getenv("VAPID_PUBLIC_KEY", ""),
+        "vapid_private_key": os.getenv("VAPID_PRIVATE_KEY", ""),
+        "vapid_subject": os.getenv("VAPID_SUBJECT", ""),
     }
     return Settings(**values)

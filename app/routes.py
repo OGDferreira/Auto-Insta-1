@@ -28,6 +28,7 @@ from .config import get_settings
 from .db import get_db
 from .jobs import PENDING_STATUSES, collect_instagram_insights, schedule_post
 from .models import BotEvent, InstagramAccount, InstagramMetric, ScheduledPost, User
+from .models import NotificationSubscription
 from .oauth import (
     authorization_url,
     exchange_code,
@@ -47,7 +48,7 @@ MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]{2,80}$")
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
-ACCOUNT_STATUS_CLASSES = {"connected", "suspended", "error"}
+ACCOUNT_STATUS_CLASSES = {"connected", "suspended", "error", "pending"}
 
 
 def account_status_classes(accounts: list[InstagramAccount]) -> dict[int, str]:
@@ -93,7 +94,7 @@ async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> 
     if user.role == "collaborator" and request.url.path not in {
         "/hub", "/auth/instagram/start", "/auth/callback", "/media/upload",
         "/logout", "/profile", "/collaborators",
-    } and not request.url.path.startswith("/accounts/"):
+    } and not request.url.path.startswith(("/accounts/", "/api/drive/", "/api/notifications/")):
         request.session["access_notice"] = "Acesso restrito: colaboradores usam apenas o Hub de Contas."
         raise HTTPException(status_code=307, headers={"Location": "/hub"})
     return user
@@ -130,6 +131,42 @@ def local_scheduled_datetime(value: datetime) -> str:
 
 
 templates.env.globals["local_scheduled_datetime"] = local_scheduled_datetime
+
+
+def _notification_payload(total_views: int, account_count: int) -> str:
+    return f"Auto-Insta: {total_views:,} visualizações em {account_count} conta(s).".replace(",", ".")
+
+
+async def _send_web_push_notifications(db: AsyncSession, user_id: int, message: str) -> int:
+    settings = get_settings()
+    if not settings.vapid_private_key or not settings.vapid_subject:
+        return 0
+    from pywebpush import WebPushException, webpush
+
+    subscriptions = (await db.scalars(
+        select(NotificationSubscription).where(NotificationSubscription.user_id == user_id)
+    )).all()
+    sent = 0
+    for subscription in subscriptions:
+        try:
+            await asyncio.to_thread(
+                webpush,
+                subscription_info={
+                    "endpoint": subscription.endpoint,
+                    "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth},
+                },
+                data=json.dumps({"title": "Auto-Insta", "body": message}),
+                vapid_private_key=settings.vapid_private_key,
+                vapid_claims={"sub": settings.vapid_subject},
+            )
+            sent += 1
+        except WebPushException as exc:
+            if getattr(exc, "response", None) is not None and exc.response.status_code in {404, 410}:
+                await db.delete(subscription)
+            else:
+                logger.warning("Falha ao enviar notificação push: %s", exc)
+    await db.commit()
+    return sent
 
 
 def _google_flow(state: str | None = None) -> Flow:
@@ -398,6 +435,62 @@ async def update_profile(
     return RedirectResponse("/hub" if user.role == "collaborator" else "/dashboard#overview", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.get("/api/notifications/vapid-public-key")
+async def vapid_public_key(user: User = Depends(current_user)):
+    del user
+    public_key = get_settings().vapid_public_key
+    if not public_key:
+        raise HTTPException(status_code=503, detail="VAPID não configurado")
+    return {"public_key": public_key}
+
+
+@router.post("/api/notifications/subscribe")
+async def subscribe_notifications(
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = await request.json()
+    endpoint = str(payload.get("endpoint", "")).strip()
+    keys = payload.get("keys") or {}
+    if not endpoint or not keys.get("p256dh") or not keys.get("auth"):
+        raise HTTPException(status_code=400, detail="Assinatura de notificação inválida")
+    subscription = await db.scalar(
+        select(NotificationSubscription).where(NotificationSubscription.endpoint == endpoint)
+    )
+    if subscription is None:
+        subscription = NotificationSubscription(
+            user_id=user.id, endpoint=endpoint,
+            p256dh=str(keys["p256dh"]), auth=str(keys["auth"]),
+        )
+        db.add(subscription)
+    else:
+        subscription.user_id = user.id
+        subscription.p256dh = str(keys["p256dh"])
+        subscription.auth = str(keys["auth"])
+    await db.commit()
+    return {"subscribed": True}
+
+
+@router.post("/api/notifications/test")
+async def test_notifications(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    accounts = (await db.scalars(
+        select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
+    )).all()
+    account_ids = [account.id for account in accounts]
+    rows = (await db.scalars(
+        select(InstagramMetric).where(InstagramMetric.account_id.in_(account_ids))
+    )).all() if account_ids else []
+    total_views = sum(int(row.impressions or 0) for row in rows)
+    message = _notification_payload(total_views, len(accounts))
+    sent = await _send_web_push_notifications(db, user.id, message)
+    return {"sent": sent, "message": message, "accounts": len(accounts), "views": total_views}
+
+
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
@@ -542,7 +635,7 @@ async def import_accounts(
             instagram_user_id=f"pending-{uuid4().hex}",
             username=username[:120],
             access_token_encrypted="",
-            connection_status="error",
+            connection_status="pending",
             status_reason="Conta importada. Conecte-a para validar o acesso.",
         ))
         created += 1

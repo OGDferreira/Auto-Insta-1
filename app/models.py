@@ -31,6 +31,9 @@ class User(Base):
     collaborators: Mapped[list["User"]] = relationship(
         back_populates="parent", cascade="all, delete-orphan"
     )
+    notification_subscriptions: Mapped[list["NotificationSubscription"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class InstagramAccount(Base):
@@ -84,6 +87,17 @@ class ScheduledPost(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     owner: Mapped[User] = relationship(back_populates="scheduled_posts")
     account: Mapped[InstagramAccount] = relationship(back_populates="scheduled_posts")
+
+
+class NotificationSubscription(Base):
+    __tablename__ = "notification_subscriptions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    endpoint: Mapped[str] = mapped_column(Text, unique=True)
+    p256dh: Mapped[str] = mapped_column(Text)
+    auth: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    user: Mapped[User] = relationship(back_populates="notification_subscriptions")
 
 
 class BotEvent(Base):
