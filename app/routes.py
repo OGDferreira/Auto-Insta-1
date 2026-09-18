@@ -1103,10 +1103,17 @@ async def instagram_callback(
     try:
         token_data = await exchange_code(code)
         short_token = token_data["access_token"]
-        long_lived_token = await exchange_long_lived_token(short_token)
-        profile = await fetch_profile(long_lived_token)
+        try:
+            access_token = await exchange_long_lived_token(short_token)
+        except httpx.HTTPStatusError as exc:
+            access_token = short_token
+            logger.warning(
+                "Meta recusou a troca para token longo (HTTP %s); usando token curto para concluir OAuth.",
+                exc.response.status_code,
+            )
+        profile = await fetch_profile(access_token)
         business_account = await fetch_instagram_business_account(
-            long_lived_token,
+            access_token,
             str(profile.get("user_id") or profile.get("id")),
         )
     except Exception as exc:
@@ -1154,7 +1161,7 @@ async def instagram_callback(
             account.facebook_page_id = business_account.get("page_id")
         account.username = profile.get("username", account.username)
         account.profile_picture_url = profile.get("profile_picture_url", account.profile_picture_url)
-        account.access_token_encrypted = encrypt_token(long_lived_token)
+        account.access_token_encrypted = encrypt_token(access_token)
     else:
         account = InstagramAccount(
             owner_id=owner_id,
@@ -1166,12 +1173,12 @@ async def instagram_callback(
             facebook_page_id=business_account.get("page_id") if business_account else None,
             username=profile.get("username", ""),
             profile_picture_url=profile.get("profile_picture_url"),
-            access_token_encrypted=encrypt_token(long_lived_token),
+            access_token_encrypted=encrypt_token(access_token),
         )
         db.add(account)
     await db.flush()
     async with httpx.AsyncClient(timeout=30) as client:
-        await _refresh_account_status(client, account, long_lived_token, get_settings())
+        await _refresh_account_status(client, account, access_token, get_settings())
     duplicate_pending = (
         await db.scalars(
             select(InstagramAccount).where(
