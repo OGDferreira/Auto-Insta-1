@@ -55,7 +55,7 @@ MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]{2,80}$")
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
-ACCOUNT_STATUS_CLASSES = {"connected", "suspended", "error", "pending"}
+ACCOUNT_STATUS_CLASSES = {"connected", "disconnected", "error", "pending"}
 
 
 def account_status_classes(accounts: list[InstagramAccount]) -> dict[int, str]:

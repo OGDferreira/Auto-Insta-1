@@ -34,33 +34,9 @@ def account():
 
 
 @pytest.mark.asyncio
-async def test_refresh_account_status_requires_publish_permission():
+async def test_refresh_account_status_marks_profile_response_as_connected():
     current = account()
-    client = FakeClient([
-        FakeResponse({"id": "123", "username": "tester"}),
-        FakeResponse({"data": [{"permission": "instagram_business_basic", "status": "granted"}]}),
-    ])
-
-    result = await _refresh_account_status(
-        client,
-        current,
-        "token",
-        SimpleNamespace(graph_api_version="v22.0"),
-    )
-
-    assert result is False
-    assert current.connection_status == "error"
-    assert "não autorizou" in current.status_reason
-    assert current.status_checked_at is not None
-
-
-@pytest.mark.asyncio
-async def test_refresh_account_status_accepts_publish_permission():
-    current = account()
-    client = FakeClient([
-        FakeResponse({"id": "123", "username": "tester"}),
-        FakeResponse({"data": [{"permission": "instagram_business_content_publish", "status": "granted"}]}),
-    ])
+    client = FakeClient([FakeResponse({"id": "123", "username": "tester"})])
 
     result = await _refresh_account_status(
         client,
@@ -72,4 +48,32 @@ async def test_refresh_account_status_accepts_publish_permission():
     assert result is True
     assert current.connection_status == "connected"
     assert current.status_reason is None
+    assert current.status_checked_at is not None
+
+
+@pytest.mark.asyncio
+async def test_refresh_account_status_marks_only_code_190_as_disconnected():
+    current = account()
+    client = FakeClient([
+        FakeResponse(
+            {
+                "error": {
+                    "code": 190,
+                    "message": "The access token has expired.",
+                }
+            },
+            status_code=400,
+        )
+    ])
+
+    result = await _refresh_account_status(
+        client,
+        current,
+        "token",
+        SimpleNamespace(graph_api_version="v22.0"),
+    )
+
+    assert result is False
+    assert current.connection_status == "disconnected"
+    assert "expired" in current.status_reason
     assert current.status_checked_at is not None

@@ -44,11 +44,22 @@ def _account_status_from_error(response: httpx.Response) -> tuple[str, str]:
     error = payload.get("error", {}) if isinstance(payload, dict) else {}
     message = str(error.get("message") or response.text or "Falha ao verificar a conta")
     normalized = message.lower()
-    if any(term in normalized for term in ("suspend", "disabled", "deactivated")):
-        return "suspended", message[:500]
-    if any(term in normalized for term in ("challenge", "checkpoint", "blocked", "restricted")):
+    error_code = str(error.get("code") or "")
+    if error_code == "190":
+        return "disconnected", message[:500]
+    if any(term in normalized for term in ("challenge", "checkpoint", "blocked", "restricted", "disabled", "deactivated")):
         return "error", message[:500]
-    return "error", message[:500]
+    return "connected", message[:500]
+
+
+def _is_authentication_error(message: str) -> bool:
+    normalized = message.lower()
+    return (
+        '"code": 190' in normalized
+        or "'code': 190" in normalized
+        or "error code 190" in normalized
+        or "invalid oauth" in normalized
+    )
 
 
 async def _refresh_account_status(
@@ -73,33 +84,6 @@ async def _refresh_account_status(
             response.status_code,
             account.status_reason,
         )
-        return False
-    permissions = await client.get(
-        f"https://graph.instagram.com/{settings.graph_api_version}/me/permissions",
-        params={"access_token": token},
-    )
-    if permissions.is_error:
-        account.connection_status = "error"
-        account.status_reason = (
-            "A Meta não confirmou a permissão de publicação para esta conta. "
-            f"{_api_error(permissions)}"
-        )[:500]
-        account.status_checked_at = datetime.now(timezone.utc)
-        logger.error("Permissão de publicação não confirmada para %s: %s", account.instagram_user_id, account.status_reason)
-        return False
-    try:
-        granted = {
-            item.get("permission")
-            for item in permissions.json().get("data", [])
-            if item.get("status") == "granted"
-        }
-    except (ValueError, AttributeError):
-        granted = set()
-    if "instagram_business_content_publish" not in granted:
-        account.connection_status = "error"
-        account.status_reason = "A conta está conectada, mas não autorizou a publicação de conteúdo no novo aplicativo."
-        account.status_checked_at = datetime.now(timezone.utc)
-        logger.error("Conta %s sem instagram_business_content_publish", account.instagram_user_id)
         return False
     account.connection_status = "connected"
     account.status_reason = None
@@ -361,7 +345,7 @@ async def _publish(post_id: int) -> None:
             token = decrypt_token(account.access_token_encrypted)
             async with httpx.AsyncClient(timeout=30) as status_client:
                 if not await _refresh_account_status(status_client, account, token, settings):
-                    post.status = "blocked"
+                    post.status = "blocked" if account.connection_status == "disconnected" else "failed"
                     post.error_message = account.status_reason or "A conta não está autorizada para publicar."
                     await db.commit()
                     return
@@ -430,10 +414,15 @@ async def _publish(post_id: int) -> None:
                     logger.exception("Falha ao remover mídia original do post %s", post_id)
             
         except Exception as exc:
-            post.status = "blocked" if account.connection_status in {"error", "suspended"} else "failed"
-            post.error_message = str(exc)[:1000]
-            account.connection_status = "suspended" if "permission" in str(exc).lower() or "token" in str(exc).lower() else account.connection_status
-            account.status_reason = str(exc)[:500] if account.connection_status == "suspended" else account.status_reason
+            error_message = str(exc)[:1000]
+            if _is_authentication_error(error_message):
+                post.status = "blocked"
+                account.connection_status = "disconnected"
+                account.status_reason = error_message[:500]
+                account.status_checked_at = datetime.now(timezone.utc)
+            else:
+                post.status = "failed"
+            post.error_message = error_message
             logger.exception("Falha ao publicar post %s: %s", post_id, exc)
             
         await db.commit()
