@@ -363,20 +363,34 @@ async def google_callback(request: Request):
 
 
 @router.get("/api/drive/files")
-async def drive_files(request: Request, user: User = Depends(current_user)):
+async def drive_files(
+    request: Request,
+    folder_id: str = "root",
+    user: User = Depends(current_user),
+):
     serialized = request.session.get("google_credentials")
     if not serialized:
         raise HTTPException(status_code=401, detail="Autentique-se no Google antes de importar do Drive")
     credentials = Credentials.from_authorized_user_info(json.loads(serialized), GOOGLE_SCOPES)
     def list_files():
         service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+        escaped_folder_id = folder_id.replace("'", "\\'")
         return service.files().list(
-            q="trashed = false and (mimeType contains 'image/' or mimeType contains 'video/')",
-            fields="files(id,name,mimeType,size,thumbnailLink,modifiedTime)",
+            q=(
+                f"trashed = false and '{escaped_folder_id}' in parents and "
+                "(mimeType = 'application/vnd.google-apps.folder' or "
+                "mimeType contains 'image/' or mimeType contains 'video/')"
+            ),
+            fields="files(id,name,mimeType,size,thumbnailLink,modifiedTime,parents)",
             orderBy="modifiedTime desc", pageSize=100,
         ).execute().get("files", [])
     try:
-        return {"files": await asyncio.to_thread(list_files)}
+        entries = await asyncio.to_thread(list_files)
+        return {
+            "folder_id": folder_id,
+            "folders": [entry for entry in entries if entry["mimeType"] == "application/vnd.google-apps.folder"],
+            "files": [entry for entry in entries if entry["mimeType"] != "application/vnd.google-apps.folder"],
+        }
     except Exception as exc:
         logger.exception("Falha ao listar arquivos do Google Drive")
         raise HTTPException(status_code=502, detail="Não foi possível listar o Google Drive") from exc
@@ -385,7 +399,8 @@ async def drive_files(request: Request, user: User = Depends(current_user)):
 @router.post("/api/drive/import")
 async def drive_import(
     request: Request,
-    file_id: str = Form(...),
+    file_id: str | None = Form(None),
+    folder_id: str | None = Form(None),
     user: User = Depends(current_user),
 ):
     serialized = request.session.get("google_credentials")
@@ -396,11 +411,11 @@ async def drive_import(
     storage_key = settings.supabase_service_role or settings.supabase_key
     if not settings.supabase_url or not storage_key:
         raise HTTPException(status_code=503, detail="Supabase Storage não configurado")
-    def download_and_upload() -> dict[str, str]:
+    def download_and_upload(file_metadata: dict) -> dict[str, str]:
         service = build("drive", "v3", credentials=credentials, cache_discovery=False)
-        metadata = service.files().get(fileId=file_id, fields="name,mimeType").execute()
+        metadata = service.files().get(fileId=file_metadata["id"], fields="name,mimeType").execute()
         buffer = io.BytesIO()
-        downloader = MediaIoBaseDownload(buffer, service.files().get_media(fileId=file_id))
+        downloader = MediaIoBaseDownload(buffer, service.files().get_media(fileId=file_metadata["id"]))
         done = False
         while not done:
             _, done = downloader.next_chunk()
@@ -420,7 +435,23 @@ async def drive_import(
                 "storage_path": path, "thumbnail_storage_path": thumb_path,
                 "media_type": "VIDEO" if media_type.startswith("video/") else "IMAGE"}
     try:
-        return await asyncio.to_thread(download_and_upload)
+        if bool(file_id) == bool(folder_id):
+            raise ValueError("Informe um arquivo ou uma pasta do Google Drive")
+        service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+        if folder_id:
+            escaped_folder_id = folder_id.replace("'", "\\'")
+            children = service.files().list(
+                q=(
+                    f"trashed = false and '{escaped_folder_id}' in parents and "
+                    "(mimeType contains 'image/' or mimeType contains 'video/')"
+                ),
+                fields="files(id,name,mimeType,size)", pageSize=100,
+            ).execute().get("files", [])
+            if not children:
+                raise ValueError("A pasta selecionada não contém imagens ou vídeos")
+            return {"items": [await asyncio.to_thread(download_and_upload, child) for child in children]}
+        metadata = service.files().get(fileId=file_id, fields="id,name,mimeType").execute()
+        return {"items": [await asyncio.to_thread(download_and_upload, metadata)]}
     except ValueError as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
     except Exception as exc:
@@ -1768,6 +1799,29 @@ async def resume_batch(
     await db.commit()
     for post in posts:
         schedule_post(post.id, post.scheduled_for)
+    return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/batches/{batch_id}/delete")
+async def delete_batch(
+    batch_id: int,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    batch = await db.scalar(select(PostingBatch).where(
+        PostingBatch.id == batch_id, PostingBatch.owner_id == owner_id
+    ))
+    if not batch:
+        raise HTTPException(status_code=404, detail="Lote não encontrado")
+    posts = (await db.scalars(select(ScheduledPost).where(
+        ScheduledPost.batch_id == batch.id,
+        ScheduledPost.owner_id == owner_id,
+    ))).all()
+    for post in posts:
+        unschedule_post(post.id)
+    await db.delete(batch)
+    await db.commit()
     return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
 
 
