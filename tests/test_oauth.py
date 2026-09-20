@@ -39,6 +39,18 @@ def test_oauth_state_is_unpredictable():
     assert len(new_state()) >= 32
 
 
+def test_secure_cookie_defaults_to_https_public_base_url(monkeypatch):
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://app.example.com")
+    monkeypatch.delenv("COOKIE_SECURE", raising=False)
+    from app.config import get_settings
+
+    get_settings.cache_clear()
+    settings = get_settings()
+    assert settings.public_base_url == "https://app.example.com"
+    assert settings.cookie_secure is True
+    assert settings.secure_cookies_enabled is True
+
+
 @pytest.mark.asyncio
 async def test_exchange_long_lived_token_uses_unversioned_instagram_endpoint(monkeypatch):
     monkeypatch.setenv("META_APP_SECRET", "test-secret")
