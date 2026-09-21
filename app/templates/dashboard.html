@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Painel · Auto-Insta{% endblock %}
 {% block content %}
+<link rel="stylesheet" href="/static/css/queue.css">
+<link rel="stylesheet" href="/static/css/feed.css">
+<link rel="stylesheet" href="/static/css/calendar.css">
+<link rel="stylesheet" href="/static/css/analytics.css">
 <style>
   body > nav { padding:.4rem 0 .5rem; margin-bottom:.75rem; }
   .queue-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:.75rem; }
@@ -186,8 +190,10 @@
   <a class="workspace-tab" href="#queue" data-view="queue"><span>02</span><i data-lucide="layers-3"></i> Fila</a>
   <a class="workspace-tab" href="#feed" data-view="feed"><span>03</span><i data-lucide="instagram"></i> Feed</a>
   <a class="workspace-tab" href="#automations" data-view="automations"><span>04</span><i data-lucide="bot"></i> Automações</a>
-  <a class="workspace-tab" href="#accounts" data-view="accounts" aria-label="Hub de contas" title="Hub de contas"><span>05</span><i data-lucide="users-round"></i> Hub de contas</a>
-  <a class="workspace-tab" href="#system" data-view="system" aria-label="Logs e sistema" title="Logs e sistema"><span>06</span><i data-lucide="terminal"></i> Logs & Sistema</a>
+  <a class="workspace-tab" href="#calendar" data-view="calendar"><span>05</span><i data-lucide="calendar-days"></i> Calendário</a>
+  <a class="workspace-tab" href="#analytics" data-view="analytics"><span>06</span><i data-lucide="chart-no-axes-combined"></i> Analytics</a>
+  <a class="workspace-tab" href="#accounts" data-view="accounts" aria-label="Hub de contas" title="Hub de contas"><span>07</span><i data-lucide="users-round"></i> Hub de contas</a>
+  <a class="workspace-tab" href="#system" data-view="system" aria-label="Logs e sistema" title="Logs e sistema"><span>08</span><i data-lucide="terminal"></i> Logs & Sistema</a>
 </nav>
 <main class="workspace-views">
   <section id="overview" class="workspace-view active" data-panel="overview">
@@ -327,9 +333,21 @@
 
   <section id="feed" class="workspace-view" data-panel="feed">
     <div class="section-heading"><div><div class="eyebrow">Instagram</div><h2>Gestão de Feed</h2></div><button class="secondary" type="button" id="feed-load"><i data-lucide="refresh-cw"></i> Carregar feed</button></div>
-    <div class="panel"><label>Contas<select id="feed-accounts" multiple size="4">{% for account in accounts %}<option value="{{ account.id }}">@{{ account.username }}</option>{% endfor %}</select></label><div class="queue-toolbar-actions"><button type="button" id="feed-delete-selected" class="secondary"><i data-lucide="trash-2"></i> Apagar selecionadas</button><button type="button" id="feed-clear" class="danger"><i data-lucide="flame"></i> Limpar Feed</button></div></div>
+    <div class="panel"><div class="panel-header"><div><div class="panel-kicker">Contas do Hub</div><p class="section-note">Clique nos cards para selecionar uma ou mais contas.</p></div><button class="secondary" type="button" id="feed-load-modular"><i data-lucide="refresh-cw"></i> Mostrar feed</button></div><div id="feed-account-cards" class="feed-account-grid">{% for account in accounts %}<label class="feed-account-card"><input type="checkbox" value="{{ account.id }}" data-feed-account><span class="profile-avatar">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}{{ account.username[:1]|upper }}{% endif %}</span><span><strong>@{{ account.username }}</strong><small>Conta conectada</small></span></label>{% endfor %}</div><select id="feed-accounts" multiple hidden>{% for account in accounts %}<option value="{{ account.id }}">@{{ account.username }}</option>{% endfor %}</select><div class="queue-toolbar-actions"><button type="button" id="feed-delete-selected" class="secondary"><i data-lucide="trash-2"></i> Apagar selecionadas</button><button type="button" id="feed-clear" class="danger"><i data-lucide="flame"></i> Limpar Feed</button></div></div>
     <p id="feed-status" class="section-note">Selecione uma ou mais contas e carregue as publicações.</p>
     <div id="feed-grid" class="feed-grid"></div>
+  </section>
+
+  <section id="calendar" class="workspace-view" data-panel="calendar">
+    <div class="calendar-toolbar"><div><div class="eyebrow">Planejamento</div><h2>Calendário de conteúdo</h2><p class="section-note">Arraste uma publicação para outro dia para reagendar.</p></div><div class="calendar-controls"><button type="button" class="secondary" id="calendar-prev" aria-label="Mês anterior">←</button><strong id="calendar-title"></strong><button type="button" class="secondary" id="calendar-next" aria-label="Próximo mês">→</button><button type="button" class="secondary" id="calendar-today">Hoje</button><button type="button" class="secondary" id="calendar-refresh">Atualizar</button></div></div>
+    <div class="panel"><div class="calendar-controls"><label>Conta<select id="calendar-account-filter"><option value="">Todas</option>{% for account in accounts %}<option value="{{ account.id }}">@{{ account.username }}</option>{% endfor %}</select></label><label>Status<select id="calendar-status-filter"><option value="">Todos</option><option value="scheduled">Agendados</option><option value="failed">Falhos</option><option value="published">Publicados</option></select></label></div><div id="calendar-grid" class="calendar-grid" aria-live="polite"></div></div>
+  </section>
+
+  <section id="analytics" class="workspace-view" data-panel="analytics">
+    <div class="analytics-toolbar"><div><div class="eyebrow">Performance</div><h2>Analytics do Instagram</h2><p class="section-note">Dados consultados diretamente na Graph API; métricas indisponíveis são sinalizadas.</p></div><div class="calendar-controls"><label>Período<select id="analytics-period"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="90">90 dias</option></select></label><button type="button" class="secondary" id="analytics-refresh">Atualizar</button></div></div>
+    <div class="analytics-cards"><div class="analytics-card"><small>Seguidores</small><strong data-analytics-metric="followers">—</strong></div><div class="analytics-card"><small>Alcance</small><strong data-analytics-metric="reach">—</strong></div><div class="analytics-card"><small>Impressões</small><strong data-analytics-metric="impressions">—</strong></div><div class="analytics-card"><small>Visitas ao perfil</small><strong data-analytics-metric="profile_views">—</strong></div></div>
+    <div class="panel analytics-panel"><h3>Resumo por conta</h3><div class="table-wrap"><table class="analytics-table"><thead><tr><th>Conta</th><th>Seguidores</th><th>Alcance</th><th>Impressões</th><th>Visitas</th><th>Cliques</th></tr></thead><tbody id="analytics-account-table"><tr><td colspan="6">Carregando...</td></tr></tbody></table></div></div>
+    <div class="panel analytics-panel"><h3>Publicações recentes</h3><div class="table-wrap"><table class="analytics-table"><thead><tr><th>Conta</th><th>Tipo</th><th>Curtidas</th><th>Comentários</th><th>Compart.</th><th>Salvos</th><th>Visualizações</th><th>Legenda</th></tr></thead><tbody id="analytics-media-table"><tr><td colspan="8">Carregando...</td></tr></tbody></table></div></div>
   </section>
 
   <section id="automations" class="workspace-view" data-panel="automations">
@@ -497,5 +515,14 @@ if (refreshDashboardViews) {
 }
 document.querySelectorAll('input[name="caption_mode"]').forEach(input=>input.addEventListener("change",renderCaptionFields));
 if(form){form.addEventListener("submit",event=>{if(!media.length){event.preventDefault();alert("Selecione ao menos uma mídia.");return}if(!document.querySelector('input[name="account_ids"]:checked')){event.preventDefault();alert("Selecione ao menos uma conta.");return}const selected=parseLocalDateTime(time.value);if(Number.isNaN(selected.getTime())){event.preventDefault();time.setCustomValidity("Informe um horário válido.");time.reportValidity();return}time.setCustomValidity("");form.querySelectorAll(".generated-media").forEach(item=>item.remove());media.forEach(item=>{[["media_urls",item.url],["media_types",item.type],["thumbnail_urls",item.thumbnailUrl],["storage_paths",item.storagePath],["thumbnail_storage_paths",item.thumbnailStoragePath],["drive_media_urls",item.driveMediaUrl],["drive_account_emails",item.driveAccountEmail],["drive_credentials_encrypted",item.driveCredentialsEncrypted]].forEach(([name,value])=>{if(!value)return;const input=document.createElement("input");input.type="hidden";input.name=name;input.value=value;input.className="generated-media";form.appendChild(input)})});if(document.querySelector('input[name="caption_mode"]:checked').value==="individual")media.forEach(item=>{const input=document.createElement("input");input.type="hidden";input.name="captions";input.value=item.caption||"";input.className="generated-media";form.appendChild(input)});const localInput=document.createElement("input");localInput.type="hidden";localInput.name="scheduled_for";localInput.value=time.value;localInput.className="generated-media";form.appendChild(localInput);time.disabled=true})}
+</script>
+<script type="module">
+  import "/static/js/dashboard.js";
+  import "/static/js/queue.js";
+  import "/static/js/drive-picker.js";
+  import "/static/js/feed.js";
+  import "/static/js/automations.js";
+  import "/static/js/calendar.js";
+  import "/static/js/analytics.js";
 </script>
 {% endblock %}

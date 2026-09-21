@@ -1347,6 +1347,187 @@ async def get_feed(
     return {"items": results, "errors": errors}
 
 
+@router.get("/api/calendar/posts")
+async def calendar_posts(
+    start: str | None = None,
+    end: str | None = None,
+    account_id: int | None = None,
+    batch_id: int | None = None,
+    post_status: str | None = Query(None, alias="status"),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    query = (
+        select(ScheduledPost)
+        .options(selectinload(ScheduledPost.account), selectinload(ScheduledPost.batch))
+        .where(ScheduledPost.owner_id == owner_id)
+    )
+    if account_id:
+        query = query.where(ScheduledPost.account_id == account_id)
+    if batch_id:
+        query = query.where(ScheduledPost.batch_id == batch_id)
+    if post_status:
+        query = query.where(ScheduledPost.status == post_status)
+    try:
+        if start:
+            query = query.where(ScheduledPost.scheduled_for >= parse_scheduled_datetime(start))
+        if end:
+            query = query.where(ScheduledPost.scheduled_for < parse_scheduled_datetime(end))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Intervalo de calendário inválido") from exc
+    posts = (await db.scalars(query.order_by(ScheduledPost.scheduled_for))).all()
+    conflicts = {}
+    for post in posts:
+        key = f"{post.account_id}:{post.scheduled_for.astimezone(timezone.utc).isoformat()}"
+        conflicts[key] = conflicts.get(key, 0) + 1
+    return {
+        "items": [
+            {
+                "id": post.id,
+                "account_id": post.account_id,
+                "account": post.account.username,
+                "batch_id": post.batch_id,
+                "batch": post.batch.name if post.batch else None,
+                "media_url": post.thumbnail_url or post.media_url,
+                "media_type": post.media_type,
+                "caption": post.caption,
+                "scheduled_for": post.scheduled_for.isoformat(),
+                "status": post.status,
+                "error_message": post.error_message,
+                "conflict": conflicts[
+                    f"{post.account_id}:{post.scheduled_for.astimezone(timezone.utc).isoformat()}"
+                ] > 1,
+            }
+            for post in posts
+        ]
+    }
+
+
+@router.patch("/api/calendar/posts/{post_id}")
+async def reschedule_calendar_post(
+    post_id: int,
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = await request.json()
+    raw_scheduled_for = str(payload.get("scheduled_for") or "")
+    try:
+        scheduled_for = parse_scheduled_datetime(raw_scheduled_for)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Data de reagendamento inválida") from exc
+    if scheduled_for <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="O novo horário deve estar no futuro")
+    owner_id = workspace_owner_id(user)
+    post = await db.scalar(select(ScheduledPost).where(
+        ScheduledPost.id == post_id, ScheduledPost.owner_id == owner_id
+    ))
+    if not post:
+        raise HTTPException(status_code=404, detail="Publicação não encontrada")
+    if post.status not in PENDING_STATUSES:
+        raise HTTPException(status_code=400, detail="Somente publicações pendentes podem ser reagendadas")
+    post.scheduled_for = scheduled_for
+    await db.commit()
+    unschedule_post(post.id)
+    schedule_post(post.id, scheduled_for)
+    return {"id": post.id, "scheduled_for": scheduled_for.isoformat()}
+
+
+@router.get("/api/analytics")
+async def analytics(
+    account_ids: list[int] = Query(default=[]),
+    period_days: int = 30,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if period_days not in {7, 30, 90}:
+        raise HTTPException(status_code=400, detail="Período analítico inválido")
+    owner_id = workspace_owner_id(user)
+    query = select(InstagramAccount).where(
+        InstagramAccount.owner_id == owner_id,
+        InstagramAccount.access_token_encrypted != "",
+    )
+    if account_ids:
+        query = query.where(InstagramAccount.id.in_(set(account_ids)))
+    accounts = (await db.scalars(query.order_by(InstagramAccount.username))).all()
+    settings = get_settings()
+    start_date = (datetime.now(timezone.utc) - timedelta(days=period_days - 1)).date()
+    account_rows = []
+    media_rows = []
+    errors = []
+    async with httpx.AsyncClient(timeout=30) as client:
+        for account in accounts:
+            try:
+                token = decrypt_token(account.access_token_encrypted)
+                profile = await client.get(
+                    f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}",
+                    params={"fields": "id,username,followers_count,media_count", "access_token": token},
+                )
+                profile_data = profile.json() if not profile.is_error else {}
+                insights = await client.get(
+                    f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
+                    params={
+                        "metric": "reach,impressions,profile_views,website_clicks",
+                        "period": "day",
+                        "since": start_date.isoformat(),
+                        "until": datetime.now(timezone.utc).date().isoformat(),
+                        "access_token": token,
+                    },
+                )
+                insight_values = {}
+                if not insights.is_error:
+                    for item in insights.json().get("data", []):
+                        values = item.get("values", [])
+                        insight_values[item.get("name")] = sum(int(value.get("value", 0) or 0) for value in values)
+                account_rows.append({
+                    "account_id": account.id,
+                    "account": account.username,
+                    "followers": profile_data.get("followers_count", 0),
+                    "media_count": profile_data.get("media_count", 0),
+                    "growth": 0,
+                    "reach": insight_values.get("reach", 0),
+                    "impressions": insight_values.get("impressions", 0),
+                    "profile_views": insight_values.get("profile_views", 0),
+                    "link_clicks": insight_values.get("website_clicks", 0),
+                })
+                media = await _feed_media_for_account(client, account, token, settings)
+                for item in media[:25]:
+                    media_insights = {}
+                    media_id = item.get("id")
+                    if media_id:
+                        insight_response = await client.get(
+                            f"https://graph.instagram.com/{settings.graph_api_version}/{media_id}/insights",
+                            params={
+                                "metric": "likes,comments,shares,saved,views,total_interactions",
+                                "access_token": token,
+                            },
+                        )
+                        if not insight_response.is_error:
+                            media_insights = {
+                                entry.get("name"): entry.get("values", [{}])[0].get("value")
+                                for entry in insight_response.json().get("data", [])
+                            }
+                    media_rows.append({
+                        "account_id": account.id,
+                        "account": account.username,
+                        "id": media_id,
+                        "media_url": item.get("thumbnail_url") or item.get("media_url"),
+                        "caption": item.get("caption", ""),
+                        "media_type": item.get("media_type"),
+                        "likes": media_insights.get("likes"),
+                        "comments": media_insights.get("comments"),
+                        "shares": media_insights.get("shares"),
+                        "saves": media_insights.get("saved"),
+                        "views": media_insights.get("views"),
+                        "engagement": media_insights.get("total_interactions"),
+                    })
+            except Exception as exc:
+                logger.exception("Falha ao consultar analytics da conta %s", account.instagram_user_id)
+                errors.append({"account_id": account.id, "account": account.username, "error": str(exc)})
+    return {"accounts": account_rows, "media": media_rows, "errors": errors, "period_days": period_days}
+
+
 @router.post("/api/feed/delete")
 async def delete_feed_items(
     request: Request,

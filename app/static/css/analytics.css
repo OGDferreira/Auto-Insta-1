@@ -1,0 +1,6 @@
+.analytics-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:.75rem;flex-wrap:wrap}
+.analytics-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem;margin:1rem 0}
+.analytics-card{padding:1rem;border:1px solid var(--line);border-radius:14px;background:rgba(16,21,34,.8)}
+.analytics-card small{display:block;color:var(--muted)}.analytics-card strong{display:block;font:700 1.55rem "Space Grotesk";margin-top:.35rem}
+.analytics-panel{margin-top:1rem}.analytics-table td{vertical-align:top}
+@media(max-width:850px){.analytics-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
