@@ -80,6 +80,9 @@ async def init_db() -> None:
             existing = {row[1] for row in columns}
             new_columns = {
                 "original_media_url": "TEXT",
+                "drive_media_url": "TEXT",
+                "drive_account_email": "TEXT",
+                "drive_credentials_encrypted": "TEXT",
                 "thumbnail_url": "TEXT",
                 "storage_path": "TEXT",
                 "thumbnail_storage_path": "TEXT",
@@ -123,6 +126,9 @@ async def init_db() -> None:
                 },
                 "scheduled_posts": {
                     "original_media_url": "TEXT",
+                    "drive_media_url": "TEXT",
+                    "drive_account_email": "VARCHAR(320)",
+                    "drive_credentials_encrypted": "TEXT",
                     "thumbnail_url": "TEXT",
                     "storage_path": "TEXT",
                     "thumbnail_storage_path": "TEXT",

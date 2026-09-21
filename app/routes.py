@@ -11,7 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, func, or_, select, update
@@ -180,6 +180,14 @@ def _notification_payload(total_views: int, account_count: int) -> str:
     return f"Auto-Insta: {total_views:,} visualizações em {account_count} conta(s).".replace(",", ".")
 
 
+def _meta_api_error(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = response.text
+    return f"Instagram API {response.status_code}: {str(payload)[:900]}"
+
+
 async def _media_is_public(media_url: str | None) -> tuple[bool, str | None]:
     if not media_url:
         return False, "A publicação não possui uma URL de mídia armazenada."
@@ -247,6 +255,17 @@ def _google_flow(state: str | None = None) -> Flow:
     flow = Flow.from_client_config(client_config, scopes=GOOGLE_SCOPES, state=state)
     flow.redirect_uri = settings.google_redirect_uri
     return flow
+
+
+def _google_drive_context(credentials: Credentials) -> tuple[str, str]:
+    """Return the Drive account and encrypted credentials for a later media rescue."""
+    credentials_json = credentials.to_json()
+    try:
+        service = build("oauth2", "v2", credentials=credentials, cache_discovery=False)
+        email = service.userinfo().get().execute().get("email", "")
+    except Exception:
+        email = ""
+    return email, encrypt_token(credentials_json)
 
 
 def _thumbnail_bytes(content: bytes, media_type: str) -> bytes:
@@ -438,20 +457,49 @@ async def drive_import(
         if bool(file_id) == bool(folder_id):
             raise ValueError("Informe um arquivo ou uma pasta do Google Drive")
         service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+        drive_account_email, drive_credentials_encrypted = await asyncio.to_thread(
+            _google_drive_context, credentials
+        )
         if folder_id:
-            escaped_folder_id = folder_id.replace("'", "\\'")
-            children = service.files().list(
-                q=(
-                    f"trashed = false and '{escaped_folder_id}' in parents and "
-                    "(mimeType contains 'image/' or mimeType contains 'video/')"
-                ),
-                fields="files(id,name,mimeType,size)", pageSize=100,
-            ).execute().get("files", [])
+            children = []
+            folders_to_scan = [folder_id]
+            while folders_to_scan:
+                current_folder = folders_to_scan.pop()
+                escaped_folder_id = current_folder.replace("'", "\\'")
+                entries = service.files().list(
+                    q=(
+                        f"trashed = false and '{escaped_folder_id}' in parents and "
+                        "(mimeType = 'application/vnd.google-apps.folder' or "
+                        "mimeType contains 'image/' or mimeType contains 'video/')"
+                    ),
+                    fields="files(id,name,mimeType,size)", pageSize=100,
+                ).execute().get("files", [])
+                folders_to_scan.extend(
+                    entry["id"] for entry in entries
+                    if entry["mimeType"] == "application/vnd.google-apps.folder"
+                )
+                children.extend(
+                    entry for entry in entries
+                    if entry["mimeType"] != "application/vnd.google-apps.folder"
+                )
             if not children:
                 raise ValueError("A pasta selecionada não contém imagens ou vídeos")
-            return {"items": [await asyncio.to_thread(download_and_upload, child) for child in children]}
+            items = [await asyncio.to_thread(download_and_upload, child) for child in children]
+            for item, child in zip(items, children):
+                item.update({
+                    "drive_media_url": f"https://drive.google.com/uc?export=download&id={child['id']}",
+                    "drive_account_email": drive_account_email,
+                    "drive_credentials_encrypted": drive_credentials_encrypted,
+                })
+            return {"items": items}
         metadata = service.files().get(fileId=file_id, fields="id,name,mimeType").execute()
-        return {"items": [await asyncio.to_thread(download_and_upload, metadata)]}
+        item = await asyncio.to_thread(download_and_upload, metadata)
+        item.update({
+            "drive_media_url": f"https://drive.google.com/uc?export=download&id={metadata['id']}",
+            "drive_account_email": drive_account_email,
+            "drive_credentials_encrypted": drive_credentials_encrypted,
+        })
+        return {"items": [item]}
     except ValueError as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
     except Exception as exc:
@@ -1090,6 +1138,113 @@ async def test_meta_connection(
     return {"results": results, "message": "Diagnóstico concluído. Consulte Logs & Sistema para o retorno completo."}
 
 
+async def _feed_media_for_account(client: httpx.AsyncClient, account: InstagramAccount, token: str, settings) -> list[dict]:
+    base = f"https://graph.instagram.com/{settings.graph_api_version}"
+    url = f"{base}/{account.instagram_user_id}/media"
+    params = {
+        "fields": "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp",
+        "limit": 100,
+        "access_token": token,
+    }
+    items = []
+    while url:
+        response = await client.get(url, params=params)
+        if response.is_error:
+            raise RuntimeError(_meta_api_error(response))
+        payload = response.json()
+        for item in payload.get("data", []):
+            items.append({"account_id": account.id, "account": account.username, **item})
+        url = payload.get("paging", {}).get("next")
+        params = {}
+    return items
+
+
+@router.get("/api/feed")
+async def get_feed(
+    account_ids: list[int] = Query(default=[]),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    query = select(InstagramAccount).where(
+        InstagramAccount.owner_id == owner_id,
+        InstagramAccount.connection_status != "pending",
+        InstagramAccount.access_token_encrypted != "",
+    )
+    if account_ids:
+        query = query.where(InstagramAccount.id.in_(set(account_ids)))
+    accounts = (await db.scalars(query.order_by(InstagramAccount.username))).all()
+    if account_ids and len(accounts) != len(set(account_ids)):
+        raise HTTPException(status_code=404, detail="Uma ou mais contas não foram encontradas")
+    results = []
+    errors = []
+    settings = get_settings()
+    async with httpx.AsyncClient(timeout=30) as client:
+        for account in accounts:
+            try:
+                results.extend(await _feed_media_for_account(
+                    client, account, decrypt_token(account.access_token_encrypted), settings
+                ))
+            except Exception as exc:
+                logger.exception("Falha ao consultar Feed da conta %s", account.instagram_user_id)
+                errors.append({"account_id": account.id, "account": account.username, "error": str(exc)})
+    return {"items": results, "errors": errors}
+
+
+@router.post("/api/feed/delete")
+async def delete_feed_items(
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = await request.json()
+    account_ids = {int(value) for value in payload.get("account_ids", [])}
+    selected = payload.get("media", [])
+    clear_feed = bool(payload.get("clear_feed"))
+    if not account_ids:
+        raise HTTPException(status_code=400, detail="Selecione ao menos uma conta")
+    owner_id = workspace_owner_id(user)
+    accounts = (await db.scalars(select(InstagramAccount).where(
+        InstagramAccount.owner_id == owner_id,
+        InstagramAccount.id.in_(account_ids),
+        InstagramAccount.access_token_encrypted != "",
+    ))).all()
+    if len(accounts) != len(account_ids):
+        raise HTTPException(status_code=404, detail="Uma ou mais contas não foram encontradas")
+    by_id = {account.id: account for account in accounts}
+    targets: list[tuple[InstagramAccount, str]] = []
+    settings = get_settings()
+    async with httpx.AsyncClient(timeout=30) as client:
+        if clear_feed:
+            for account in accounts:
+                media = await _feed_media_for_account(
+                    client, account, decrypt_token(account.access_token_encrypted), settings
+                )
+                targets.extend((account, item["id"]) for item in media if item.get("id"))
+        else:
+            for item in selected:
+                account = by_id.get(int(item.get("account_id", 0)))
+                media_id = str(item.get("media_id", "")).strip()
+                if account and media_id:
+                    targets.append((account, media_id))
+        if not targets:
+            raise HTTPException(status_code=400, detail="Nenhuma publicação selecionada")
+        deleted = []
+        errors = []
+        for index, (account, media_id) in enumerate(targets):
+            if index:
+                await asyncio.sleep(2)
+            response = await client.delete(
+                f"https://graph.instagram.com/{settings.graph_api_version}/{media_id}",
+                params={"access_token": decrypt_token(account.access_token_encrypted)},
+            )
+            if response.is_error:
+                errors.append({"account": account.username, "media_id": media_id, "error": _meta_api_error(response)})
+            else:
+                deleted.append({"account": account.username, "media_id": media_id})
+    return {"deleted": deleted, "errors": errors, "throttled_seconds": 2}
+
+
 @router.get("/auth/instagram/start")
 async def instagram_start(
     request: Request,
@@ -1467,7 +1622,7 @@ async def retry_post(
         await db.commit()
         raise HTTPException(status_code=400, detail=post.error_message)
     media_url = post.original_media_url or post.media_url
-    media_available, media_error = await _media_is_public(media_url)
+    media_available, media_error = (True, None) if post.drive_media_url else await _media_is_public(media_url)
     if not media_available:
         post.status = "failed"
         post.error_message = media_error
@@ -1536,10 +1691,14 @@ async def retry_blocked_posts(
 @router.post("/posts/retry-failed")
 async def retry_failed_posts(
     account_id: int | None = Form(None),
+    intervalo: int = Form(1),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
     owner_id = workspace_owner_id(user)
+    if intervalo < 1:
+        raise HTTPException(status_code=400, detail="O intervalo mínimo é de 1 minuto")
+    confirmed_at = datetime.now(timezone.utc)
     accounts_query = select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
     if account_id is not None:
         accounts_query = accounts_query.where(InstagramAccount.id == account_id)
@@ -1565,13 +1724,13 @@ async def retry_failed_posts(
         ScheduledPost.owner_id == owner_id,
         ScheduledPost.status == "failed",
         ScheduledPost.account_id.in_(authorized_ids) if authorized_ids else ScheduledPost.id == -1,
-    )
+    ).order_by(ScheduledPost.scheduled_for, ScheduledPost.id)
     posts = (await db.scalars(posts_query)).all()
-    now = datetime.now(timezone.utc) + timedelta(seconds=2)
-    for post in posts:
+    first_time = confirmed_at + timedelta(minutes=2)
+    for index, post in enumerate(posts):
         post.status = "scheduled"
         post.error_message = None
-        post.scheduled_for = now
+        post.scheduled_for = first_time + timedelta(minutes=index * intervalo)
     await db.commit()
     for post in posts:
         schedule_post(post.id, post.scheduled_for)
@@ -1683,6 +1842,9 @@ async def create_bulk_posts(
     thumbnail_urls: list[str] = Form(default=[]),
     storage_paths: list[str] = Form(default=[]),
     thumbnail_storage_paths: list[str] = Form(default=[]),
+    drive_media_urls: list[str] = Form(default=[]),
+    drive_account_emails: list[str] = Form(default=[]),
+    drive_credentials_encrypted: list[str] = Form(default=[]),
     captions: list[str] = Form(default=[]),
     caption_mode: str = Form("global"),
     caption: str = Form(""),
@@ -1740,6 +1902,12 @@ async def create_bulk_posts(
                 batch_id=batch.id,
                 media_url=media_url,
                 original_media_url=media_url,
+                drive_media_url=drive_media_urls[media_index] if media_index < len(drive_media_urls) else None,
+                drive_account_email=drive_account_emails[media_index] if media_index < len(drive_account_emails) else None,
+                drive_credentials_encrypted=(
+                    drive_credentials_encrypted[media_index]
+                    if media_index < len(drive_credentials_encrypted) else None
+                ),
                 thumbnail_url=thumbnail_urls[media_index] if media_index < len(thumbnail_urls) else media_url,
                 storage_path=storage_paths[media_index] if media_index < len(storage_paths) else None,
                 thumbnail_storage_path=thumbnail_storage_paths[media_index] if media_index < len(thumbnail_storage_paths) else None,

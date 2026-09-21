@@ -1,11 +1,16 @@
 from datetime import datetime, timedelta, timezone
 import asyncio
+import io
 import json
 import logging
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
 
 import httpx
+from google.auth.transport.requests import Request as GoogleAuthRequest
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from pywebpush import WebPushException, webpush
@@ -414,6 +419,72 @@ async def schedule_pending_posts() -> None:
         schedule_post(post.id, post.scheduled_for)
 
 
+def _drive_file_id(url: str | None) -> str | None:
+    if not url:
+        return None
+    return parse_qs(urlparse(url).query).get("id", [None])[0]
+
+
+async def _drive_media_rescue(post: ScheduledPost, settings) -> str | None:
+    """Refresh a missing public object from Drive immediately before publishing."""
+    if not post.drive_media_url or not post.drive_credentials_encrypted:
+        return None
+    file_id = _drive_file_id(post.drive_media_url)
+    if not file_id:
+        return None
+    try:
+        credentials = Credentials.from_authorized_user_info(
+            json.loads(decrypt_token(post.drive_credentials_encrypted)),
+            ["https://www.googleapis.com/auth/drive.readonly"],
+        )
+        if credentials.expired and credentials.refresh_token:
+            credentials.refresh(GoogleAuthRequest())
+
+        def download_and_upload() -> tuple[str, str | None]:
+            service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+            metadata = service.files().get(fileId=file_id, fields="name,mimeType").execute()
+            buffer = io.BytesIO()
+            downloader = MediaIoBaseDownload(
+                buffer, service.files().get_media(fileId=file_id)
+            )
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+            content = buffer.getvalue()
+            if len(content) > 50 * 1024 * 1024:
+                raise RuntimeError("Arquivo do Drive excede o limite de 50 MB")
+            storage_key = settings.supabase_service_role or settings.supabase_key
+            if not settings.supabase_url or not storage_key:
+                raise RuntimeError("Supabase Storage não configurado para resgatar a mídia")
+            extension = urlparse(metadata.get("name", "")).path.rsplit(".", 1)[-1]
+            filename = f"drive-{post.id}.{extension}" if extension else f"drive-{post.id}"
+            path = f"drive-rescue/{post.id}/{filename}"
+            client = create_client(settings.supabase_url, storage_key)
+            bucket = client.storage.from_(settings.supabase_storage_bucket)
+            bucket.upload(
+                path,
+                content,
+                file_options={
+                    "content-type": metadata.get("mimeType", "application/octet-stream"),
+                    "upsert": True,
+                },
+            )
+            return bucket.get_public_url(path), path
+
+        media_url, storage_path = await asyncio.to_thread(download_and_upload)
+        post.media_url = media_url
+        post.original_media_url = media_url
+        post.storage_path = storage_path
+        return media_url
+    except Exception:
+        logger.exception(
+            "Falha ao resgatar mídia do Drive para post %s (conta %s)",
+            post.id,
+            post.drive_account_email or "desconhecida",
+        )
+        return None
+
+
 async def _publish(post_id: int) -> None:
     settings = get_settings()
     async with SessionLocal() as db:
@@ -460,6 +531,10 @@ async def _publish(post_id: int) -> None:
                 media_type = "REELS"
             if media_type not in {"IMAGE", "REELS"}:
                 raise RuntimeError(f"Tipo de mídia não suportado: {post.media_type}")
+            if post.drive_media_url and not post.storage_path:
+                rescued_url = await _drive_media_rescue(post, settings)
+                if not rescued_url:
+                    raise RuntimeError("A mídia local não existe e não foi possível resgatá-la do Drive.")
             _validate_media_url(post.media_url)
                 
             # Define a chave correta da URL (image_url vs video_url)
