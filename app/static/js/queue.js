@@ -7,7 +7,11 @@ export function initQueueModule() {
   if (!modal || !form) return;
   const close = () => { modal.hidden = true; };
   document.getElementById("batch-interval-cancel").addEventListener("click", close);
+  document.getElementById("batch-interval-close").addEventListener("click", close);
   modal.addEventListener("click", event => { if (event.target === modal) close(); });
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && !modal.hidden) close();
+  });
   document.querySelectorAll("[data-edit-batch-interval]").forEach(button => {
     button.addEventListener("click", event => {
       event.preventDefault();
