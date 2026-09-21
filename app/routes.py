@@ -1456,6 +1456,54 @@ async def calendar_posts(
     }
 
 
+@router.put("/api/queue/batches/{batch_id}/interval")
+async def update_batch_interval(
+    batch_id: int,
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = await request.json()
+    try:
+        interval_minutes = int(payload.get("intervalo_minutos", payload.get("interval_minutes", 0)))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Intervalo inválido") from exc
+    if not 1 <= interval_minutes <= 1440:
+        raise HTTPException(status_code=400, detail="O intervalo deve estar entre 1 e 1440 minutos")
+    owner_id = workspace_owner_id(user)
+    batch = await db.scalar(select(PostingBatch).where(
+        PostingBatch.id == batch_id, PostingBatch.owner_id == owner_id
+    ))
+    if not batch:
+        raise HTTPException(status_code=404, detail="Lote não encontrado")
+    pending_posts = (await db.scalars(
+        select(ScheduledPost)
+        .where(
+            ScheduledPost.owner_id == owner_id,
+            ScheduledPost.batch_id == batch_id,
+            ScheduledPost.status.in_(PENDING_STATUSES),
+        )
+        .order_by(ScheduledPost.scheduled_for, ScheduledPost.id)
+    )).all()
+    if not pending_posts:
+        return {"batch_id": batch_id, "updated": 0, "intervalo_minutos": interval_minutes}
+    next_time = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    interval = timedelta(minutes=interval_minutes)
+    for post in pending_posts:
+        post.scheduled_for = next_time
+        next_time += interval
+    await db.commit()
+    for post in pending_posts:
+        unschedule_post(post.id)
+        schedule_post(post.id, post.scheduled_for)
+    return {
+        "batch_id": batch_id,
+        "updated": len(pending_posts),
+        "intervalo_minutos": interval_minutes,
+        "first_scheduled_for": pending_posts[0].scheduled_for.isoformat(),
+    }
+
+
 @router.patch("/api/calendar/posts/{post_id}")
 async def reschedule_calendar_post(
     post_id: int,

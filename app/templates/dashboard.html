@@ -188,7 +188,7 @@
 <nav class="workspace-tabs" aria-label="Navegação do workspace">
   <a class="workspace-tab active" href="#overview" data-view="overview"><span>01</span><i data-lucide="layout-dashboard"></i> Dashboard</a>
   <a class="workspace-tab" href="#queue" data-view="queue"><span>02</span><i data-lucide="layers-3"></i> Fila</a>
-  <a class="workspace-tab" href="#feed" data-view="feed"><span>03</span><i data-lucide="instagram"></i> Feed</a>
+  <a class="workspace-tab" href="#feed" data-view="feed"><span>03</span><i data-lucide="layout-grid"></i> Feed</a>
   <a class="workspace-tab" href="#automations" data-view="automations"><span>04</span><i data-lucide="bot"></i> Automações</a>
   <a class="workspace-tab" href="#calendar" data-view="calendar"><span>05</span><i data-lucide="calendar-days"></i> Calendário</a>
   <a class="workspace-tab" href="#analytics" data-view="analytics"><span>06</span><i data-lucide="chart-no-axes-combined"></i> Analytics</a>
@@ -268,7 +268,7 @@
           {% set completed_count = batch_posts|selectattr("status", "equalto", "published")|list|length %}
           {% set processing_count = batch_posts|selectattr("status", "equalto", "processing")|list|length %}
           <details class="batch-accordion {{ batch.status }}" data-batch-id="{{ batch.id }}">
-            <summary class="batch-summary"><div><strong>{{ batch.name }}</strong><small class="muted">Lote {{ batch.id }} · {{ batch_posts|length }} publicações · {% if batch.status == "paused" %}pausado{% else %}{{ batch.status == "active" and "ativo" or batch.status }}{% endif %}</small><span class="batch-statuses" aria-label="Resumo de status do lote"><span class="batch-status-count awaiting">Aguardando: {{ awaiting_count }}</span><span class="batch-status-count failed">Falha: {{ failed_count }}</span><span class="batch-status-count completed">Concluído: {{ completed_count }}</span><span class="batch-status-count processing">Processando: {{ processing_count }}</span></span></div></summary>
+            <summary class="batch-summary"><div><strong>{{ batch.name }}</strong><small class="muted">Lote {{ batch.id }} · {{ batch_posts|length }} publicações · {% if batch.status == "paused" %}pausado{% else %}{{ batch.status == "active" and "ativo" or batch.status }}{% endif %}</small><span class="batch-statuses" aria-label="Resumo de status do lote"><span class="batch-status-count awaiting">Aguardando: {{ awaiting_count }}</span><span class="batch-status-count failed">Falha: {{ failed_count }}</span><span class="batch-status-count completed">Concluído: {{ completed_count }}</span><span class="batch-status-count processing">Processando: {{ processing_count }}</span></span></div><button type="button" class="batch-interval-edit secondary" data-edit-batch-interval="{{ batch.id }}" title="Editar intervalo" aria-label="Editar intervalo do lote"><i data-lucide="clock-3"></i></button></summary>
             <div class="batch-content">
               <div class="batch-actions">
                 {% if batch.status == "paused" %}<form method="post" action="/batches/{{ batch.id }}/resume"><button type="submit"><i data-lucide="play"></i> Retomar</button></form>{% else %}<form method="post" action="/batches/{{ batch.id }}/pause"><button type="submit" class="secondary"><i data-lucide="pause"></i> Pausar lote</button></form>{% endif %}
@@ -385,6 +385,17 @@
     </div>
   </section>
 </main>
+<div id="batch-interval-modal" class="retry-modal" hidden>
+  <div class="retry-dialog" role="dialog" aria-modal="true" aria-labelledby="batch-interval-title">
+    <h3 id="batch-interval-title">Editar intervalo do lote</h3>
+    <p class="muted">Novo intervalo (em minutos) entre as publicações?</p>
+    <form id="batch-interval-form">
+      <input id="batch-interval-id" type="hidden">
+      <label>Intervalo em minutos<input id="batch-interval-value" type="number" min="1" max="1440" value="1" required></label>
+      <div class="retry-actions"><button type="button" class="secondary" id="batch-interval-cancel">Cancelar</button><button type="submit">Recalcular fila</button></div>
+    </form>
+  </div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
