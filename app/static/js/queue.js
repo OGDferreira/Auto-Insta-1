@@ -1,17 +1,17 @@
 export function initQueueModule() {
-  document.querySelectorAll("[data-calendar-status]").forEach(item => {
-    item.classList.toggle("status-badge", true);
-  });
+  document.querySelectorAll("[data-calendar-status]").forEach(item => item.classList.add("status-badge"));
   const modal = document.getElementById("batch-interval-modal");
   const form = document.getElementById("batch-interval-form");
   if (!modal || !form) return;
+
   const close = () => { modal.hidden = true; };
-  document.getElementById("batch-interval-cancel").addEventListener("click", close);
-  document.getElementById("batch-interval-close").addEventListener("click", close);
+  document.getElementById("batch-interval-cancel")?.addEventListener("click", close);
+  document.getElementById("batch-interval-close")?.addEventListener("click", close);
   modal.addEventListener("click", event => { if (event.target === modal) close(); });
   document.addEventListener("keydown", event => {
     if (event.key === "Escape" && !modal.hidden) close();
   });
+
   document.querySelectorAll("[data-edit-batch-interval]").forEach(button => {
     button.addEventListener("click", event => {
       event.preventDefault();
@@ -21,23 +21,82 @@ export function initQueueModule() {
       document.getElementById("batch-interval-value").focus();
     });
   });
+
+  document.querySelectorAll("[data-toggle-batch-previews]").forEach(button => {
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const batch = button.closest(".batch-accordion");
+      const hidden = batch.classList.toggle("batch-previews-hidden");
+      button.title = hidden ? "Mostrar pré-visualizações" : "Ocultar pré-visualizações";
+      button.setAttribute("aria-label", button.title);
+      button.innerHTML = `<i data-lucide="${hidden ? "eye" : "eye-off"}"></i>`;
+      if (window.lucide) window.lucide.createIcons();
+    });
+  });
+  document.querySelectorAll("[data-batch-actions] form, [data-batch-actions] button").forEach(action => {
+    action.addEventListener("click", event => event.stopPropagation());
+  });
+
+  document.querySelectorAll("[data-retry-batch]").forEach(button => {
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const retryModal = document.createElement("div");
+      retryModal.className = "retry-modal";
+      retryModal.innerHTML = `<div class="retry-dialog" role="dialog" aria-modal="true" aria-labelledby="batch-retry-title">
+        <div class="panel-header"><h3 id="batch-retry-title">Reenviar falhas do lote</h3><button type="button" class="secondary drive-close" data-retry-close aria-label="Fechar"><i data-lucide="x"></i></button></div>
+        <p class="muted">Qual o intervalo (em minutos) entre as publicações?</p>
+        <label>Intervalo<input type="number" min="1" max="1440" value="1" required data-retry-interval></label>
+        <div class="queue-toolbar-actions"><button type="button" class="secondary" data-retry-close>Cancelar</button><button type="button" data-retry-confirm>Confirmar</button></div>
+      </div>`;
+      document.body.appendChild(retryModal);
+      if (window.lucide) window.lucide.createIcons();
+      const closeRetry = () => retryModal.remove();
+      retryModal.querySelectorAll("[data-retry-close]").forEach(closeButton => closeButton.addEventListener("click", closeRetry));
+      retryModal.addEventListener("click", event => { if (event.target === retryModal) closeRetry(); });
+      retryModal.querySelector("[data-retry-confirm]").addEventListener("click", async confirmEvent => {
+        const confirm = confirmEvent.currentTarget;
+        const interval = Number(retryModal.querySelector("[data-retry-interval]").value);
+        if (!Number.isInteger(interval) || interval < 1 || interval > 1440) return;
+        confirm.disabled = true;
+        try {
+          const response = await fetch(`/api/queue/batches/${button.dataset.retryBatch}/retry`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ intervalo_minutos: interval }),
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.detail || "Falha ao reenviar o lote.");
+          closeRetry();
+          window.showToast?.(`${payload.updated} falha(s) reagendada(s).`, "success");
+          window.location.reload();
+        } catch (error) {
+          window.showToast?.(error.message, "error");
+          confirm.disabled = false;
+        }
+      });
+    });
+  });
+
   form.addEventListener("submit", async event => {
     event.preventDefault();
     const batchId = document.getElementById("batch-interval-id").value;
     const interval = Number(document.getElementById("batch-interval-value").value);
-    const response = await fetch(`/api/queue/batches/${batchId}/interval`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ intervalo_minutos: interval }),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      if (typeof window.showToast === "function") window.showToast(payload.detail || "Falha ao recalcular lote.", "error");
-      return;
+    try {
+      const response = await fetch(`/api/queue/batches/${batchId}/interval`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intervalo_minutos: interval }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Falha ao recalcular lote.");
+      close();
+      window.showToast?.(`${payload.updated} publicação(ões) reagendada(s).`, "success");
+      window.location.reload();
+    } catch (error) {
+      window.showToast?.(error.message, "error");
     }
-    close();
-    if (typeof window.showToast === "function") window.showToast(`${payload.updated} publicação(ões) reagendada(s).`, "success");
-    window.location.reload();
   });
 }
 

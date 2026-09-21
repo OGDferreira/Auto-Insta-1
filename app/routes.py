@@ -12,7 +12,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -184,6 +184,11 @@ def local_scheduled_datetime(value: datetime) -> str:
 templates.env.globals["local_scheduled_datetime"] = local_scheduled_datetime
 
 
+def _is_mobile_request(request: Request) -> bool:
+    user_agent = request.headers.get("user-agent", "").lower()
+    return any(marker in user_agent for marker in ("mobile", "android", "iphone", "ipad"))
+
+
 def _notification_payload(total_views: int, account_count: int) -> str:
     return f"Auto-Insta: {total_views:,} visualizações em {account_count} conta(s).".replace(",", ".")
 
@@ -245,6 +250,32 @@ async def _send_web_push_notifications(db: AsyncSession, user_id: int, message: 
                 logger.warning("Falha ao enviar notificação push: %s", exc)
     await db.commit()
     return sent
+
+
+async def notify_pix_generated(db: AsyncSession, user_id: int) -> int:
+    return await _send_web_push_notifications(db, user_id, "Novo Pix gerado.")
+
+
+async def notify_pix_paid(db: AsyncSession, user_id: int) -> int:
+    return await _send_web_push_notifications(db, user_id, "Pix pago aprovado.")
+
+
+async def notify_daily_summary(
+    db: AsyncSession,
+    user_id: int,
+    published_count: int,
+    views_count: int,
+) -> int:
+    message = f"{published_count} publicações feitas e {views_count} visualizações geradas hoje."
+    return await _send_web_push_notifications(db, user_id, message)
+
+
+@router.get("/sw.js", include_in_schema=False)
+async def service_worker():
+    response = FileResponse("sw.js", media_type="application/javascript")
+    response.headers["Service-Worker-Allowed"] = "/"
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 def _google_flow(state: str | None = None) -> Flow:
@@ -797,9 +828,7 @@ async def dashboard(
             "published": sum(post.status == "published" and post.created_at and post.created_at.date() == day for post in posts),
             "interactions": 0,
         })
-    response = templates.TemplateResponse(
-        "dashboard.html",
-        {
+    template_context = {
             "request": request,
             "user": user,
             "accounts": accounts,
@@ -822,7 +851,10 @@ async def dashboard(
             },
             "volume_days": volume_days,
             "period_days": period_days,
-        },
+        }
+    response = templates.TemplateResponse(
+        "mobile_dashboard.html" if _is_mobile_request(request) else "dashboard.html",
+        template_context,
     )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
@@ -1501,6 +1533,56 @@ async def update_batch_interval(
         "updated": len(pending_posts),
         "intervalo_minutos": interval_minutes,
         "first_scheduled_for": pending_posts[0].scheduled_for.isoformat(),
+    }
+
+
+@router.post("/api/queue/batches/{batch_id}/retry")
+async def retry_batch_failures(
+    batch_id: int,
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = await request.json()
+    try:
+        interval_minutes = int(payload.get("intervalo_minutos", payload.get("interval_minutes", 1)))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Intervalo inválido") from exc
+    if not 1 <= interval_minutes <= 1440:
+        raise HTTPException(status_code=400, detail="O intervalo deve estar entre 1 e 1440 minutos")
+    owner_id = workspace_owner_id(user)
+    batch = await db.scalar(select(PostingBatch).where(
+        PostingBatch.id == batch_id, PostingBatch.owner_id == owner_id
+    ))
+    if not batch:
+        raise HTTPException(status_code=404, detail="Lote não encontrado")
+    failed_posts = (await db.scalars(
+        select(ScheduledPost)
+        .where(
+            ScheduledPost.owner_id == owner_id,
+            ScheduledPost.batch_id == batch_id,
+            ScheduledPost.status.in_({"failed", "blocked"}),
+        )
+        .order_by(ScheduledPost.scheduled_for, ScheduledPost.id)
+    )).all()
+    if not failed_posts:
+        return {"batch_id": batch_id, "updated": 0, "intervalo_minutos": interval_minutes}
+    next_time = datetime.now(timezone.utc) + timedelta(minutes=2)
+    interval = timedelta(minutes=interval_minutes)
+    for post in failed_posts:
+        post.status = "scheduled"
+        post.error_message = None
+        post.scheduled_for = next_time
+        next_time += interval
+    await db.commit()
+    for post in failed_posts:
+        unschedule_post(post.id)
+        schedule_post(post.id, post.scheduled_for)
+    return {
+        "batch_id": batch_id,
+        "updated": len(failed_posts),
+        "intervalo_minutos": interval_minutes,
+        "first_scheduled_for": failed_posts[0].scheduled_for.isoformat(),
     }
 
 
