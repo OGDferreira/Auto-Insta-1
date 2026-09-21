@@ -59,6 +59,14 @@ async def init_db() -> None:
                 "WHERE username = ''"
             )
             await connection.exec_driver_sql(
+                "CREATE TABLE IF NOT EXISTS direct_contacts ("
+                "id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL, account_id INTEGER NOT NULL, "
+                "sender_id TEXT NOT NULL, last_inbound_at DATETIME NOT NULL, "
+                "opted_out BOOLEAN NOT NULL DEFAULT 0, created_at DATETIME, "
+                "FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE, "
+                "FOREIGN KEY(account_id) REFERENCES instagram_accounts(id) ON DELETE CASCADE)"
+            )
+            await connection.exec_driver_sql(
                 "CREATE TABLE IF NOT EXISTS automation_rules ("
                 "id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL, account_id INTEGER, "
                 "target_account_ids TEXT NOT NULL DEFAULT '[]', rule_type TEXT NOT NULL, "
@@ -82,6 +90,7 @@ async def init_db() -> None:
                 "connection_status": "TEXT NOT NULL DEFAULT 'connected'",
                 "status_reason": "TEXT",
                 "status_checked_at": "DATETIME",
+                "ice_breakers": "TEXT NOT NULL DEFAULT '[]'",
             }
             columns = await connection.exec_driver_sql("PRAGMA table_info(automation_rules)")
             automation_existing = {row[1] for row in columns}
@@ -133,11 +142,20 @@ async def init_db() -> None:
                     )
         else:
             migrations = {
+                "direct_contacts": {
+                    "owner_id": "INTEGER NOT NULL",
+                    "account_id": "INTEGER NOT NULL",
+                    "sender_id": "VARCHAR(120) NOT NULL",
+                    "last_inbound_at": "TIMESTAMP WITH TIME ZONE NOT NULL",
+                    "opted_out": "BOOLEAN NOT NULL DEFAULT FALSE",
+                    "created_at": "TIMESTAMP WITH TIME ZONE",
+                },
                 "instagram_accounts": {
                     "connection_status": "VARCHAR(20) NOT NULL DEFAULT 'connected'",
                     "facebook_page_id": "VARCHAR(120)",
                     "status_reason": "TEXT",
                     "status_checked_at": "TIMESTAMP WITH TIME ZONE",
+                    "ice_breakers": "TEXT NOT NULL DEFAULT '[]'",
                 },
                 "bot_events": {
                     "webhook_id": "VARCHAR(120)",

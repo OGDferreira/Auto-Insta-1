@@ -127,6 +127,57 @@ export function initAutomationsModule() {
     status.hidden = false;
     status.textContent = `Anexo selecionado: ${file.name}`;
   }, true);
+  const iceForm = document.getElementById("ice-breakers-form");
+  const iceFields = document.getElementById("ice-breaker-fields");
+  const iceAdd = document.getElementById("ice-breaker-add");
+  let iceCount = 1;
+  async function loadIceBreakers(accountId) {
+    if (!accountId) return;
+    const response = await fetch(`/api/automations/ice-breakers/${accountId}`, { cache: "no-store" });
+    if (!response.ok) return;
+    const result = await response.json();
+    const saved = (result.ice_breakers || []).map(item => item.question).filter(Boolean).slice(0, 4);
+    if (!saved.length) return;
+    iceFields.innerHTML = "";
+    iceCount = saved.length;
+    saved.forEach((question, index) => {
+      const label = document.createElement("label");
+      label.innerHTML = `Pergunta ${index + 1}<input type="text" maxlength="80" required>`;
+      label.querySelector("input").value = question;
+      iceFields.appendChild(label);
+    });
+  }
+  document.getElementById("ice-breakers-account")?.addEventListener("change", event => {
+    iceFields.innerHTML = '<label>Pergunta 1<input type="text" maxlength="80" required placeholder="Ex.: Quero saber mais"></label>';
+    iceCount = 1;
+    loadIceBreakers(event.target.value);
+  });
+  iceAdd?.addEventListener("click", () => {
+    if (iceCount >= 4) return showModuleToast("O Instagram permite no máximo 4 perguntas.", "error");
+    iceCount += 1;
+    const label = document.createElement("label");
+    label.innerHTML = `Pergunta ${iceCount}<input type="text" maxlength="80" required placeholder="Ex.: Como funciona?">`;
+    iceFields.appendChild(label);
+  });
+  iceForm?.addEventListener("submit", async event => {
+    event.preventDefault();
+    const accountId = document.getElementById("ice-breakers-account").value;
+    const questions = [...iceFields.querySelectorAll("input")].map(input => input.value.trim());
+    if (!accountId || questions.some(question => !question)) return showModuleToast("Selecione a conta e preencha todas as perguntas.", "error");
+    const response = await fetch("/api/automations/ice-breakers", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({account_id: Number(accountId), questions}),
+    });
+    const result = await response.json();
+    const status = document.getElementById("ice-breaker-status");
+    if (!response.ok) {
+      status.textContent = result.detail || "Falha ao salvar os botões.";
+      return showModuleToast(status.textContent, "error");
+    }
+    status.textContent = "Botões salvos na conta com sucesso.";
+    showModuleToast("Ice Breakers configurados.", "success");
+  });
   document.getElementById("automation-list")?.addEventListener("click", async event => {
     const edit = event.target.closest("[data-edit-automation]");
     if (edit) return fillForm(rules.find(rule => rule.id === Number(edit.dataset.editAutomation)));

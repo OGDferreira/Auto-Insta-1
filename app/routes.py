@@ -36,6 +36,7 @@ from .jobs import (
 from .models import (
     AutomationRule,
     BotEvent,
+    DirectContact,
     InstagramAccount,
     InstagramMetric,
     PostingBatch,
@@ -53,6 +54,7 @@ from .oauth import (
 )
 from .observability import get_recent_logs
 from .security import decrypt_token, encrypt_token, hash_password, verify_password
+from .utils import parse_spintax
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -1378,22 +1380,74 @@ async def test_meta_connection(
     return {"results": results, "message": "Diagnóstico concluído. Consulte Logs & Sistema para o retorno completo."}
 
 
+async def _media_insights(
+    client: httpx.AsyncClient,
+    media_id: str,
+    token: str,
+    settings,
+    media_type: str,
+    semaphore: asyncio.Semaphore,
+) -> dict:
+    metrics = ["impressions", "reach"]
+    if media_type in {"VIDEO", "REELS"}:
+        metrics.append("plays")
+    url = f"https://graph.instagram.com/{settings.graph_api_version}/{media_id}/insights"
+    try:
+        async with semaphore:
+            response = await client.get(url, params={"metric": ",".join(metrics), "access_token": token})
+        if response.is_error:
+            return {"error": f"Insights indisponíveis (HTTP {response.status_code})"}
+        values = {}
+        for item in response.json().get("data", []):
+            values[item.get("name")] = item.get("values", [{}])[0].get("value", 0)
+        return {
+            "impressions": values.get("impressions", 0),
+            "reach": values.get("reach", 0),
+            "plays": values.get("plays", 0),
+        }
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        logger.warning("Insights indisponíveis para media_id=%s: %s", media_id, exc)
+        return {"error": "Insights indisponíveis no momento"}
+
+
 async def _feed_media_for_account(client: httpx.AsyncClient, account: InstagramAccount, token: str, settings) -> list[dict]:
     base = f"https://graph.instagram.com/{settings.graph_api_version}"
     url = f"{base}/{account.instagram_user_id}/media"
     params = {
-        "fields": "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp",
+        "fields": "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count",
         "limit": 100,
         "access_token": token,
     }
     items = []
+    insights_semaphore = asyncio.Semaphore(5)
     while url:
         response = await client.get(url, params=params)
         if response.is_error:
             raise RuntimeError(_meta_api_error(response))
         payload = response.json()
-        for item in payload.get("data", []):
-            items.append({"account_id": account.id, "account": account.username, **item})
+        media_items = payload.get("data", [])
+        insights = await asyncio.gather(*(
+            _media_insights(
+                client,
+                str(item["id"]),
+                token,
+                settings,
+                str(item.get("media_type", "")),
+                insights_semaphore,
+            )
+            for item in media_items if item.get("id")
+        ))
+        insight_index = iter(insights)
+        for item in media_items:
+            item_insights = next(insight_index, {})
+            items.append({
+                "account_id": account.id,
+                "account": account.username,
+                "likes": item.get("like_count", 0),
+                "comments": item.get("comments_count", 0),
+                "insights": item_insights,
+                **item,
+            })
         url = payload.get("paging", {}).get("next")
         params = {}
     return items
@@ -1429,6 +1483,157 @@ async def get_feed(
                 logger.exception("Falha ao consultar Feed da conta %s", account.instagram_user_id)
                 errors.append({"account_id": account.id, "account": account.username, "error": str(exc)})
     return {"items": results, "errors": errors}
+
+
+@router.get("/api/direct/campaign/contacts")
+async def list_direct_campaign_contacts(
+    account_ids: list[int] = Query(default=[]),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    query = select(DirectContact).where(
+        DirectContact.owner_id == workspace_owner_id(user),
+        DirectContact.last_inbound_at >= cutoff,
+        DirectContact.opted_out.is_(False),
+    )
+    if account_ids:
+        query = query.where(DirectContact.account_id.in_(set(account_ids)))
+    contacts = (await db.scalars(query.order_by(DirectContact.last_inbound_at.desc()))).all()
+    return {
+        "eligible_count": len(contacts),
+        "contacts": [
+            {"id": contact.id, "account_id": contact.account_id, "sender_id": contact.sender_id}
+            for contact in contacts
+        ],
+        "window_hours": 24,
+        "max_contacts": 100,
+    }
+
+
+@router.post("/api/direct/campaigns")
+async def send_direct_campaign(
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = await request.json()
+    message = str(payload.get("message") or "").strip()[:2000]
+    if not message:
+        raise HTTPException(status_code=400, detail="Informe a mensagem da campanha")
+    raw_accounts = payload.get("account_ids", [])
+    raw_contacts = payload.get("contact_ids", [])
+    if not isinstance(raw_accounts, list) or not raw_accounts:
+        raise HTTPException(status_code=400, detail="Selecione ao menos uma conta")
+    try:
+        account_ids = {int(value) for value in raw_accounts}
+        contact_ids = {int(value) for value in raw_contacts}
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Contas ou contatos inválidos") from exc
+    if not contact_ids or len(contact_ids) > 100:
+        raise HTTPException(status_code=400, detail="Selecione entre 1 e 100 contatos elegíveis")
+    owner_id = workspace_owner_id(user)
+    accounts = (await db.scalars(select(InstagramAccount).where(
+        InstagramAccount.owner_id == owner_id, InstagramAccount.id.in_(account_ids)
+    ))).all()
+    account_map = {account.id: account for account in accounts}
+    contacts = (await db.scalars(select(DirectContact).where(
+        DirectContact.id.in_(contact_ids),
+        DirectContact.owner_id == owner_id,
+        DirectContact.account_id.in_(account_ids),
+        DirectContact.last_inbound_at >= datetime.now(timezone.utc) - timedelta(hours=24),
+        DirectContact.opted_out.is_(False),
+    ))).all()
+    if len(contacts) != len(contact_ids):
+        raise HTTPException(status_code=400, detail="Um ou mais contatos não estão mais elegíveis")
+    settings = get_settings()
+    sent = []
+    errors = []
+    async with httpx.AsyncClient(timeout=20) as client:
+        for index, contact in enumerate(contacts):
+            account = account_map.get(contact.account_id)
+            if not account:
+                continue
+            try:
+                response = await client.post(
+                    f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/messages",
+                    params={"access_token": decrypt_token(account.access_token_encrypted)},
+                    json={"recipient": {"id": contact.sender_id}, "message": {"text": parse_spintax(message)}},
+                )
+                response.raise_for_status()
+                sent.append(contact.id)
+            except httpx.HTTPError as exc:
+                logger.warning("Falha na campanha DM contact=%s: %s", contact.id, exc)
+                errors.append({"contact_id": contact.id, "error": str(exc)})
+            if index < len(contacts) - 1:
+                await asyncio.sleep(2)
+    return {"sent": sent, "errors": errors, "eligible_window_hours": 24}
+
+
+@router.get("/api/automations/ice-breakers/{account_id}")
+async def get_ice_breakers(
+    account_id: int,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    account = await db.scalar(select(InstagramAccount).where(
+        InstagramAccount.id == account_id,
+        InstagramAccount.owner_id == workspace_owner_id(user),
+    ))
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    try:
+        questions = json.loads(account.ice_breakers or "[]")
+    except (TypeError, json.JSONDecodeError):
+        questions = []
+    return {"account_id": account.id, "ice_breakers": questions}
+
+
+@router.post("/api/automations/ice-breakers")
+async def configure_ice_breakers(
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = await request.json()
+    try:
+        account_id = int(payload.get("account_id"))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Conta inválida") from exc
+    questions = payload.get("questions")
+    if not isinstance(questions, list) or not 1 <= len(questions) <= 4:
+        raise HTTPException(status_code=400, detail="Informe entre 1 e 4 perguntas")
+    normalized = []
+    for question in questions:
+        text = str(question).strip()
+        if not text or len(text) > 80:
+            raise HTTPException(status_code=400, detail="Cada pergunta deve ter entre 1 e 80 caracteres")
+        normalized.append({
+            "question": text,
+            "payload": str(payload.get("payload_prefix") or "ICE_BREAKER")[:40] + "_" + str(len(normalized) + 1),
+        })
+    owner_id = workspace_owner_id(user)
+    account = await db.scalar(select(InstagramAccount).where(
+        InstagramAccount.id == account_id,
+        InstagramAccount.owner_id == owner_id,
+        InstagramAccount.connection_status != "pending",
+    ))
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta não encontrada ou não conectada")
+    settings = get_settings()
+    token = decrypt_token(account.access_token_encrypted)
+    url = f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/messenger_profile"
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            url,
+            params={"access_token": token},
+            json={"ice_breakers": normalized},
+        )
+    if response.is_error:
+        raise HTTPException(status_code=502, detail=_meta_api_error(response))
+    account.ice_breakers = json.dumps(normalized, ensure_ascii=False)
+    await db.commit()
+    return {"account_id": account.id, "ice_breakers": normalized}
 
 
 @router.get("/api/calendar/posts")

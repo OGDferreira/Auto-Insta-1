@@ -387,6 +387,25 @@
       </div>
       <div class="panel"><div class="panel-header"><div><div class="eyebrow">Regras configuradas</div><h3>Automações ativas</h3></div><button type="button" class="secondary" id="automation-refresh"><i data-lucide="refresh-cw"></i></button></div><div id="automation-list" class="automation-list"><p class="muted">Carregando automações...</p></div></div>
     </div>
+    <div class="panel ice-breaker-panel">
+      <div class="panel-header"><div><div class="eyebrow">Direct do Instagram</div><h3>Botões iniciais do Direct</h3><p class="section-note">Configure de 1 a 4 perguntas frequentes exibidas quando alguém abre uma conversa.</p></div></div>
+      <form id="ice-breakers-form" class="ice-breakers-form">
+        <label>Conta<select id="ice-breakers-account" required><option value="">Selecione uma conta</option>{% for account in accounts %}<option value="{{ account.id }}">@{{ account.username }}</option>{% endfor %}</select></label>
+        <div id="ice-breaker-fields"><label>Pergunta 1<input type="text" maxlength="80" required placeholder="Ex.: Quero saber mais"></label></div>
+        <div class="automation-form-actions"><button type="button" class="secondary" id="ice-breaker-add">Adicionar pergunta</button><button type="submit">Salvar botões</button></div>
+        <p id="ice-breaker-status" class="field-hint" aria-live="polite"></p>
+      </form>
+    </div>
+    <div class="panel direct-campaign-panel">
+      <div class="panel-header"><div><div class="eyebrow">Campanha segura</div><h3>Enviar Direct para contatos elegíveis</h3><p class="section-note">Somente contatos que enviaram DM nas últimas 24 horas. Limite de 100 contatos e intervalo anti-spam de 2 segundos.</p></div></div>
+      <form id="direct-campaign-form">
+        <label>Contas<select id="direct-campaign-accounts" multiple size="4" required>{% for account in accounts %}<option value="{{ account.id }}">@{{ account.username }}</option>{% endfor %}</select></label>
+        <label>Mensagem<textarea id="direct-campaign-message" maxlength="2000" required placeholder="Escreva uma mensagem útil e esperada pelo contato..."></textarea></label>
+        <p id="direct-campaign-summary" class="field-hint">Selecione as contas para consultar contatos elegíveis.</p>
+        <div id="direct-campaign-contacts" class="campaign-contacts"></div>
+        <button type="submit">Enviar para selecionados</button>
+      </form>
+    </div>
   </section>
 
   <section id="system" class="workspace-view" data-panel="system">
@@ -556,5 +575,6 @@ if(form){form.addEventListener("submit",event=>{if(!media.length){event.preventD
   import "/static/js/calendar.js";
   import "/static/js/analytics.js";
   import "/static/js/ux.js";
+  import "/static/js/direct-campaign.js";
 </script>
 {% endblock %}

@@ -54,6 +54,7 @@ class InstagramAccount(Base):
     direct_reply_text: Mapped[str] = mapped_column(Text, default="")
     comment_reply_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     comment_reply_text: Mapped[str] = mapped_column(Text, default="")
+    ice_breakers: Mapped[str] = mapped_column(Text, default="[]")
     connection_status: Mapped[str] = mapped_column(String(20), default="pending")
     status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     status_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -166,6 +167,17 @@ class BotEvent(Base):
     plan_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     account: Mapped[InstagramAccount | None] = relationship(back_populates="bot_events")
+
+
+class DirectContact(Base):
+    __tablename__ = "direct_contacts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("instagram_accounts.id", ondelete="CASCADE"), index=True)
+    sender_id: Mapped[str] = mapped_column(String(120), index=True)
+    last_inbound_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    opted_out: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class InstagramMetric(Base):

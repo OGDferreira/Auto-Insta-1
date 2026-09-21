@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from .config import get_settings
 from .db import SessionLocal
-from .models import AutomationRule, BotEvent, InstagramAccount
+from .models import AutomationRule, BotEvent, DirectContact, InstagramAccount
 from .security import decrypt_token
 from .utils import parse_spintax
 
@@ -401,6 +401,21 @@ async def receive_webhook(request: Request):
                     )
                 )
                 if account:
+                    sender_id = (value.get("sender") or {}).get("id") or (value.get("from") or {}).get("id")
+                    if sender_id and not _is_comment_event(value, value.get("comment_id")):
+                        existing_contact = await db.scalar(select(DirectContact).where(
+                            DirectContact.account_id == account.id,
+                            DirectContact.sender_id == str(sender_id),
+                        ))
+                        if existing_contact:
+                            existing_contact.last_inbound_at = datetime.now(timezone.utc)
+                        else:
+                            db.add(DirectContact(
+                                owner_id=account.owner_id,
+                                account_id=account.id,
+                                sender_id=str(sender_id),
+                                last_inbound_at=datetime.now(timezone.utc),
+                            ))
                     asyncio.create_task(_delayed_auto_reply(account.id, value))
         await db.commit()
     return {"received": True}

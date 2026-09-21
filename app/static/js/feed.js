@@ -48,7 +48,7 @@ export function initFeedModule() {
       <article class="feed-item">
         <input type="checkbox" data-feed-index="${index}" aria-label="Selecionar publicação">
         <img src="${escapeHtml(item.thumbnail_url || item.media_url || "")}" alt="Publicação de @${escapeHtml(item.account || "")}">
-        <div class="feed-item-body"><strong>@${escapeHtml(item.account || "")}</strong><small>${escapeHtml(item.caption || item.media_type || "Publicação")}</small></div>
+        <div class="feed-item-body"><strong>@${escapeHtml(item.account || "")}</strong><small>${escapeHtml(item.caption || item.media_type || "Publicação")}</small><div class="feed-metrics"><span title="Curtidas">♥ ${Number(item.likes || item.like_count || 0).toLocaleString("pt-BR")}</span><span title="Impressões">◉ ${Number(item.insights?.impressions || 0).toLocaleString("pt-BR")}</span><span title="Alcance">↗ ${Number(item.insights?.reach || 0).toLocaleString("pt-BR")}</span>${item.insights?.plays ? `<span title="Reproduções">▶ ${Number(item.insights.plays).toLocaleString("pt-BR")}</span>` : ""}</div></div>
       </article>`).join("") || "<p class=\"muted\">Nenhuma publicação encontrada.</p>";
   };
   loadButton.addEventListener("click", load);
