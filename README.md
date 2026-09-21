@@ -6,6 +6,10 @@ Envios em massa são organizados como **lotes**. Cada lote pode ser nomeado, pau
 
 No Dashboard, clique em uma conta para abrir suas publicações; o filtro também permite exibir todas as contas conectadas sem recarregar a página. É possível selecionar e excluir publicações individualmente, em massa ou todas as publicações da visualização atual, além de tentar novamente posts bloqueados ou com falha. O modo privacidade e os filtros da fila são mantidos no navegador. Ao conectar uma conta, a aplicação consulta a Meta e considera o perfil válido como ativo; somente falhas reais de autenticação, como o código 190, desconectam a conta.
 
+A fila é apresentada por lotes expansíveis: cada lote inicia fechado, mostra uma prévia de até oito mídias e só renderiza o restante após o comando "Mostrar fila completa". O reenvio de falhas abre um intervalo configurável; a primeira tentativa é agendada para dois minutos após a confirmação e as seguintes respeitam esse intervalo. Se o objeto do Supabase não estiver mais disponível, o worker tenta resgatar a mídia do Google Drive no momento da publicação.
+
+A aba **Feed** consulta as publicações atuais das contas selecionadas pela Graph API, permite apagar itens marcados ou limpar múltiplas contas e aplica throttling de dois segundos entre exclusões. O importador do Google Drive aceita arquivos e pastas inteiras, percorre subpastas com paginação e armazena `drive_media_url` e `drive_account_email` junto à publicação para permitir o resgate posterior.
+
 Publicações impedidas por autorização ficam como `blocked`, podem ser verificadas novamente depois que o usuário for adicionado como testador no Meta App Dashboard e possuem ação de tentativa novamente. A API não fornece uma consulta pública para confirmar diretamente a lista de testadores do aplicativo; por isso a aplicação valida o token, o perfil e as permissões efetivamente retornadas pela Meta.
 
 ## Arquitetura e segurança

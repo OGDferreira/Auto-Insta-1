@@ -268,6 +268,28 @@ def _google_drive_context(credentials: Credentials) -> tuple[str, str]:
     return email, encrypt_token(credentials_json)
 
 
+def _list_drive_children(service, folder_id: str) -> list[dict]:
+    escaped_folder_id = folder_id.replace("'", "\\'")
+    entries: list[dict] = []
+    page_token = None
+    while True:
+        response = service.files().list(
+            q=(
+                f"trashed = false and '{escaped_folder_id}' in parents and "
+                "(mimeType = 'application/vnd.google-apps.folder' or "
+                "mimeType contains 'image/' or mimeType contains 'video/')"
+            ),
+            fields="nextPageToken,files(id,name,mimeType,size,thumbnailLink,modifiedTime,parents)",
+            orderBy="modifiedTime desc",
+            pageSize=100,
+            pageToken=page_token,
+        ).execute()
+        entries.extend(response.get("files", []))
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            return entries
+
+
 def _thumbnail_bytes(content: bytes, media_type: str) -> bytes:
     if media_type.startswith("image/"):
         image = Image.open(io.BytesIO(content)).convert("RGB")
@@ -393,16 +415,7 @@ async def drive_files(
     credentials = Credentials.from_authorized_user_info(json.loads(serialized), GOOGLE_SCOPES)
     def list_files():
         service = build("drive", "v3", credentials=credentials, cache_discovery=False)
-        escaped_folder_id = folder_id.replace("'", "\\'")
-        return service.files().list(
-            q=(
-                f"trashed = false and '{escaped_folder_id}' in parents and "
-                "(mimeType = 'application/vnd.google-apps.folder' or "
-                "mimeType contains 'image/' or mimeType contains 'video/')"
-            ),
-            fields="files(id,name,mimeType,size,thumbnailLink,modifiedTime,parents)",
-            orderBy="modifiedTime desc", pageSize=100,
-        ).execute().get("files", [])
+        return _list_drive_children(service, folder_id)
     try:
         entries = await asyncio.to_thread(list_files)
         return {
@@ -465,15 +478,7 @@ async def drive_import(
             folders_to_scan = [folder_id]
             while folders_to_scan:
                 current_folder = folders_to_scan.pop()
-                escaped_folder_id = current_folder.replace("'", "\\'")
-                entries = service.files().list(
-                    q=(
-                        f"trashed = false and '{escaped_folder_id}' in parents and "
-                        "(mimeType = 'application/vnd.google-apps.folder' or "
-                        "mimeType contains 'image/' or mimeType contains 'video/')"
-                    ),
-                    fields="files(id,name,mimeType,size)", pageSize=100,
-                ).execute().get("files", [])
+                entries = _list_drive_children(service, current_folder)
                 folders_to_scan.extend(
                     entry["id"] for entry in entries
                     if entry["mimeType"] == "application/vnd.google-apps.folder"
@@ -698,6 +703,15 @@ async def dashboard(
             posts_query.order_by(ScheduledPost.scheduled_for.desc())
         )
     ).all()
+    queue_groups = [
+        {
+            "batch": batch,
+            "posts": [post for post in posts if post.batch_id == batch.id],
+        }
+        for batch in batches
+    ]
+    queue_groups = [group for group in queue_groups if group["posts"]]
+    unbatched_posts = [post for post in posts if post.batch_id is None]
     today = datetime.now(timezone.utc).date()
     today_posts = [post for post in posts if post.created_at and post.created_at.date() == today]
     if period_days not in {1, 7, 30, 90}:
@@ -771,6 +785,8 @@ async def dashboard(
             "account_views": account_views,
             "posts": posts,
             "batches": batches,
+            "queue_groups": queue_groups,
+            "unbatched_posts": unbatched_posts,
             "batch_account_ids": batch_account_ids,
             "selected_account_id": account_id,
             "metrics": metrics,
@@ -1639,10 +1655,13 @@ async def retry_post(
 @router.post("/posts/retry-blocked")
 async def retry_blocked_posts(
     account_id: int | None = Form(None),
+    intervalo: int = Form(1),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
     owner_id = workspace_owner_id(user)
+    if intervalo < 1:
+        raise HTTPException(status_code=400, detail="O intervalo mínimo é de 1 minuto")
     accounts_query = select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
     if account_id is not None:
         accounts_query = accounts_query.where(InstagramAccount.id == account_id)
@@ -1667,20 +1686,22 @@ async def retry_blocked_posts(
         ScheduledPost.account_id.in_(authorized_ids) if authorized_ids else ScheduledPost.id == -1,
     )
     posts = (await db.scalars(posts_query)).all()
-    now = datetime.now(timezone.utc) + timedelta(seconds=2)
+    now = datetime.now(timezone.utc) + timedelta(minutes=2)
     available_posts = []
     for post in posts:
-        media_available, media_error = await _media_is_public(
-            post.original_media_url or post.media_url
+        media_available, media_error = (
+            (True, None)
+            if post.drive_media_url
+            else await _media_is_public(post.original_media_url or post.media_url)
         )
         if media_available:
             available_posts.append(post)
         else:
             post.error_message = media_error
-    for post in available_posts:
+    for index, post in enumerate(available_posts):
         post.status = "scheduled"
         post.error_message = None
-        post.scheduled_for = now
+        post.scheduled_for = now + timedelta(minutes=index * intervalo)
     await db.commit()
     for post in available_posts:
         schedule_post(post.id, post.scheduled_for)

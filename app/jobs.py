@@ -485,6 +485,21 @@ async def _drive_media_rescue(post: ScheduledPost, settings) -> str | None:
         return None
 
 
+async def _media_url_is_available(media_url: str | None) -> bool:
+    """Check whether the public object still exists before using Drive rescue."""
+    if not media_url:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            response = await client.head(media_url)
+            if response.status_code in {405, 501}:
+                response = await client.get(media_url, headers={"Range": "bytes=0-1023"})
+            return response.status_code < 400
+    except httpx.HTTPError:
+        logger.warning("Não foi possível verificar a mídia armazenada: %s", media_url)
+        return False
+
+
 async def _publish(post_id: int) -> None:
     settings = get_settings()
     async with SessionLocal() as db:
@@ -531,7 +546,7 @@ async def _publish(post_id: int) -> None:
                 media_type = "REELS"
             if media_type not in {"IMAGE", "REELS"}:
                 raise RuntimeError(f"Tipo de mídia não suportado: {post.media_type}")
-            if post.drive_media_url and not post.storage_path:
+            if post.drive_media_url and not await _media_url_is_available(post.media_url):
                 rescued_url = await _drive_media_rescue(post, settings)
                 if not rescued_url:
                     raise RuntimeError("A mídia local não existe e não foi possível resgatá-la do Drive.")
