@@ -17,7 +17,24 @@ export function initFeedModule() {
       if (option) option.selected = event.target.checked;
     }
   });
-  loadButton.addEventListener("click", async () => {
+  document.getElementById("feed-select-all")?.addEventListener("click", () => {
+    grid.querySelectorAll("[data-feed-account]").forEach(input => {
+      input.checked = true;
+      input.closest(".feed-account-card").classList.add("selected");
+      const option = document.getElementById("feed-accounts")?.querySelector(`option[value="${input.value}"]`);
+      if (option) option.selected = true;
+    });
+  });
+  document.getElementById("feed-clear-selection")?.addEventListener("click", () => {
+    grid.querySelectorAll("[data-feed-account]").forEach(input => {
+      input.checked = false;
+      input.closest(".feed-account-card").classList.remove("selected");
+      const option = document.getElementById("feed-accounts")?.querySelector(`option[value="${input.value}"]`);
+      if (option) option.selected = false;
+    });
+  });
+  let feedItems = [];
+  const load = async () => {
     const ids = selectedIds();
     if (!ids.length) return showModuleToast("Selecione ao menos uma conta.", "error");
     const response = await fetch(`/api/feed?${ids.map(id => `account_ids=${id}`).join("&")}`, { cache: "no-store" });
@@ -25,14 +42,37 @@ export function initFeedModule() {
     const status = document.getElementById("feed-status");
     if (!response.ok) return showModuleToast(payload.detail || "Falha ao carregar o Feed.", "error");
     status.textContent = `${payload.items?.length || 0} publicação(ões) carregada(s).`;
+    feedItems = payload.items || [];
     const feedGrid = document.getElementById("feed-grid");
-    feedGrid.innerHTML = (payload.items || []).map((item, index) => `
+    feedGrid.innerHTML = feedItems.map((item, index) => `
       <article class="feed-item">
         <input type="checkbox" data-feed-index="${index}" aria-label="Selecionar publicação">
         <img src="${escapeHtml(item.thumbnail_url || item.media_url || "")}" alt="Publicação de @${escapeHtml(item.account || "")}">
         <div class="feed-item-body"><strong>@${escapeHtml(item.account || "")}</strong><small>${escapeHtml(item.caption || item.media_type || "Publicação")}</small></div>
       </article>`).join("") || "<p class=\"muted\">Nenhuma publicação encontrada.</p>";
-  });
+  };
+  loadButton.addEventListener("click", load);
+  document.getElementById("feed-load")?.addEventListener("click", load);
+  async function deleteFeed(clearFeed) {
+    const ids = selectedIds();
+    const selected = [...document.querySelectorAll("[data-feed-index]:checked")].map(input => {
+      const item = feedItems[Number(input.dataset.feedIndex)];
+      return { account_id: item.account_id, media_id: item.id };
+    });
+    if (!ids.length) return showModuleToast("Selecione ao menos uma conta.", "error");
+    if (!clearFeed && !selected.length) return showModuleToast("Selecione ao menos uma publicação.", "error");
+    if (!confirm(clearFeed ? "Apagar todas as publicações das contas selecionadas?" : "Apagar as publicações selecionadas?")) return;
+    const response = await fetch("/api/feed/delete", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ account_ids: ids, media: selected, clear_feed: clearFeed }),
+    });
+    const payload = await response.json();
+    if (!response.ok) return showModuleToast(payload.detail || "Falha ao apagar publicações.", "error");
+    showModuleToast(`${payload.deleted?.length || 0} publicação(ões) apagada(s).`, payload.errors?.length ? "error" : "success");
+    load();
+  }
+  document.getElementById("feed-delete-selected")?.addEventListener("click", () => deleteFeed(false));
+  document.getElementById("feed-clear")?.addEventListener("click", () => deleteFeed(true));
 }
 
 initFeedModule();

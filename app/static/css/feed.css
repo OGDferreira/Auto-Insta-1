@@ -5,3 +5,4 @@
 .feed-account-card .profile-avatar{flex:none}
 .feed-account-card strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .feed-account-card small{display:block;color:var(--muted);margin-top:.2rem}
+.compact-action{padding:.45rem .6rem;font-size:.72rem}

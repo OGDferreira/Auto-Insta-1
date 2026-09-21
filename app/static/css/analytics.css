@@ -4,3 +4,7 @@
 .analytics-card small{display:block;color:var(--muted)}.analytics-card strong{display:block;font:700 1.55rem "Space Grotesk";margin-top:.35rem}
 .analytics-panel{margin-top:1rem}.analytics-table td{vertical-align:top}
 @media(max-width:850px){.analytics-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.automation-fieldset{margin:0 0 .8rem;padding:.7rem;border:1px solid var(--line);border-radius:12px}
+.automation-fieldset legend{padding:0 .35rem;color:var(--cyan);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.automation-fieldset select[multiple]{min-height:110px}
+.automation-card-actions{display:flex;align-items:center;gap:.35rem}

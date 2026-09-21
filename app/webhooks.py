@@ -163,6 +163,29 @@ async def _resolve_automation_media(rule: AutomationRule) -> str | None:
     return await asyncio.to_thread(download_and_upload)
 
 
+def _incoming_text(event: dict) -> str:
+    candidates = [
+        event.get("text"),
+        event.get("message", {}).get("text") if isinstance(event.get("message"), dict) else None,
+        event.get("comment", {}).get("text") if isinstance(event.get("comment"), dict) else None,
+        event.get("message") if isinstance(event.get("message"), str) else None,
+    ]
+    return next((str(value).strip() for value in candidates if value), "")
+
+
+def _rule_targets_account(rule: AutomationRule, account_id: int) -> bool:
+    try:
+        targets = json.loads(rule.target_account_ids or "[]")
+    except (TypeError, json.JSONDecodeError):
+        targets = [rule.account_id] if rule.account_id else []
+    return not targets or account_id in {int(value) for value in targets}
+
+
+def _keyword_matches(rule: AutomationRule, text: str) -> bool:
+    keywords = [item.strip().casefold() for item in (rule.trigger_keywords or "").split(",") if item.strip()]
+    return bool(keywords) and any(keyword in text.casefold() for keyword in keywords)
+
+
 async def _send_auto_reply(account: InstagramAccount, event: dict) -> None:
     sender_id = (event.get("sender") or {}).get("id") or (event.get("from") or {}).get("id")
     settings = get_settings()
@@ -173,19 +196,16 @@ async def _send_auto_reply(account: InstagramAccount, event: dict) -> None:
     ))
     rule_type = "comment_reply" if is_comment else "dm_reply"
     async with SessionLocal() as db:
-        rule = await db.scalar(select(AutomationRule).where(
+        rules = (await db.scalars(select(AutomationRule).where(
             AutomationRule.owner_id == account.owner_id,
             AutomationRule.rule_type == rule_type,
             AutomationRule.is_active.is_(True),
-            AutomationRule.account_id == account.id,
-        ))
-        if rule is None:
-            rule = await db.scalar(select(AutomationRule).where(
-                AutomationRule.owner_id == account.owner_id,
-                AutomationRule.rule_type == rule_type,
-                AutomationRule.is_active.is_(True),
-                AutomationRule.account_id.is_(None),
-            ))
+        ).order_by(AutomationRule.account_id.is_(None), AutomationRule.created_at.desc()))).all()
+        incoming_text = _incoming_text(event)
+        rule = next((
+            candidate for candidate in rules
+            if _rule_targets_account(candidate, account.id) and _keyword_matches(candidate, incoming_text)
+        ), None)
     reply_text = rule.message_text if rule else (
         account.comment_reply_text if is_comment else account.direct_reply_text
     )

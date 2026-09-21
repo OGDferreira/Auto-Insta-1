@@ -80,7 +80,9 @@ class AutomationRule(Base):
     account_id: Mapped[int | None] = mapped_column(
         ForeignKey("instagram_accounts.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    target_account_ids: Mapped[str] = mapped_column(Text, default="[]")
     rule_type: Mapped[str] = mapped_column(String(20), index=True)
+    trigger_keywords: Mapped[str] = mapped_column(Text, default="")
     message_text: Mapped[str] = mapped_column(Text, default="")
     media_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     drive_media_url: Mapped[str | None] = mapped_column(Text, nullable=True)
