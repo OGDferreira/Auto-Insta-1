@@ -363,7 +363,7 @@
             <label>Palavra-chave do gatilho<input id="automation-keywords" required maxlength="500" placeholder="Ex.: quero, link"><small class="field-hint">A resposta só será enviada quando o texto contiver uma dessas palavras.</small></label>
           </fieldset>
           <fieldset class="automation-fieldset"><legend>Resposta e mídia</legend>
-            <label>Mensagem<textarea id="automation-message" maxlength="2000" placeholder="Digite a resposta automática..."></textarea></label>
+            <label>Mensagem<textarea id="automation-message" maxlength="2000" placeholder="Digite a resposta automática..."></textarea><small class="field-hint">Dica Anti-Spam: use Spintax para variar as mensagens. Ex: {Oi|Olá}, {tudo bem?|como vai?}</small></label>
             <label class="dropzone" for="automation-file"><span><b>Anexo local (opcional)</b><br><small>Imagem ou vídeo</small></span><input id="automation-file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></label>
             <button type="button" class="secondary" id="automation-drive"><i data-lucide="hard-drive"></i> Importar do Drive</button>
             <div id="automation-media-status" class="automation-media-preview" hidden></div>

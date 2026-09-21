@@ -18,6 +18,7 @@ from .config import get_settings
 from .db import SessionLocal
 from .models import AutomationRule, BotEvent, InstagramAccount
 from .security import decrypt_token
+from .utils import parse_spintax
 
 router = APIRouter(prefix="/webhook")
 logger = logging.getLogger(__name__)
@@ -216,6 +217,7 @@ async def _send_auto_reply(account: InstagramAccount, event: dict) -> None:
         reply_enabled, reply_text = True, account.auto_reply_text
     if not reply_enabled or (not reply_text and not rule):
         return
+    reply_text = parse_spintax(reply_text)
     if not comment_id and is_comment:
         comment_id = event.get("id")
     media_url = await _resolve_automation_media(rule) if rule else None
