@@ -84,6 +84,12 @@
   .batch-summary::before { content:"▸"; color:var(--cyan); margin-right:.5rem; transition:transform .2s ease; }
   .batch-accordion[open] .batch-summary::before { transform:rotate(90deg); }
   .batch-summary strong { display:block; }
+  .batch-statuses { display:flex; align-items:center; gap:.35rem; flex-wrap:wrap; margin-top:.35rem; }
+  .batch-status-count { display:inline-flex; align-items:center; gap:.2rem; padding:.2rem .4rem; border:1px solid var(--line); border-radius:999px; font-size:.68rem; line-height:1; }
+  .batch-status-count.awaiting { color:#facc15; border-color:rgba(250,204,21,.35); }
+  .batch-status-count.failed { color:var(--danger); border-color:rgba(244,63,94,.35); }
+  .batch-status-count.completed { color:#4ade80; border-color:rgba(74,222,128,.35); }
+  .batch-status-count.processing { color:var(--cyan); border-color:rgba(56,189,248,.35); }
   .batch-content { padding:0 .9rem .9rem; }
   .batch-preview[hidden], .batch-overflow[hidden] { display:none; }
   .batch-more { width:auto; margin-top:.75rem; }
@@ -231,8 +237,12 @@
           {% for group in queue_groups %}
           {% set batch = group.batch %}
           {% set batch_posts = group.posts %}
+          {% set awaiting_count = (batch_posts|selectattr("status", "equalto", "scheduled")|list|length) + (batch_posts|selectattr("status", "equalto", "aguardando")|list|length) + (batch_posts|selectattr("status", "equalto", "pending")|list|length) %}
+          {% set failed_count = (batch_posts|selectattr("status", "equalto", "failed")|list|length) + (batch_posts|selectattr("status", "equalto", "blocked")|list|length) %}
+          {% set completed_count = batch_posts|selectattr("status", "equalto", "published")|list|length %}
+          {% set processing_count = batch_posts|selectattr("status", "equalto", "processing")|list|length %}
           <details class="batch-accordion {{ batch.status }}" data-batch-id="{{ batch.id }}">
-            <summary class="batch-summary"><div><strong>{{ batch.name }}</strong><small class="muted">Lote {{ batch.id }} · {{ batch_posts|length }} publicações · {% if batch.status == "paused" %}pausado{% else %}{{ batch.status == "active" and "ativo" or batch.status }}{% endif %}</small></div></summary>
+            <summary class="batch-summary"><div><strong>{{ batch.name }}</strong><small class="muted">Lote {{ batch.id }} · {{ batch_posts|length }} publicações · {% if batch.status == "paused" %}pausado{% else %}{{ batch.status == "active" and "ativo" or batch.status }}{% endif %}</small><span class="batch-statuses" aria-label="Resumo de status do lote"><span class="batch-status-count awaiting">Aguardando: {{ awaiting_count }}</span><span class="batch-status-count failed">Falha: {{ failed_count }}</span><span class="batch-status-count completed">Concluído: {{ completed_count }}</span><span class="batch-status-count processing">Processando: {{ processing_count }}</span></span></div></summary>
             <div class="batch-content">
               <div class="batch-actions">
                 {% if batch.status == "paused" %}<form method="post" action="/batches/{{ batch.id }}/resume"><button type="submit"><i data-lucide="play"></i> Retomar</button></form>{% else %}<form method="post" action="/batches/{{ batch.id }}/pause"><button type="submit" class="secondary"><i data-lucide="pause"></i> Pausar lote</button></form>{% endif %}
@@ -252,8 +262,12 @@
           </details>
           {% endfor %}
           {% if unbatched_posts %}
+          {% set awaiting_count = (unbatched_posts|selectattr("status", "equalto", "scheduled")|list|length) + (unbatched_posts|selectattr("status", "equalto", "aguardando")|list|length) + (unbatched_posts|selectattr("status", "equalto", "pending")|list|length) %}
+          {% set failed_count = (unbatched_posts|selectattr("status", "equalto", "failed")|list|length) + (unbatched_posts|selectattr("status", "equalto", "blocked")|list|length) %}
+          {% set completed_count = unbatched_posts|selectattr("status", "equalto", "published")|list|length %}
+          {% set processing_count = unbatched_posts|selectattr("status", "equalto", "processing")|list|length %}
           <details class="batch-accordion" data-batch-id="unbatched">
-            <summary class="batch-summary"><div><strong>Sem lote</strong><small class="muted">{{ unbatched_posts|length }} publicações avulsas</small></div></summary>
+            <summary class="batch-summary"><div><strong>Sem lote</strong><small class="muted">{{ unbatched_posts|length }} publicações avulsas</small><span class="batch-statuses" aria-label="Resumo de status das publicações avulsas"><span class="batch-status-count awaiting">Aguardando: {{ awaiting_count }}</span><span class="batch-status-count failed">Falha: {{ failed_count }}</span><span class="batch-status-count completed">Concluído: {{ completed_count }}</span><span class="batch-status-count processing">Processando: {{ processing_count }}</span></span></div></summary>
             <div class="batch-content">
               <div class="queue-grid batch-preview">{% for post in unbatched_posts[:8] %}{{ post_card(post) }}{% endfor %}</div>
               {% if unbatched_posts|length > 8 %}<div class="queue-grid batch-overflow" hidden>{% for post in unbatched_posts[8:] %}{{ post_card(post) }}{% endfor %}</div><button type="button" class="secondary batch-more" data-show-batch>Mostrar fila completa</button>{% endif %}
