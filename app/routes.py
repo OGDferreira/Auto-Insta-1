@@ -703,15 +703,29 @@ async def dashboard(
             posts_query.order_by(ScheduledPost.scheduled_for.desc())
         )
     ).all()
-    queue_groups = [
-        {
+    def build_account_groups(batch_posts):
+        grouped = {}
+        for post in batch_posts:
+            grouped.setdefault(post.account_id, []).append(post)
+        return [
+            {
+                "account": account_posts[0].account,
+                "posts": account_posts,
+            }
+            for account_posts in grouped.values()
+        ]
+
+    queue_groups = []
+    for batch in batches:
+        batch_posts = [post for post in posts if post.batch_id == batch.id]
+        queue_groups.append({
             "batch": batch,
-            "posts": [post for post in posts if post.batch_id == batch.id],
-        }
-        for batch in batches
-    ]
+            "posts": batch_posts,
+            "account_groups": build_account_groups(batch_posts),
+        })
     queue_groups = [group for group in queue_groups if group["posts"]]
     unbatched_posts = [post for post in posts if post.batch_id is None]
+    unbatched_account_groups = build_account_groups(unbatched_posts)
     today = datetime.now(timezone.utc).date()
     today_posts = [post for post in posts if post.created_at and post.created_at.date() == today]
     if period_days not in {1, 7, 30, 90}:
@@ -787,6 +801,7 @@ async def dashboard(
             "batches": batches,
             "queue_groups": queue_groups,
             "unbatched_posts": unbatched_posts,
+            "unbatched_account_groups": unbatched_account_groups,
             "batch_account_ids": batch_account_ids,
             "selected_account_id": account_id,
             "metrics": metrics,

@@ -91,6 +91,17 @@
   .batch-status-count.completed { color:#4ade80; border-color:rgba(74,222,128,.35); }
   .batch-status-count.processing { color:var(--cyan); border-color:rgba(56,189,248,.35); }
   .batch-content { padding:0 .9rem .9rem; }
+  .batch-accounts-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:.55rem; margin:.2rem 0 .8rem; }
+  .batch-account-summary { display:flex; flex-direction:column; align-items:flex-start; gap:.3rem; width:100%; padding:.65rem .7rem; text-align:left; background:rgba(8,11,20,.45); border:1px solid var(--line); border-radius:10px; }
+  .batch-account-summary:hover,.batch-account-summary.active { border-color:var(--cyan); background:rgba(56,189,248,.08); transform:none; box-shadow:none; }
+  .batch-account-summary strong { overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  .batch-account-statuses { display:flex; flex-wrap:wrap; gap:.25rem; }
+  .batch-account-status { color:var(--muted); font-size:.65rem; }
+  .batch-queue { border-top:1px solid var(--line); padding-top:.8rem; }
+  .batch-queue[hidden] { display:none; }
+  .batch-account-filter { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; margin-bottom:.75rem; }
+  .batch-account-filter button { width:auto; padding:.38rem .55rem; font-size:.7rem; }
+  .account-queue[hidden] { display:none; }
   .batch-preview[hidden], .batch-overflow[hidden] { display:none; }
   .batch-more { width:auto; margin-top:.75rem; }
   .batch-empty { padding:.75rem 0; }
@@ -249,15 +260,34 @@
                 <form method="post" action="/batches/{{ batch.id }}/delete" data-delete-batch><button type="submit" class="secondary" title="Excluir lote e publicações"><i data-lucide="trash-2"></i> Excluir lote</button></form>
                 <details><summary class="button secondary">Contas</summary><form method="post" action="/batches/{{ batch.id }}/accounts" class="batch-accounts">{% for account in accounts %}<label><input type="checkbox" name="account_ids" value="{{ account.id }}" {% if account.id in batch_account_ids[batch.id] %}checked{% endif %}> @{{ account.username }}</label>{% endfor %}<button type="submit">Salvar contas</button></form></details>
               </div>
-              <div class="queue-grid batch-preview">
-                {% for post in batch_posts[:8] %}{{ post_card(post) }}{% endfor %}
+              <div class="batch-accounts-summary" aria-label="Contas que receberão este lote">
+                {% for account_group in group.account_groups %}
+                {% set account_posts = account_group.posts %}
+                {% set account_awaiting = (account_posts|selectattr("status", "equalto", "scheduled")|list|length) + (account_posts|selectattr("status", "equalto", "aguardando")|list|length) + (account_posts|selectattr("status", "equalto", "pending")|list|length) %}
+                {% set account_failed = (account_posts|selectattr("status", "equalto", "failed")|list|length) + (account_posts|selectattr("status", "equalto", "blocked")|list|length) %}
+                {% set account_completed = account_posts|selectattr("status", "equalto", "published")|list|length %}
+                {% set account_processing = account_posts|selectattr("status", "equalto", "processing")|list|length %}
+                <button type="button" class="batch-account-summary" data-account-summary="{{ batch.id }}-{{ account_group.account.id }}" aria-label="Filtrar publicações de @{{ account_group.account.username }}">
+                  <strong>@{{ account_group.account.username }}</strong>
+                  <span class="batch-account-statuses"><span class="batch-account-status">Aguardando {{ account_awaiting }}</span><span class="batch-account-status">Falha {{ account_failed }}</span><span class="batch-account-status">Concluído {{ account_completed }}</span><span class="batch-account-status">Processando {{ account_processing }}</span></span>
+                </button>
+                {% endfor %}
               </div>
-              {% if batch_posts|length > 8 %}
-              <div class="queue-grid batch-overflow" hidden>
-                {% for post in batch_posts[8:] %}{{ post_card(post) }}{% endfor %}
+              <button type="button" class="secondary batch-more" data-show-batch>Mostrar fila deste lote</button>
+              <div class="batch-queue" data-batch-queue="{{ batch.id }}" hidden>
+                <div class="batch-account-filter"><span class="muted">Filtrar por conta:</span><button type="button" class="secondary active" data-account-filter="all">Todas</button>{% for account_group in group.account_groups %}<button type="button" class="secondary" data-account-filter="{{ batch.id }}-{{ account_group.account.id }}">@{{ account_group.account.username }}</button>{% endfor %}</div>
+                {% for account_group in group.account_groups %}
+                <div class="account-queue" data-account-queue="{{ batch.id }}-{{ account_group.account.id }}">
+                  <div class="queue-grid batch-preview">{% for post in account_group.posts[:8] %}{{ post_card(post) }}{% endfor %}</div>
+                  {% if account_group.posts|length > 8 %}
+                  <div class="queue-grid batch-overflow" hidden>
+                    {% for post in account_group.posts[8:] %}{{ post_card(post) }}{% endfor %}
+                  </div>
+                  <button type="button" class="secondary batch-more" data-show-batch>Mostrar fila completa</button>
+                  {% endif %}
+                </div>
+                {% endfor %}
               </div>
-              <button type="button" class="secondary batch-more" data-show-batch>Mostrar fila completa</button>
-              {% endif %}
             </div>
           </details>
           {% endfor %}
@@ -358,7 +388,30 @@ if(selectAll){selectAll.addEventListener("change",()=>accountSelectors.forEach(i
 const queueCards=[...document.querySelectorAll(".queue-card")],queueSelects=[...document.querySelectorAll(".queue-select")],selectAllPosts=document.getElementById("select-all-posts"),privacyToggle=document.getElementById("privacy-toggle");
 const publicationFilter=document.getElementById("publication-account-filter"),savedFiltersKey="auto-insta-dashboard-filters";
 let savedFilters={};try{savedFilters=JSON.parse(localStorage.getItem(savedFiltersKey)||"{}")}catch(error){savedFilters={}}
-document.querySelectorAll("[data-show-batch]").forEach(button=>button.addEventListener("click",()=>{const overflow=button.parentElement.querySelector(".batch-overflow");if(!overflow)return;overflow.hidden=false;button.remove()}));
+document.querySelectorAll("[data-show-batch]").forEach(button=>button.addEventListener("click",()=>{
+  const queue=button.closest(".batch-queue");
+  if(queue){const overflow=button.parentElement.querySelector(".batch-overflow");if(!overflow)return;overflow.hidden=false;button.remove();return}
+  const batchContent=button.closest(".batch-content"),batchQueue=batchContent?.querySelector("[data-batch-queue]");
+  if(!batchQueue)return;
+  batchQueue.hidden=false;
+  button.remove();
+}));
+document.querySelectorAll("[data-account-filter]").forEach(button=>button.addEventListener("click",()=>{
+  const queue=button.closest(".batch-queue"), filter=button.dataset.accountFilter;
+  if(!queue)return;
+  queue.querySelectorAll("[data-account-filter]").forEach(item=>item.classList.toggle("active",item===button));
+  queue.querySelectorAll("[data-account-queue]").forEach(group=>{group.hidden=filter!=="all"&&group.dataset.accountQueue!==filter});
+  queue.closest(".batch-content")?.querySelectorAll("[data-account-summary]").forEach(item=>item.classList.toggle("active",item.dataset.accountSummary===filter));
+}));
+document.querySelectorAll("[data-account-summary]").forEach(button=>button.addEventListener("click",()=>{
+  const batchContent=button.closest(".batch-content"), queue=batchContent?.querySelector(".batch-queue"), filter=button.dataset.accountSummary;
+  if(!queue)return;
+  queue.hidden=false;
+  const filterButton=queue.querySelector(`[data-account-filter="${filter}"]`);
+  if(filterButton)filterButton.click();
+  const revealButton=batchContent.querySelector(":scope > [data-show-batch]");
+  if(revealButton)revealButton.remove();
+}));
 function syncQueueAccountActions(value){["delete-all-form","retry-blocked-form","retry-failed-form"].forEach(formId=>{const form=document.getElementById(formId);if(!form)return;let input=form.querySelector('input[name="account_id"]');if(value){if(!input){input=document.createElement("input");input.type="hidden";input.name="account_id";form.appendChild(input)}input.value=value}else if(input){input.remove()}})}
 function applyPublicationFilter(value){queueCards.forEach(card=>{card.hidden=Boolean(value&&card.dataset.accountId!==value)});syncQueueAccountActions(value);const visibleCount=queueCards.filter(card=>!card.hidden).length;const note=document.querySelector(".queue-panel .section-note");if(note)note.textContent=`${visibleCount} itens`}
 publicationFilter?.addEventListener("change",event=>{const value=event.target.value;applyPublicationFilter(value);savedFilters.publicationAccount=value;localStorage.setItem(savedFiltersKey,JSON.stringify(savedFilters));const url=new URL(window.location.href);if(value)url.searchParams.set("account_id",value);else url.searchParams.delete("account_id");url.hash="queue";history.replaceState(null,"",url.toString());selectDashboardView("queue")});
