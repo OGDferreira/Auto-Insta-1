@@ -1,5 +1,49 @@
 export function initQueueModule() {
   document.querySelectorAll("[data-calendar-status]").forEach(item => item.classList.add("status-badge"));
+  document.querySelectorAll("[data-show-batch]").forEach(button => {
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const batchQueue = button.closest(".batch-queue") || button.closest(".batch-content")?.querySelector("[data-batch-queue]");
+      if (!batchQueue) return;
+      const overflow = button.parentElement?.querySelector(".batch-overflow");
+      if (overflow) {
+        overflow.hidden = false;
+        button.remove();
+        return;
+      }
+      batchQueue.hidden = false;
+      button.remove();
+    });
+  });
+  document.querySelectorAll("[data-account-filter]").forEach(button => {
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const queue = button.closest(".batch-queue");
+      if (!queue) return;
+      queue.hidden = false;
+      const filter = button.dataset.accountFilter;
+      queue.querySelectorAll("[data-account-filter]").forEach(item => item.classList.toggle("active", item === button));
+      queue.querySelectorAll("[data-account-queue]").forEach(group => {
+        group.hidden = filter !== "all" && group.dataset.accountQueue !== filter;
+      });
+    });
+  });
+  document.querySelectorAll("[data-account-summary]").forEach(button => {
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const content = button.closest(".batch-content");
+      const queue = content?.querySelector("[data-batch-queue]");
+      const filterButton = queue?.querySelector(`[data-account-filter="${button.dataset.accountSummary}"]`);
+      if (queue && filterButton) {
+        queue.hidden = false;
+        filterButton.click();
+        content.querySelector(":scope > [data-show-batch]")?.remove();
+      }
+    });
+  });
   const modal = document.getElementById("batch-interval-modal");
   const form = document.getElementById("batch-interval-form");
   if (!modal || !form) return;
