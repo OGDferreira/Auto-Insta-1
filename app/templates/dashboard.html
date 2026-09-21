@@ -360,10 +360,11 @@
           <fieldset class="automation-fieldset"><legend>Gatilho e condição</legend>
             <label>Alvos<select id="automation-account" multiple size="5"><option value="0" selected>Todas as contas (global)</option>{% for account in accounts %}<option value="{{ account.id }}">@{{ account.username }}</option>{% endfor %}</select><small class="field-hint">Escolha global ou uma/múltiplas contas. Use Ctrl/Cmd para múltiplas contas.</small></label>
             <label>Tipo de evento<select id="automation-type"><option value="comment_reply">Responder a Comentários</option><option value="dm_reply">Responder no Direct (DM)</option></select></label>
-            <label>Palavra-chave do gatilho<input id="automation-keywords" required maxlength="500" placeholder="Ex.: quero, link"><small class="field-hint">A resposta só será enviada quando o texto contiver uma dessas palavras.</small></label>
+            <label id="automation-keywords-field">Palavra-chave do gatilho<input id="automation-keywords" maxlength="500" placeholder="Ex.: quero, link"><small class="field-hint">Separe várias palavras por vírgula. A resposta será enviada quando qualquer uma aparecer.</small></label>
           </fieldset>
           <fieldset class="automation-fieldset"><legend>Resposta e mídia</legend>
-            <label>Mensagem<textarea id="automation-message" maxlength="2000" placeholder="Digite a resposta automática..."></textarea><small class="field-hint">Dica Anti-Spam: use Spintax para variar as mensagens. Ex: {Oi|Olá}, {tudo bem?|como vai?}</small></label>
+            <label id="automation-message-label">Resposta Pública no Comentário<textarea id="automation-message" maxlength="2000" placeholder="Digite a resposta automática..."></textarea><small class="field-hint">Dica Anti-Spam: use Spintax para variar as mensagens. Ex: {Oi|Olá}, {tudo bem?|como vai?}</small></label>
+            <label id="automation-dm-followup-field">Mensagem Oculta para a DM<textarea id="automation-dm-followup" maxlength="2000" placeholder="Mensagem privada enviada após o comentário..."></textarea><small class="field-hint">Opcional. Também suporta Spintax.</small></label>
             <label class="dropzone" for="automation-file"><span><b>Anexo local (opcional)</b><br><small>Imagem ou vídeo</small></span><input id="automation-file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></label>
             <button type="button" class="secondary" id="automation-drive"><i data-lucide="hard-drive"></i> Importar do Drive</button>
             <div id="automation-media-status" class="automation-media-preview" hidden></div>

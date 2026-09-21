@@ -841,6 +841,7 @@ def _automation_payload(rule: AutomationRule) -> dict:
         "rule_type": rule.rule_type,
         "trigger_keywords": rule.trigger_keywords,
         "message_text": rule.message_text,
+        "dm_followup_text": rule.dm_followup_text,
         "media_url": rule.media_url,
         "drive_media_url": rule.drive_media_url,
         "drive_account_email": rule.drive_account_email,
@@ -897,9 +898,10 @@ async def create_automation(
     trigger_keywords = str(payload.get("trigger_keywords", "")).strip()[:500]
     if rule_type not in {"comment_reply", "dm_reply"}:
         raise HTTPException(status_code=400, detail="Tipo de automação inválido")
-    if not message_text and not payload.get("media_url") and not payload.get("drive_media_url"):
+    dm_followup_text = str(payload.get("dm_followup_text", "")).strip()[:2000]
+    if rule_type == "comment_reply" and not message_text and not payload.get("media_url") and not payload.get("drive_media_url"):
         raise HTTPException(status_code=400, detail="Informe uma mensagem ou uma mídia")
-    if not trigger_keywords:
+    if rule_type == "comment_reply" and not trigger_keywords:
         raise HTTPException(status_code=400, detail="Informe ao menos uma palavra-chave")
     owner_id = workspace_owner_id(user)
     accounts = []
@@ -917,6 +919,7 @@ async def create_automation(
         rule_type=rule_type,
         trigger_keywords=trigger_keywords,
         message_text=message_text,
+        dm_followup_text=dm_followup_text,
         media_url=str(payload.get("media_url") or "").strip() or None,
         drive_media_url=str(payload.get("drive_media_url") or "").strip() or None,
         drive_account_email=str(payload.get("drive_account_email") or "").strip() or None,
@@ -946,10 +949,12 @@ async def update_automation(
     payload = await request.json()
     if "trigger_keywords" in payload:
         rule.trigger_keywords = str(payload["trigger_keywords"]).strip()[:500]
-        if not rule.trigger_keywords:
+        if rule.rule_type == "comment_reply" and not rule.trigger_keywords:
             raise HTTPException(status_code=400, detail="Informe ao menos uma palavra-chave")
     if "rule_type" in payload and payload["rule_type"] in {"comment_reply", "dm_reply"}:
         rule.rule_type = payload["rule_type"]
+        if rule.rule_type == "comment_reply" and not rule.trigger_keywords:
+            raise HTTPException(status_code=400, detail="Informe ao menos uma palavra-chave")
     if "target_account_ids" in payload or "account_ids" in payload or "account_id" in payload:
         raw_ids = payload.get("target_account_ids", payload.get("account_ids", [payload.get("account_id")]))
         if not isinstance(raw_ids, list):
@@ -965,6 +970,8 @@ async def update_automation(
         rule.account_id = target_ids[0] if len(target_ids) == 1 else None
     if "message_text" in payload:
         rule.message_text = str(payload["message_text"]).strip()[:2000]
+    if "dm_followup_text" in payload:
+        rule.dm_followup_text = str(payload["dm_followup_text"]).strip()[:2000]
     if "is_active" in payload:
         rule.is_active = bool(payload["is_active"])
     for field in ("media_url", "drive_media_url", "drive_account_email", "drive_credentials_encrypted"):

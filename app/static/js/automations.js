@@ -14,6 +14,7 @@ function resetForm() {
   document.getElementById("automation-media-status").hidden = true;
   document.getElementById("automation-cancel").hidden = true;
   document.getElementById("automation-submit").textContent = "Salvar automação";
+  updateTriggerFields();
   media = { media_url: null, drive_media_url: null, drive_account_email: null, drive_credentials_encrypted: null };
 }
 
@@ -22,6 +23,7 @@ function fillForm(rule) {
   document.getElementById("automation-type").value = rule.rule_type;
   document.getElementById("automation-keywords").value = rule.trigger_keywords || "";
   document.getElementById("automation-message").value = rule.message_text || "";
+  document.getElementById("automation-dm-followup").value = rule.dm_followup_text || "";
   const targets = new Set(rule.target_account_ids || (rule.account_id ? [rule.account_id] : []));
   [...document.getElementById("automation-account").options].forEach(option => { option.selected = Number(option.value) === 0 ? !targets.size : targets.has(Number(option.value)); });
   media = { media_url: rule.media_url, drive_media_url: rule.drive_media_url, drive_account_email: rule.drive_account_email, drive_credentials_encrypted: rule.drive_credentials_encrypted };
@@ -30,7 +32,17 @@ function fillForm(rule) {
   status.textContent = status.hidden ? "" : "Anexo atual mantido";
   document.getElementById("automation-cancel").hidden = false;
   document.getElementById("automation-submit").textContent = "Salvar alterações";
+  updateTriggerFields();
   document.getElementById("automations").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function updateTriggerFields() {
+  const isComment = document.getElementById("automation-type").value === "comment_reply";
+  document.getElementById("automation-keywords-field").hidden = !isComment;
+  document.getElementById("automation-dm-followup-field").hidden = !isComment;
+  document.getElementById("automation-message-label").firstChild.textContent = isComment
+    ? "Resposta Pública no Comentário"
+    : "Mensagem";
 }
 
 function renderRules() {
@@ -60,13 +72,15 @@ async function save(event) {
   event.preventDefault();
   event.stopImmediatePropagation();
   const keywords = document.getElementById("automation-keywords").value.trim();
-  if (!keywords) return showModuleToast("Informe a palavra-chave do gatilho.", "error");
+  const isComment = document.getElementById("automation-type").value === "comment_reply";
+  if (isComment && !keywords) return showModuleToast("Informe a palavra-chave do gatilho.", "error");
   const id = document.getElementById("automation-edit-id").value;
   const payload = {
     target_account_ids: accountIds(),
     rule_type: document.getElementById("automation-type").value,
     trigger_keywords: keywords,
     message_text: document.getElementById("automation-message").value.trim(),
+    dm_followup_text: document.getElementById("automation-dm-followup").value.trim(),
     ...media,
     is_active: true,
   };
@@ -86,6 +100,8 @@ export function initAutomationsModule() {
   const form = document.getElementById("automation-form");
   if (!form) return;
   form.addEventListener("submit", save, true);
+  document.getElementById("automation-type")?.addEventListener("change", updateTriggerFields);
+  updateTriggerFields();
   document.addEventListener("automation-media-selected", event => { media = { ...event.detail }; });
   document.getElementById("automation-account")?.addEventListener("change", event => {
     const select = event.currentTarget;

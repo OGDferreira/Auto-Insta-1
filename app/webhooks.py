@@ -187,14 +187,19 @@ def _keyword_matches(rule: AutomationRule, text: str) -> bool:
     return bool(keywords) and any(keyword in text.casefold() for keyword in keywords)
 
 
+def _is_comment_event(event: dict, comment_id: str | None) -> bool:
+    if comment_id or event.get("field") == "comments":
+        return True
+    change = event.get("value")
+    return isinstance(change, dict) and change.get("field") == "comments"
+
+
 async def _send_auto_reply(account: InstagramAccount, event: dict) -> None:
     sender_id = (event.get("sender") or {}).get("id") or (event.get("from") or {}).get("id")
     settings = get_settings()
     token = decrypt_token(account.access_token_encrypted)
     comment_id = event.get("comment_id") or event.get("comment", {}).get("id")
-    is_comment = bool(comment_id or event.get("field") == "comments" or (
-        event.get("from") and event.get("text")
-    ))
+    is_comment = _is_comment_event(event, comment_id)
     rule_type = "comment_reply" if is_comment else "dm_reply"
     async with SessionLocal() as db:
         rules = (await db.scalars(select(AutomationRule).where(
@@ -205,11 +210,13 @@ async def _send_auto_reply(account: InstagramAccount, event: dict) -> None:
         incoming_text = _incoming_text(event)
         rule = next((
             candidate for candidate in rules
-            if _rule_targets_account(candidate, account.id) and _keyword_matches(candidate, incoming_text)
+            if _rule_targets_account(candidate, account.id)
+            and (not is_comment or _keyword_matches(candidate, incoming_text))
         ), None)
     reply_text = rule.message_text if rule else (
         account.comment_reply_text if is_comment else account.direct_reply_text
     )
+    dm_followup_text = rule.dm_followup_text if rule else ""
     reply_enabled = bool(rule or (
         account.comment_reply_enabled if is_comment else account.direct_reply_enabled
     ))
@@ -231,8 +238,28 @@ async def _send_auto_reply(account: InstagramAccount, event: dict) -> None:
                 )
                 media_response.raise_for_status()
             if reply_text:
-                response = await client.post(url, params={"access_token": token, "message": reply_text})
+                response = await client.post(
+                    url,
+                    params={"access_token": token, "message": reply_text},
+                )
                 response.raise_for_status()
+            if dm_followup_text:
+                private_url = f"https://graph.instagram.com/{settings.graph_api_version}/{comment_id}/private_replies"
+                try:
+                    private_response = await client.post(
+                        private_url,
+                        params={
+                            "access_token": token,
+                            "message": parse_spintax(dm_followup_text),
+                        },
+                    )
+                    private_response.raise_for_status()
+                except httpx.HTTPError:
+                    logger.warning(
+                        "Meta recusou private reply para comentário %s; resposta pública foi mantida",
+                        comment_id,
+                        exc_info=True,
+                    )
             return
         elif sender_id:
             url = f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/messages"

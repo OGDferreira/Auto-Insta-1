@@ -84,6 +84,7 @@ class AutomationRule(Base):
     rule_type: Mapped[str] = mapped_column(String(20), index=True)
     trigger_keywords: Mapped[str] = mapped_column(Text, default="")
     message_text: Mapped[str] = mapped_column(Text, default="")
+    dm_followup_text: Mapped[str] = mapped_column(Text, default="")
     media_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     drive_media_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     drive_account_email: Mapped[str | None] = mapped_column(String(320), nullable=True)

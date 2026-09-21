@@ -63,6 +63,7 @@ async def init_db() -> None:
                 "id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL, account_id INTEGER, "
                 "target_account_ids TEXT NOT NULL DEFAULT '[]', rule_type TEXT NOT NULL, "
                 "trigger_keywords TEXT NOT NULL DEFAULT '', message_text TEXT NOT NULL DEFAULT '', "
+                "dm_followup_text TEXT NOT NULL DEFAULT '', "
                 "media_url TEXT, drive_media_url TEXT, drive_account_email TEXT, "
                 "drive_credentials_encrypted TEXT, is_active BOOLEAN NOT NULL DEFAULT 1, "
                 "created_at DATETIME, updated_at DATETIME, "
@@ -87,6 +88,7 @@ async def init_db() -> None:
             for name, definition in {
                 "target_account_ids": "TEXT NOT NULL DEFAULT '[]'",
                 "trigger_keywords": "TEXT NOT NULL DEFAULT ''",
+                "dm_followup_text": "TEXT NOT NULL DEFAULT ''",
             }.items():
                 if name not in automation_existing:
                     await connection.exec_driver_sql(
@@ -162,6 +164,7 @@ async def init_db() -> None:
                     "rule_type": "VARCHAR(20) NOT NULL",
                     "trigger_keywords": "TEXT NOT NULL DEFAULT ''",
                     "message_text": "TEXT NOT NULL DEFAULT ''",
+                    "dm_followup_text": "TEXT NOT NULL DEFAULT ''",
                     "media_url": "TEXT",
                     "drive_media_url": "TEXT",
                     "drive_account_email": "VARCHAR(320)",
