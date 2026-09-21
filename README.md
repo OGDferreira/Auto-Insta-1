@@ -10,6 +10,8 @@ A fila é apresentada por lotes expansíveis: cada lote inicia fechado, mostra u
 
 A aba **Feed** consulta as publicações atuais das contas selecionadas pela Graph API, permite apagar itens marcados ou limpar múltiplas contas e aplica throttling de dois segundos entre exclusões. O importador do Google Drive aceita arquivos e pastas inteiras, percorre subpastas com paginação e armazena `drive_media_url` e `drive_account_email` junto à publicação para permitir o resgate posterior.
 
+A aba **Automações** mantém regras específicas por conta ou globais para respostas de comentários e mensagens Direct. Cada regra pode conter texto, mídia enviada pelo navegador ou mídia importada do Drive. No webhook Meta, uma regra específica tem prioridade sobre a regra global; quando há anexo, a mídia é enviada primeiro e o texto em uma mensagem separada. Mídias do Drive são resgatadas para o Supabase Storage antes do envio, garantindo uma URL pública para a Meta.
+
 Publicações impedidas por autorização ficam como `blocked`, podem ser verificadas novamente depois que o usuário for adicionado como testador no Meta App Dashboard e possuem ação de tentativa novamente. A API não fornece uma consulta pública para confirmar diretamente a lista de testadores do aplicativo; por isso a aplicação valida o token, o perfil e as permissões efetivamente retornadas pela Meta.
 
 ## Arquitetura e segurança

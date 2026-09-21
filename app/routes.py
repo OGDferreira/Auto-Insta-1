@@ -33,7 +33,15 @@ from .jobs import (
     schedule_post,
     unschedule_post,
 )
-from .models import BotEvent, InstagramAccount, InstagramMetric, PostingBatch, ScheduledPost, User
+from .models import (
+    AutomationRule,
+    BotEvent,
+    InstagramAccount,
+    InstagramMetric,
+    PostingBatch,
+    ScheduledPost,
+    User,
+)
 from .models import NotificationSubscription
 from .oauth import (
     authorization_url,
@@ -819,6 +827,123 @@ async def dashboard(
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response
+
+
+def _automation_payload(rule: AutomationRule) -> dict:
+    return {
+        "id": rule.id,
+        "account_id": rule.account_id,
+        "rule_type": rule.rule_type,
+        "message_text": rule.message_text,
+        "media_url": rule.media_url,
+        "drive_media_url": rule.drive_media_url,
+        "drive_account_email": rule.drive_account_email,
+        "is_active": rule.is_active,
+        "created_at": rule.created_at.isoformat() if rule.created_at else None,
+    }
+
+
+@router.get("/api/automations")
+async def list_automations(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    rules = (
+        await db.scalars(
+            select(AutomationRule)
+            .options(selectinload(AutomationRule.account))
+            .where(AutomationRule.owner_id == owner_id)
+            .order_by(AutomationRule.created_at.desc(), AutomationRule.id.desc())
+        )
+    ).all()
+    return {
+        "items": [
+            {**_automation_payload(rule), "account": rule.account.username if rule.account else "Todas as contas"}
+            for rule in rules
+        ]
+    }
+
+
+@router.post("/api/automations")
+async def create_automation(
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = await request.json()
+    rule_type = str(payload.get("rule_type", "")).strip()
+    message_text = str(payload.get("message_text", "")).strip()[:2000]
+    account_id = payload.get("account_id")
+    if rule_type not in {"comment_reply", "dm_reply"}:
+        raise HTTPException(status_code=400, detail="Tipo de automação inválido")
+    if not message_text and not payload.get("media_url") and not payload.get("drive_media_url"):
+        raise HTTPException(status_code=400, detail="Informe uma mensagem ou uma mídia")
+    owner_id = workspace_owner_id(user)
+    account = None
+    if account_id not in (None, "", 0, "0"):
+        account = await db.scalar(select(InstagramAccount).where(
+            InstagramAccount.id == int(account_id), InstagramAccount.owner_id == owner_id
+        ))
+        if not account:
+            raise HTTPException(status_code=404, detail="Conta não encontrada")
+        account_id = account.id
+    else:
+        account_id = None
+    rule = AutomationRule(
+        owner_id=owner_id,
+        account_id=account_id,
+        rule_type=rule_type,
+        message_text=message_text,
+        media_url=str(payload.get("media_url") or "").strip() or None,
+        drive_media_url=str(payload.get("drive_media_url") or "").strip() or None,
+        drive_account_email=str(payload.get("drive_account_email") or "").strip() or None,
+        drive_credentials_encrypted=str(payload.get("drive_credentials_encrypted") or "").strip() or None,
+        is_active=bool(payload.get("is_active", True)),
+    )
+    db.add(rule)
+    await db.commit()
+    await db.refresh(rule)
+    return _automation_payload(rule)
+
+
+@router.patch("/api/automations/{rule_id}")
+async def update_automation(
+    rule_id: int,
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    rule = await db.scalar(select(AutomationRule).where(
+        AutomationRule.id == rule_id, AutomationRule.owner_id == owner_id
+    ))
+    if not rule:
+        raise HTTPException(status_code=404, detail="Automação não encontrada")
+    payload = await request.json()
+    if "message_text" in payload:
+        rule.message_text = str(payload["message_text"]).strip()[:2000]
+    if "is_active" in payload:
+        rule.is_active = bool(payload["is_active"])
+    await db.commit()
+    return _automation_payload(rule)
+
+
+@router.delete("/api/automations/{rule_id}")
+async def delete_automation(
+    rule_id: int,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    rule = await db.scalar(select(AutomationRule).where(
+        AutomationRule.id == rule_id, AutomationRule.owner_id == owner_id
+    ))
+    if not rule:
+        raise HTTPException(status_code=404, detail="Automação não encontrada")
+    await db.delete(rule)
+    await db.commit()
+    return {"deleted": rule_id}
 
 
 @router.post("/accounts/import")

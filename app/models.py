@@ -68,6 +68,29 @@ class InstagramAccount(Base):
     instagram_metrics: Mapped[list["InstagramMetric"]] = relationship(
         back_populates="account", cascade="all, delete-orphan"
     )
+    automation_rules: Mapped[list["AutomationRule"]] = relationship(
+        back_populates="account", cascade="all, delete-orphan"
+    )
+
+
+class AutomationRule(Base):
+    __tablename__ = "automation_rules"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("instagram_accounts.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    rule_type: Mapped[str] = mapped_column(String(20), index=True)
+    message_text: Mapped[str] = mapped_column(Text, default="")
+    media_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    drive_media_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    drive_account_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    drive_credentials_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    owner: Mapped[User] = relationship()
+    account: Mapped[InstagramAccount | None] = relationship(back_populates="automation_rules")
 
 
 class PostingBatch(Base):

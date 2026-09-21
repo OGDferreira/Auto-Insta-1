@@ -58,6 +58,16 @@ async def init_db() -> None:
                 "UPDATE users SET username = substr(email, 1, instr(email, '@') - 1) "
                 "WHERE username = ''"
             )
+            await connection.exec_driver_sql(
+                "CREATE TABLE IF NOT EXISTS automation_rules ("
+                "id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL, account_id INTEGER, "
+                "rule_type TEXT NOT NULL, message_text TEXT NOT NULL DEFAULT '', "
+                "media_url TEXT, drive_media_url TEXT, drive_account_email TEXT, "
+                "drive_credentials_encrypted TEXT, is_active BOOLEAN NOT NULL DEFAULT 1, "
+                "created_at DATETIME, updated_at DATETIME, "
+                "FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE, "
+                "FOREIGN KEY(account_id) REFERENCES instagram_accounts(id) ON DELETE CASCADE)"
+            )
             columns = await connection.exec_driver_sql("PRAGMA table_info(instagram_accounts)")
             existing = {row[1] for row in columns}
             new_columns = {
@@ -133,6 +143,19 @@ async def init_db() -> None:
                     "storage_path": "TEXT",
                     "thumbnail_storage_path": "TEXT",
                     "batch_id": "INTEGER",
+                },
+                "automation_rules": {
+                    "owner_id": "INTEGER NOT NULL",
+                    "account_id": "INTEGER",
+                    "rule_type": "VARCHAR(20) NOT NULL",
+                    "message_text": "TEXT NOT NULL DEFAULT ''",
+                    "media_url": "TEXT",
+                    "drive_media_url": "TEXT",
+                    "drive_account_email": "VARCHAR(320)",
+                    "drive_credentials_encrypted": "TEXT",
+                    "is_active": "BOOLEAN NOT NULL DEFAULT TRUE",
+                    "created_at": "TIMESTAMP WITH TIME ZONE",
+                    "updated_at": "TIMESTAMP WITH TIME ZONE",
                 },
             }
             from sqlalchemy import inspect

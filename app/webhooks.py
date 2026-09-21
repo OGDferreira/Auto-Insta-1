@@ -1,15 +1,22 @@
 import logging
 import asyncio
+import io
+import json
 from datetime import datetime, timezone
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 import httpx
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+from supabase import create_client
 from sqlalchemy import select
 
 from .config import get_settings
 from .db import SessionLocal
-from .models import BotEvent, InstagramAccount
+from .models import AutomationRule, BotEvent, InstagramAccount
 from .security import decrypt_token
 
 router = APIRouter(prefix="/webhook")
@@ -120,39 +127,109 @@ async def verify_webhook(
     raise HTTPException(status_code=403, detail="Webhook verification failed")
 
 
+async def _resolve_automation_media(rule: AutomationRule) -> str | None:
+    if rule.media_url:
+        return rule.media_url
+    if not rule.drive_media_url or not rule.drive_credentials_encrypted:
+        return rule.drive_media_url
+    file_id = parse_qs(urlparse(rule.drive_media_url).query).get("id", [None])[0]
+    if not file_id:
+        return None
+    settings = get_settings()
+    storage_key = settings.supabase_service_role or settings.supabase_key
+    if not settings.supabase_url or not storage_key:
+        raise RuntimeError("Supabase Storage não configurado para resgatar a mídia da automação")
+    credentials = Credentials.from_authorized_user_info(
+        json.loads(decrypt_token(rule.drive_credentials_encrypted)),
+        ["https://www.googleapis.com/auth/drive.readonly"],
+    )
+    def download_and_upload() -> str:
+        service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+        metadata = service.files().get(fileId=file_id, fields="name,mimeType").execute()
+        buffer = io.BytesIO()
+        downloader = MediaIoBaseDownload(buffer, service.files().get_media(fileId=file_id))
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        path = f"automation-rescue/{rule.id}/{metadata.get('name', f'media-{rule.id}')}"
+        bucket = create_client(settings.supabase_url, storage_key).storage.from_(
+            settings.supabase_storage_bucket
+        )
+        bucket.upload(path, buffer.getvalue(), file_options={
+            "content-type": metadata.get("mimeType", "application/octet-stream"),
+            "upsert": True,
+        })
+        return bucket.get_public_url(path)
+    return await asyncio.to_thread(download_and_upload)
+
+
 async def _send_auto_reply(account: InstagramAccount, event: dict) -> None:
     sender_id = (event.get("sender") or {}).get("id") or (event.get("from") or {}).get("id")
     settings = get_settings()
     token = decrypt_token(account.access_token_encrypted)
-    comment_id = event.get("comment_id")
-    is_comment = bool(comment_id or (event.get("from") and event.get("text")))
-    reply_enabled = (
-        account.comment_reply_enabled if is_comment else account.direct_reply_enabled
+    comment_id = event.get("comment_id") or event.get("comment", {}).get("id")
+    is_comment = bool(comment_id or event.get("field") == "comments" or (
+        event.get("from") and event.get("text")
+    ))
+    rule_type = "comment_reply" if is_comment else "dm_reply"
+    async with SessionLocal() as db:
+        rule = await db.scalar(select(AutomationRule).where(
+            AutomationRule.owner_id == account.owner_id,
+            AutomationRule.rule_type == rule_type,
+            AutomationRule.is_active.is_(True),
+            AutomationRule.account_id == account.id,
+        ))
+        if rule is None:
+            rule = await db.scalar(select(AutomationRule).where(
+                AutomationRule.owner_id == account.owner_id,
+                AutomationRule.rule_type == rule_type,
+                AutomationRule.is_active.is_(True),
+                AutomationRule.account_id.is_(None),
+            ))
+    reply_text = rule.message_text if rule else (
+        account.comment_reply_text if is_comment else account.direct_reply_text
     )
-    reply_text = account.comment_reply_text if is_comment else account.direct_reply_text
-    # Legacy accounts continue using the original single-message setting.
+    reply_enabled = bool(rule or (
+        account.comment_reply_enabled if is_comment else account.direct_reply_enabled
+    ))
     if not reply_text and account.auto_reply_enabled:
         reply_enabled, reply_text = True, account.auto_reply_text
-    if not reply_enabled or not reply_text:
+    if not reply_enabled or (not reply_text and not rule):
         return
     if not comment_id and is_comment:
         comment_id = event.get("id")
+    media_url = await _resolve_automation_media(rule) if rule else None
     async with httpx.AsyncClient(timeout=20) as client:
         if comment_id:
             url = f"https://graph.instagram.com/{settings.graph_api_version}/{comment_id}/replies"
-            response = await client.post(
-                url, params={"access_token": token, "message": reply_text}
-            )
+            if media_url:
+                media_response = await client.post(
+                    url, params={"access_token": token},
+                    json={"message": {"attachment": {"type": "image", "payload": {"url": media_url}}}},
+                )
+                media_response.raise_for_status()
+            if reply_text:
+                response = await client.post(url, params={"access_token": token, "message": reply_text})
+                response.raise_for_status()
+            return
         elif sender_id:
             url = f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/messages"
-            response = await client.post(
-                url,
-                params={"access_token": token},
-                json={"recipient": {"id": sender_id}, "message": {"text": reply_text}},
-            )
+            if media_url:
+                media_response = await client.post(
+                    url, params={"access_token": token},
+                    json={"recipient": {"id": sender_id}, "message": {
+                        "attachment": {"type": "image", "payload": {"url": media_url}}
+                    }},
+                )
+                media_response.raise_for_status()
+            if reply_text:
+                response = await client.post(
+                    url, params={"access_token": token},
+                    json={"recipient": {"id": sender_id}, "message": {"text": reply_text}},
+                )
+                response.raise_for_status()
         else:
             return
-        response.raise_for_status()
 
 
 async def _delayed_auto_reply(account_id: int, event: dict) -> None:
