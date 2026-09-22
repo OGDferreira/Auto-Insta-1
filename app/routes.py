@@ -1741,6 +1741,65 @@ async def update_batch_interval(
     }
 
 
+@router.patch("/api/queue/batches/{batch_id}/config")
+async def update_batch_config(
+    batch_id: int,
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = await request.json()
+    try:
+        interval_minutes = int(payload.get("intervalo_minutos", payload.get("interval_minutes", 1)))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Intervalo inválido") from exc
+    if not 1 <= interval_minutes <= 1440:
+        raise HTTPException(status_code=400, detail="O intervalo deve estar entre 1 e 1440 minutos")
+    owner_id = workspace_owner_id(user)
+    batch = await db.scalar(select(PostingBatch).where(
+        PostingBatch.id == batch_id, PostingBatch.owner_id == owner_id
+    ))
+    if not batch:
+        raise HTTPException(status_code=404, detail="Lote não encontrado")
+    name = str(payload.get("name") or "").strip()
+    if name:
+        batch.name = name[:160]
+    pending_posts = (await db.scalars(
+        select(ScheduledPost)
+        .where(
+            ScheduledPost.owner_id == owner_id,
+            ScheduledPost.batch_id == batch_id,
+            ScheduledPost.status.in_(PENDING_STATUSES),
+        )
+        .order_by(ScheduledPost.scheduled_for, ScheduledPost.id)
+    )).all()
+    if not pending_posts:
+        await db.commit()
+        return {"batch_id": batch_id, "updated": 0, "intervalo_minutos": interval_minutes}
+    raw_start = str(payload.get("scheduled_for") or "").strip()
+    try:
+        next_time = parse_scheduled_datetime(raw_start) if raw_start else pending_posts[0].scheduled_for
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Horário do lote inválido") from exc
+    if next_time <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="O horário do agendamento deve estar no futuro")
+    interval = timedelta(minutes=interval_minutes)
+    for post in pending_posts:
+        post.scheduled_for = next_time
+        next_time += interval
+    await db.commit()
+    for post in pending_posts:
+        unschedule_post(post.id)
+        if batch.status == "active":
+            schedule_post(post.id, post.scheduled_for)
+    return {
+        "batch_id": batch_id,
+        "updated": len(pending_posts),
+        "intervalo_minutos": interval_minutes,
+        "first_scheduled_for": pending_posts[0].scheduled_for.isoformat(),
+    }
+
+
 @router.post("/api/queue/batches/{batch_id}/retry")
 async def retry_batch_failures(
     batch_id: int,
@@ -2604,27 +2663,27 @@ async def create_bulk_posts(
     if len(accounts) != len(set(account_ids)) or not accounts:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
     accounts_by_id = {account.id: account for account in accounts}
-    ordered_accounts = [accounts_by_id[account_id] for account_id in account_ids]
+    ordered_accounts = [accounts_by_id[account_id] for account_id in dict.fromkeys(account_ids)]
     first_time = parse_scheduled_datetime(scheduled_for)
     if first_time <= datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="O horário do agendamento deve estar no futuro")
 
-    batch = PostingBatch(
-        owner_id=owner_id,
-        name=batch_name.strip()[:160] or f"Lote de {first_time.astimezone(LOCAL_TIMEZONE).strftime('%d/%m %H:%M')}",
-        account_ids=json.dumps(list(dict.fromkeys(account_ids))),
-    )
-    db.add(batch)
-    await db.flush()
     posts_to_schedule = []
-    for media_index, (media_url, media_type, caption) in enumerate(zip(media_urls, media_types, captions)):
-        normalized_type = media_type.upper()
-        if normalized_type == "VIDEO":
-            normalized_type = "REELS"
-        if normalized_type not in {"IMAGE", "REELS"}:
-            raise HTTPException(status_code=400, detail="media_type deve ser IMAGE ou REELS")
-        for account_index, account in enumerate(ordered_accounts):
-            sequence_index = media_index * len(ordered_accounts) + account_index
+    base_name = batch_name.strip()[:140] or f"Lote de {first_time.astimezone(LOCAL_TIMEZONE).strftime('%d/%m %H:%M')}"
+    for account in ordered_accounts:
+        batch = PostingBatch(
+            owner_id=owner_id,
+            name=f"{base_name} · @{account.username}"[:160],
+            account_ids=json.dumps([account.id]),
+        )
+        db.add(batch)
+        await db.flush()
+        for media_index, (media_url, media_type, caption) in enumerate(zip(media_urls, media_types, captions)):
+            normalized_type = media_type.upper()
+            if normalized_type == "VIDEO":
+                normalized_type = "REELS"
+            if normalized_type not in {"IMAGE", "REELS"}:
+                raise HTTPException(status_code=400, detail="media_type deve ser IMAGE ou REELS")
             post = ScheduledPost(
                 owner_id=owner_id,
                 account_id=account.id,
@@ -2642,7 +2701,7 @@ async def create_bulk_posts(
                 thumbnail_storage_path=thumbnail_storage_paths[media_index] if media_index < len(thumbnail_storage_paths) else None,
                 media_type=normalized_type,
                 caption=caption,
-                scheduled_for=first_time + timedelta(minutes=sequence_index * interval_minutes),
+                scheduled_for=first_time + timedelta(minutes=media_index * interval_minutes),
             )
             db.add(post)
             posts_to_schedule.append(post)
@@ -2786,4 +2845,39 @@ async def update_batch_accounts(
     for post in new_posts:
         if batch.status == "active":
             schedule_post(post.id, post.scheduled_for)
+    return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/batches/{batch_id}/accounts/{account_id}/delete")
+async def remove_batch_account(
+    batch_id: int,
+    account_id: int,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    batch = await db.scalar(select(PostingBatch).where(
+        PostingBatch.id == batch_id, PostingBatch.owner_id == owner_id
+    ))
+    if not batch:
+        raise HTTPException(status_code=404, detail="Lote não encontrado")
+    posts = (await db.scalars(select(ScheduledPost).where(
+        ScheduledPost.batch_id == batch_id,
+        ScheduledPost.account_id == account_id,
+        ScheduledPost.owner_id == owner_id,
+    ))).all()
+    if not posts:
+        raise HTTPException(status_code=404, detail="Conta não encontrada neste lote")
+    for post in posts:
+        unschedule_post(post.id)
+        await db.delete(post)
+    remaining_ids = [item for item in json.loads(batch.account_ids or "[]") if item != account_id]
+    batch.account_ids = json.dumps(remaining_ids)
+    await db.flush()
+    remaining_posts = await db.scalar(
+        select(func.count(ScheduledPost.id)).where(ScheduledPost.batch_id == batch_id)
+    )
+    if not remaining_posts:
+        await db.delete(batch)
+    await db.commit()
     return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)

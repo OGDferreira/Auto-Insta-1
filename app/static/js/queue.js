@@ -43,6 +43,32 @@ export function initQueueModule() {
         content.querySelector(":scope > [data-show-batch]")?.remove();
       }
     });
+    const applyBatchStatusFilter = (batch, status) => {
+      const queue = batch?.querySelector("[data-batch-queue]");
+      if (!queue) return;
+      queue.hidden = false;
+      queue.dataset.statusFilter = status;
+      queue.querySelectorAll("[data-account-queue]").forEach(group => {
+        const visible = [...group.querySelectorAll(".queue-card")].some(card => {
+          const matches = status === "failed"
+            ? ["failed", "blocked"].includes(card.dataset.status)
+            : status === "pending"
+              ? ["scheduled", "pending", "aguardando"].includes(card.dataset.status)
+              : card.dataset.status === status;
+          card.hidden = !matches;
+          return matches;
+        });
+        group.hidden = !visible;
+      });
+      batch.open = true;
+    };
+    document.querySelectorAll("[data-batch-status-filter]").forEach(button => {
+      button.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        applyBatchStatusFilter(button.closest(".batch-accordion"), button.dataset.batchStatusFilter);
+      });
+    });
   });
   const modal = document.getElementById("batch-interval-modal");
   const form = document.getElementById("batch-interval-form");
@@ -56,11 +82,14 @@ export function initQueueModule() {
     if (event.key === "Escape" && !modal.hidden) close();
   });
 
-  document.querySelectorAll("[data-edit-batch-interval]").forEach(button => {
+  document.querySelectorAll("[data-edit-batch-config], [data-edit-batch-interval]").forEach(button => {
     button.addEventListener("click", event => {
       event.preventDefault();
       event.stopPropagation();
       document.getElementById("batch-interval-id").value = button.dataset.editBatchInterval;
+      document.getElementById("batch-interval-id").value = button.dataset.editBatchConfig || button.dataset.editBatchInterval;
+      document.getElementById("batch-name-value").value = button.dataset.batchName || "";
+      document.getElementById("batch-start-value").value = "";
       modal.hidden = false;
       document.getElementById("batch-interval-value").focus();
     });
@@ -127,11 +156,17 @@ export function initQueueModule() {
     event.preventDefault();
     const batchId = document.getElementById("batch-interval-id").value;
     const interval = Number(document.getElementById("batch-interval-value").value);
+    const name = document.getElementById("batch-name-value").value.trim();
+    const scheduledFor = document.getElementById("batch-start-value").value;
+    if (!name || !Number.isInteger(interval) || interval < 1 || interval > 1440) {
+      window.showToast?.("Informe um nome e um intervalo válido.", "error");
+      return;
+    }
     try {
-      const response = await fetch(`/api/queue/batches/${batchId}/interval`, {
-        method: "PUT",
+      const response = await fetch(`/api/queue/batches/${batchId}/config`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intervalo_minutos: interval }),
+        body: JSON.stringify({ name, intervalo_minutos: interval, scheduled_for: scheduledFor }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || "Falha ao recalcular lote.");
