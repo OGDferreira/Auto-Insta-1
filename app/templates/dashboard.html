@@ -155,7 +155,10 @@
   .thumb-item { position:relative; padding-right:2.2rem; }
   .remove-media { position:absolute; right:.45rem; width:25px; height:25px; padding:0; background:rgba(255,112,136,.12); color:var(--danger); }
   .media-item-actions { display:flex; gap:.35rem; flex-wrap:wrap; margin-top:.35rem; }
-  .media-item-actions button { width:auto; padding:.3rem .5rem; font-size:.7rem; }
+  .media-item-actions button.choose-thumbnail,
+  .media-item-actions button.apply-thumbnail { width:auto; min-height:23px; padding:.3rem .55rem; border:1px solid var(--line); border-radius:8px; background:var(--panel-2); color:var(--text); box-shadow:none; font-size:.7rem; line-height:1.2; }
+  .media-item-actions button.choose-thumbnail:hover,
+  .media-item-actions button.apply-thumbnail:hover { border-color:var(--cyan); background:rgba(37,99,235,.16); color:var(--text); transform:none; box-shadow:0 4px 12px rgba(37,99,235,.2); }
   .media-limit-note { margin:.35rem 0 .7rem; }
   @media(max-width:1000px) { .queue-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
   @media(max-width:650px) {
