@@ -11,7 +11,7 @@ class Settings(BaseModel):
     deploy_timestamp: str = ""
     meta_app_id: str = ""
     meta_app_secret: str = ""
-    public_base_url: str = "http://localhost:8000"
+    public_base_url: str = "https://auto-insta-aeqr.onrender.com"
     database_url: str = "sqlite+aiosqlite:///./auto_insta.db"
     supabase_url: str = ""
     supabase_key: str = ""
@@ -41,7 +41,10 @@ class Settings(BaseModel):
 
 @lru_cache
 def get_settings() -> Settings:
-    public_base_url = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000")
+    public_base_url = os.getenv(
+        "PUBLIC_BASE_URL",
+        "https://auto-insta-aeqr.onrender.com",
+    ).rstrip("/")
     cookie_secure_value = os.getenv("COOKIE_SECURE")
     cookie_secure = (
         cookie_secure_value.lower() == "true"
