@@ -58,7 +58,7 @@ Publicações impedidas por autorização ficam como `blocked`, podem ser verifi
 ## Configuração Meta
 
 No painel Meta Developers crie um produto Instagram Login for Business e configure exatamente o redirect URI:
-`https://auto-insta-web.onrender.com/auth/callback`.
+`https://auto-insta-aeqr.onrender.com/auth/callback`.
 
 Defina `META_APP_ID`, `META_APP_SECRET`, `PUBLIC_BASE_URL`, `GRAPH_API_VERSION` e todos os valores de `.env.example`. Os escopos solicitados são:
 `instagram_business_basic`, `instagram_business_content_publish`,
@@ -80,9 +80,9 @@ Cadastre `https://SEU_HOST/webhook` no produto Instagram e use o mesmo `WEBHOOK_
 
 No Shark Bot, informe esta URL para receber pagamentos criados, pagamentos aprovados e novos leads:
 
-`https://auto-insta-web.onrender.com/webhook/sharkbot`
+`https://auto-insta-aeqr.onrender.com/webhook/sharkbot`
 
-O endpoint aceita os payloads `payment_created`, `payment_approved` e `user_joined`. Os valores da transação são gravados em BRL e os dados do cliente, bot, plano e transação ficam disponíveis no log e na tabela de métricas. Para uma instalação em outro domínio, substitua `auto-insta-web.onrender.com` pelo valor público de `PUBLIC_BASE_URL`.
+O endpoint aceita os payloads `payment_created`, `payment_approved` e `user_joined`. Os valores da transação são gravados em BRL e os dados do cliente, bot, plano e transação ficam disponíveis no log e na tabela de métricas. Para uma instalação em outro domínio, substitua `auto-insta-aeqr.onrender.com` pelo valor público de `PUBLIC_BASE_URL`.
 
 ## Deploy no Render
 

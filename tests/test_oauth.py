@@ -15,7 +15,7 @@ def test_authorization_url_has_required_scopes(monkeypatch):
     query = parse_qs(urlparse(url).query)
     assert url.startswith("https://www.instagram.com/oauth/authorize?")
     assert query["client_id"] == ["test-app"]
-    assert query["redirect_uri"] == ["https://auto-insta-web.onrender.com/auth/callback"]
+    assert query["redirect_uri"] == ["https://auto-insta-aeqr.onrender.com/auth/callback"]
     assert query["response_type"] == ["code"]
     assert query["state"] == ["state-value"]
     assert set(query["scope"][0].split(",")) == set(OAUTH_SCOPES)

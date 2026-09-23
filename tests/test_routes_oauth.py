@@ -27,6 +27,6 @@ def test_instagram_start_logs_complete_authorization_url(monkeypatch, caplog):
     )
     query = parse_qs(urlparse(location).query)
     assert query["client_id"] == ["test-app"]
-    assert query["redirect_uri"] == ["https://auto-insta-web.onrender.com/auth/callback"]
+    assert query["redirect_uri"] == ["https://auto-insta-aeqr.onrender.com/auth/callback"]
     assert query["response_type"] == ["code"]
     assert query["scope"] == [",".join(OAUTH_SCOPES)]

@@ -17,7 +17,7 @@ class Settings(BaseModel):
     supabase_key: str = ""
     supabase_service_role: str = ""
     supabase_storage_bucket: str = "media"
-    sharkbot_webhook_url: str = "https://auto-insta-web.onrender.com/webhook/sharkbot"
+    sharkbot_webhook_url: str = "https://auto-insta-aeqr.onrender.com/webhook/sharkbot"
     secret_key: str = "change-me-in-production"
     fernet_key: str = ""
     webhook_verify_token: str = "change-me"
@@ -32,7 +32,7 @@ class Settings(BaseModel):
 
     @property
     def oauth_redirect_uri(self) -> str:
-        return "https://auto-insta-web.onrender.com/auth/callback"
+        return "https://auto-insta-aeqr.onrender.com/auth/callback"
 
     @property
     def secure_cookies_enabled(self) -> bool:
@@ -61,7 +61,7 @@ def get_settings() -> Settings:
         "supabase_storage_bucket": os.getenv("SUPABASE_STORAGE_BUCKET", "media"),
         "sharkbot_webhook_url": os.getenv(
             "SHARKBOT_WEBHOOK_URL",
-            "https://auto-insta-web.onrender.com/webhook/sharkbot",
+            "https://auto-insta-aeqr.onrender.com/webhook/sharkbot",
         ),
         "secret_key": os.getenv("SECRET_KEY", "change-me-in-production"),
         "fernet_key": os.getenv("FERNET_KEY", ""),
