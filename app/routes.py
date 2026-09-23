@@ -61,6 +61,7 @@ templates = Jinja2Templates(directory="app/templates")
 logger = logging.getLogger(__name__)
 UPLOAD_DIR = Path("uploads")
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
+MAX_BATCH_MEDIA = 30
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]{2,80}$")
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
@@ -2647,6 +2648,11 @@ async def create_bulk_posts(
         raise HTTPException(status_code=400, detail="O intervalo mínimo é de 1 minuto")
     if not media_urls or len(media_urls) != len(media_types):
         raise HTTPException(status_code=400, detail="Lista de mídias inválida")
+    if len(media_urls) > MAX_BATCH_MEDIA:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cada lote pode conter no máximo {MAX_BATCH_MEDIA} publicações.",
+        )
     if caption_mode not in {"global", "individual"}:
         raise HTTPException(status_code=400, detail="Modo de legenda inválido")
     if caption_mode == "global":

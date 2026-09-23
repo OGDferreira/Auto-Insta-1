@@ -472,11 +472,14 @@ async def _drive_media_rescue(post: ScheduledPost, settings) -> str | None:
             return bucket.get_public_url(path), path
 
         media_url, storage_path = await asyncio.to_thread(download_and_upload)
+        if not await _media_url_is_available(media_url):
+            raise RuntimeError("O arquivo foi recuperado, mas a URL pública do Supabase não está acessível.")
         post.media_url = media_url
         post.original_media_url = media_url
         post.storage_path = storage_path
         return media_url
-    except Exception:
+    except Exception as exc:
+        post.error_message = f"Falha ao recuperar mídia do Drive: {str(exc)[:700]}"
         logger.exception(
             "Falha ao resgatar mídia do Drive para post %s (conta %s)",
             post.id,
@@ -549,7 +552,7 @@ async def _publish(post_id: int) -> None:
             if post.drive_media_url and not await _media_url_is_available(post.media_url):
                 rescued_url = await _drive_media_rescue(post, settings)
                 if not rescued_url:
-                    raise RuntimeError("A mídia local não existe e não foi possível resgatá-la do Drive.")
+                    raise RuntimeError(post.error_message or "A mídia local não existe e não foi possível resgatá-la do Drive.")
             _validate_media_url(post.media_url)
                 
             # Define a chave correta da URL (image_url vs video_url)
@@ -564,6 +567,8 @@ async def _publish(post_id: int) -> None:
                 }
                 if media_type == "REELS":
                     params["media_type"] = media_type
+                    if post.thumbnail_url and post.thumbnail_url != post.media_url:
+                        params["cover_url"] = post.thumbnail_url
                 
                 # ETAPA A: Criar o Container de Mídia
                 container = await client.post(f"{base}/{account.instagram_user_id}/media", params=params)
