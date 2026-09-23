@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: auto-insta-web
+    name: auto-insta-aeqr
     runtime: docker
     plan: free
     healthCheckPath: /health
