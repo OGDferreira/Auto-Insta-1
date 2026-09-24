@@ -2028,34 +2028,49 @@ async def update_feed_thumbnail(
     db: AsyncSession = Depends(get_db),
 ):
     payload = await request.json()
-    account_id = int(payload.get("account_id") or 0)
-    media_id = str(payload.get("media_id") or "").strip()
     thumbnail_url = str(payload.get("thumbnail_url") or "").strip()
-    if not account_id or not media_id or not thumbnail_url:
-        raise HTTPException(status_code=400, detail="Conta, vídeo e thumbnail são obrigatórios")
+    if not thumbnail_url:
+        raise HTTPException(status_code=400, detail="A thumbnail é obrigatória")
     if not thumbnail_url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="A thumbnail precisa ser uma URL pública")
-    account = await db.scalar(select(InstagramAccount).where(
-        InstagramAccount.id == account_id,
+    raw_media = payload.get("media")
+    if isinstance(raw_media, list):
+        targets = [
+            (int(item.get("account_id") or 0), str(item.get("media_id") or "").strip())
+            for item in raw_media if isinstance(item, dict)
+        ]
+    else:
+        targets = [(int(payload.get("account_id") or 0), str(payload.get("media_id") or "").strip())]
+    targets = list(dict.fromkeys((account_id, media_id) for account_id, media_id in targets if account_id and media_id))
+    if not targets:
+        raise HTTPException(status_code=400, detail="Selecione ao menos um vídeo")
+    accounts = (await db.scalars(select(InstagramAccount).where(
         InstagramAccount.owner_id == workspace_owner_id(user),
+        InstagramAccount.id.in_({account_id for account_id, _ in targets}),
         InstagramAccount.access_token_encrypted != "",
-    ))
-    if not account:
-        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    ))).all()
+    accounts_by_id = {account.id: account for account in accounts}
+    if len(accounts_by_id) != len({account_id for account_id, _ in targets}):
+        raise HTTPException(status_code=404, detail="Uma ou mais contas não foram encontradas")
     settings = get_settings()
-    token = decrypt_token(account.access_token_encrypted)
+    updated = []
+    errors = []
     async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(
-            f"https://graph.instagram.com/{settings.graph_api_version}/{media_id}",
-            data={"cover_url": thumbnail_url, "access_token": token},
-        )
-    if response.is_error:
-        raise HTTPException(status_code=502, detail=_meta_api_error(response))
-    return {
-        "account_id": account.id,
-        "media_id": media_id,
-        "thumbnail_url": thumbnail_url,
-    }
+        for account_id, media_id in targets:
+            account = accounts_by_id[account_id]
+            response = await client.post(
+                f"https://graph.instagram.com/{settings.graph_api_version}/{media_id}",
+                data={
+                    "cover_url": thumbnail_url,
+                    "comment_enabled": "true",
+                    "access_token": decrypt_token(account.access_token_encrypted),
+                },
+            )
+            if response.is_error:
+                errors.append({"account": account.username, "media_id": media_id, "error": _meta_api_error(response)})
+            else:
+                updated.append({"account_id": account_id, "media_id": media_id})
+    return {"thumbnail_url": thumbnail_url, "updated": updated, "errors": errors}
 
 
 @router.get("/auth/instagram/start")

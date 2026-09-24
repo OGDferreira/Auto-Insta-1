@@ -36,6 +36,10 @@ export function initFeedModule() {
   let feedItems = [];
   const thumbnailFile = document.getElementById("feed-thumbnail-file");
   let thumbnailTargetIndex = -1;
+  let thumbnailTargets = [];
+  const selectedFeedVideos = () => [...document.querySelectorAll("[data-feed-index]:checked")]
+    .map(input => feedItems[Number(input.dataset.feedIndex)])
+    .filter(item => item && ["VIDEO", "REELS"].includes(item.media_type));
   const renderFeed = () => {
     const feedGrid = document.getElementById("feed-grid");
     feedGrid.innerHTML = feedItems.map((item, index) => `
@@ -46,6 +50,7 @@ export function initFeedModule() {
       </article>`).join("") || "<p class=\"muted\">Nenhuma publicação encontrada.</p>";
     feedGrid.querySelectorAll("[data-feed-thumbnail-index]").forEach(button => button.addEventListener("click", () => {
       thumbnailTargetIndex = Number(button.dataset.feedThumbnailIndex);
+      thumbnailTargets = [];
       thumbnailFile.value = "";
       thumbnailFile.click();
     }));
@@ -85,8 +90,8 @@ export function initFeedModule() {
   document.getElementById("feed-clear")?.addEventListener("click", () => deleteFeed(true));
   thumbnailFile?.addEventListener("change", async () => {
     const file = thumbnailFile.files?.[0];
-    const item = feedItems[thumbnailTargetIndex];
-    if (!file || !item) return;
+    const targets = thumbnailTargets.length ? thumbnailTargets : [feedItems[thumbnailTargetIndex]];
+    if (!file || !targets[0]) return;
     const upload = new FormData();
     upload.append("media", file, file.name);
     try {
@@ -97,19 +102,33 @@ export function initFeedModule() {
       const response = await fetch("/api/feed/thumbnail", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ account_id: item.account_id, media_id: item.id, thumbnail_url: uploadPayload.thumbnail_url }),
+        body: JSON.stringify({
+          media: targets.map(item => ({ account_id: item.account_id, media_id: item.id })),
+          thumbnail_url: uploadPayload.thumbnail_url,
+        }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || "Falha ao alterar a thumbnail");
-      item.thumbnail_url = uploadPayload.thumbnail_url;
+      targets.forEach(item => item.thumbnail_url = uploadPayload.thumbnail_url);
       renderFeed();
-      showModuleToast("Thumbnail do vídeo atualizada.", "success");
+      showModuleToast(`${payload.updated?.length || 0} thumbnail(s) atualizada(s).`, payload.errors?.length ? "error" : "success");
     } catch (error) {
       showModuleToast(error.message, "error");
     } finally {
       thumbnailFile.value = "";
       thumbnailTargetIndex = -1;
+      thumbnailTargets = [];
     }
+  });
+  document.getElementById("feed-update-selected-thumbnails")?.addEventListener("click", () => {
+    thumbnailTargets = selectedFeedVideos();
+    if (!thumbnailTargets.length) {
+      showModuleToast("Selecione ao menos um vídeo.", "error");
+      return;
+    }
+    thumbnailTargetIndex = -1;
+    thumbnailFile.value = "";
+    thumbnailFile.click();
   });
 }
 
