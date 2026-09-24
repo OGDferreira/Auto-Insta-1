@@ -2702,7 +2702,7 @@ async def create_bulk_posts(
                     drive_credentials_encrypted[media_index]
                     if media_index < len(drive_credentials_encrypted) else None
                 ),
-                thumbnail_url=thumbnail_urls[media_index] if media_index < len(thumbnail_urls) else media_url,
+                thumbnail_url=thumbnail_urls[media_index] if media_index < len(thumbnail_urls) and thumbnail_urls[media_index] else None,
                 storage_path=storage_paths[media_index] if media_index < len(storage_paths) else None,
                 thumbnail_storage_path=thumbnail_storage_paths[media_index] if media_index < len(thumbnail_storage_paths) else None,
                 media_type=normalized_type,
@@ -2716,6 +2716,42 @@ async def create_bulk_posts(
     for post in posts_to_schedule:
         schedule_post(post.id, post.scheduled_for)
     return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.patch("/api/queue/batches/{batch_id}/thumbnail")
+async def update_batch_thumbnail(
+    batch_id: int,
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = await request.json()
+    action = str(payload.get("action") or "").strip().lower()
+    if action not in {"set", "remove"}:
+        raise HTTPException(status_code=400, detail="Ação de thumbnail inválida")
+    thumbnail_url = str(payload.get("thumbnail_url") or "").strip()
+    thumbnail_storage_path = str(payload.get("thumbnail_storage_path") or "").strip()
+    if action == "set" and not thumbnail_url:
+        raise HTTPException(status_code=400, detail="Selecione uma mídia para adicionar a thumbnail")
+    owner_id = workspace_owner_id(user)
+    batch = await db.scalar(select(PostingBatch).where(
+        PostingBatch.id == batch_id, PostingBatch.owner_id == owner_id
+    ))
+    if not batch:
+        raise HTTPException(status_code=404, detail="Lote não encontrado")
+    posts = (await db.scalars(select(ScheduledPost).where(
+        ScheduledPost.owner_id == owner_id,
+        ScheduledPost.batch_id == batch_id,
+    ))).all()
+    for post in posts:
+        if action == "remove":
+            post.thumbnail_url = None
+            post.thumbnail_storage_path = None
+        else:
+            post.thumbnail_url = thumbnail_url
+            post.thumbnail_storage_path = thumbnail_storage_path or None
+    await db.commit()
+    return {"batch_id": batch_id, "updated": len(posts), "action": action}
 
 
 @router.post("/batches/{batch_id}/pause")

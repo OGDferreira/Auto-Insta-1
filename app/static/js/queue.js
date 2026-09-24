@@ -107,8 +107,44 @@ export function initQueueModule() {
       if (window.lucide) window.lucide.createIcons();
     });
   });
+  document.querySelectorAll("[data-batch-actions]").forEach(actions => {
+    const batch = actions.closest("[data-batch-id]");
+    if (!batch || actions.querySelector("[data-remove-batch-thumbnail]")) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary batch-icon-action";
+    button.dataset.removeBatchThumbnail = batch.dataset.batchId;
+    button.title = "Remover thumbnail das publicações";
+    button.setAttribute("aria-label", button.title);
+    button.innerHTML = '<i data-lucide="image-minus"></i>';
+    actions.insertBefore(button, actions.firstElementChild);
+  });
+  if (window.lucide) window.lucide.createIcons();
   document.querySelectorAll("[data-batch-actions] form, [data-batch-actions] button").forEach(action => {
     action.addEventListener("click", event => event.stopPropagation());
+  });
+
+  document.querySelectorAll("[data-remove-batch-thumbnail]").forEach(button => {
+    button.addEventListener("click", async event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!window.confirm("Remover a thumbnail de todas as publicações deste lote?")) return;
+      button.disabled = true;
+      try {
+        const response = await fetch(`/api/queue/batches/${button.dataset.removeBatchThumbnail}/thumbnail`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "remove" }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.detail || "Falha ao remover as thumbnails.");
+        window.showToast?.(`${payload.updated} thumbnail(s) removida(s).`, "success");
+        window.location.reload();
+      } catch (error) {
+        window.showToast?.(error.message, "error");
+        button.disabled = false;
+      }
+    });
   });
 
   document.querySelectorAll("[data-retry-batch]").forEach(button => {
