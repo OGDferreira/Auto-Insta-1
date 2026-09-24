@@ -2669,14 +2669,14 @@ async def create_bulk_posts(
 
     posts_to_schedule = []
     base_name = batch_name.strip()[:140] or f"Lote de {first_time.astimezone(LOCAL_TIMEZONE).strftime('%d/%m %H:%M')}"
+    batch = PostingBatch(
+        owner_id=owner_id,
+        name=base_name,
+        account_ids=json.dumps([account.id for account in ordered_accounts]),
+    )
+    db.add(batch)
+    await db.flush()
     for account in ordered_accounts:
-        batch = PostingBatch(
-            owner_id=owner_id,
-            name=f"{base_name} · @{account.username}"[:160],
-            account_ids=json.dumps([account.id]),
-        )
-        db.add(batch)
-        await db.flush()
         for media_index, (media_url, media_type, caption) in enumerate(zip(media_urls, media_types, captions)):
             normalized_type = media_type.upper()
             if normalized_type == "VIDEO":

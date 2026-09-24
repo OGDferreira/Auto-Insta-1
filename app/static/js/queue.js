@@ -1,4 +1,43 @@
+function setupSelectableCards(cards, inputSelector) {
+  let anchor = -1;
+  let dragging = false;
+  const sync = () => cards.forEach(card => {
+    const input = card.querySelector(inputSelector);
+    card.classList.toggle("selected", Boolean(input?.checked));
+    input?.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  cards.forEach((card, index) => {
+    card.addEventListener("mousedown", event => {
+      if (event.button !== 0 || event.target.closest("form,button,video,input")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.shiftKey && anchor >= 0) {
+        const [start, end] = [anchor, index].sort((a, b) => a - b);
+        cards.forEach((item, itemIndex) => { item.querySelector(inputSelector).checked = itemIndex >= start && itemIndex <= end; });
+      } else if (event.ctrlKey || event.metaKey) {
+        const input = card.querySelector(inputSelector);
+        input.checked = !input.checked;
+        anchor = index;
+      } else {
+        cards.forEach(item => { item.querySelector(inputSelector).checked = false; });
+        card.querySelector(inputSelector).checked = true;
+        anchor = index;
+      }
+      dragging = true;
+      sync();
+    });
+    card.addEventListener("mouseenter", event => {
+      if (!dragging || event.buttons !== 1) return;
+      card.querySelector(inputSelector).checked = true;
+      sync();
+    });
+  });
+  document.addEventListener("mouseup", () => { dragging = false; });
+  sync();
+}
+
 export function initQueueModule() {
+  setupSelectableCards([...document.querySelectorAll(".queue-card")], ".queue-select");
   document.querySelectorAll("[data-calendar-status]").forEach(item => item.classList.add("status-badge"));
   document.querySelectorAll("[data-show-batch]").forEach(button => {
     button.addEventListener("click", event => {

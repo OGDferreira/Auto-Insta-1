@@ -4,10 +4,47 @@ function selectedIds() {
   return [...document.querySelectorAll("[data-feed-account]:checked")].map(input => Number(input.value));
 }
 
+function setupSelectableCards(cards, inputSelector) {
+  let anchor = -1;
+  let dragging = false;
+  const sync = () => cards.forEach(card => {
+    const input = card.querySelector(inputSelector);
+    card.classList.toggle("selected", Boolean(input?.checked));
+  });
+  cards.forEach((card, index) => {
+    card.addEventListener("mousedown", event => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      if (event.shiftKey && anchor >= 0) {
+        const [start, end] = [anchor, index].sort((a, b) => a - b);
+        cards.forEach((item, itemIndex) => { item.querySelector(inputSelector).checked = itemIndex >= start && itemIndex <= end; });
+      } else if (event.ctrlKey || event.metaKey) {
+        const input = card.querySelector(inputSelector);
+        input.checked = !input.checked;
+        anchor = index;
+      } else {
+        cards.forEach(item => { item.querySelector(inputSelector).checked = false; });
+        card.querySelector(inputSelector).checked = true;
+        anchor = index;
+      }
+      dragging = true;
+      sync();
+    });
+    card.addEventListener("mouseenter", event => {
+      if (!dragging || event.buttons !== 1) return;
+      card.querySelector(inputSelector).checked = true;
+      sync();
+    });
+  });
+  document.addEventListener("mouseup", () => { dragging = false; });
+  sync();
+}
+
 export function initFeedModule() {
   const grid = document.getElementById("feed-account-cards");
   const loadButton = document.getElementById("feed-load-modular");
   if (!grid || !loadButton) return;
+  setupSelectableCards([...grid.querySelectorAll(".feed-account-card")], "[data-feed-account]");
   grid.addEventListener("change", event => {
     const card = event.target.closest(".feed-account-card");
     if (card) {
@@ -42,6 +79,7 @@ export function initFeedModule() {
         <img src="${escapeHtml(item.thumbnail_url || item.media_url || "")}" alt="Publicação de @${escapeHtml(item.account || "")}">
         <div class="feed-item-body"><strong>@${escapeHtml(item.account || "")}</strong><small>${escapeHtml(item.caption || item.media_type || "Publicação")}</small><div class="feed-metrics"><span title="Curtidas">♥ ${Number(item.likes || item.like_count || 0).toLocaleString("pt-BR")}</span><span title="Impressões">◉ ${Number(item.insights?.impressions || 0).toLocaleString("pt-BR")}</span><span title="Alcance">↗ ${Number(item.insights?.reach || 0).toLocaleString("pt-BR")}</span>${item.insights?.plays ? `<span title="Reproduções">▶ ${Number(item.insights.plays).toLocaleString("pt-BR")}</span>` : ""}</div></div>
       </article>`).join("") || "<p class=\"muted\">Nenhuma publicação encontrada.</p>";
+    setupSelectableCards([...feedGrid.querySelectorAll(".feed-item")], "[data-feed-index]");
   };
   const load = async () => {
     const ids = selectedIds();
