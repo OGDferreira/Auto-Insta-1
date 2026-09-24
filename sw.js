@@ -1,5 +1,5 @@
-const CACHE_NAME = "auto-insta-mobile-v1";
-const APP_SHELL = ["/dashboard", "/static/css/mobile.css", "/static/js/mobile.js", "/static/manifest.webmanifest", "/static/favicon.svg"];
+const CACHE_NAME = "auto-insta-v2";
+const APP_SHELL = ["/dashboard", "/static/manifest.webmanifest", "/static/favicon.svg"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));

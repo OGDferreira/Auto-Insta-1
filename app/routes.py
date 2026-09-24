@@ -187,11 +187,6 @@ def local_scheduled_datetime(value: datetime) -> str:
 templates.env.globals["local_scheduled_datetime"] = local_scheduled_datetime
 
 
-def _is_mobile_request(request: Request) -> bool:
-    user_agent = request.headers.get("user-agent", "").lower()
-    return any(marker in user_agent for marker in ("mobile", "android", "iphone", "ipad"))
-
-
 def _notification_payload(total_views: int, account_count: int) -> str:
     return f"Auto-Insta: {total_views:,} visualizações em {account_count} conta(s).".replace(",", ".")
 
@@ -855,10 +850,7 @@ async def dashboard(
             "volume_days": volume_days,
             "period_days": period_days,
         }
-    response = templates.TemplateResponse(
-        "mobile_dashboard.html" if _is_mobile_request(request) else "dashboard.html",
-        template_context,
-    )
+    response = templates.TemplateResponse("dashboard.html", template_context)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -1415,7 +1407,7 @@ async def _feed_media_for_account(client: httpx.AsyncClient, account: InstagramA
     base = f"https://graph.instagram.com/{settings.graph_api_version}"
     url = f"{base}/{account.instagram_user_id}/media"
     params = {
-        "fields": "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count",
+        "fields": "id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count",
         "limit": 100,
         "access_token": token,
     }
@@ -2029,6 +2021,43 @@ async def delete_feed_items(
     return {"deleted": deleted, "errors": errors, "throttled_seconds": 2}
 
 
+@router.post("/api/feed/thumbnail")
+async def update_feed_thumbnail(
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    payload = await request.json()
+    account_id = int(payload.get("account_id") or 0)
+    media_id = str(payload.get("media_id") or "").strip()
+    thumbnail_url = str(payload.get("thumbnail_url") or "").strip()
+    if not account_id or not media_id or not thumbnail_url:
+        raise HTTPException(status_code=400, detail="Conta, vídeo e thumbnail são obrigatórios")
+    if not thumbnail_url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="A thumbnail precisa ser uma URL pública")
+    account = await db.scalar(select(InstagramAccount).where(
+        InstagramAccount.id == account_id,
+        InstagramAccount.owner_id == workspace_owner_id(user),
+        InstagramAccount.access_token_encrypted != "",
+    ))
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta não encontrada")
+    settings = get_settings()
+    token = decrypt_token(account.access_token_encrypted)
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            f"https://graph.instagram.com/{settings.graph_api_version}/{media_id}",
+            data={"cover_url": thumbnail_url, "access_token": token},
+        )
+    if response.is_error:
+        raise HTTPException(status_code=502, detail=_meta_api_error(response))
+    return {
+        "account_id": account.id,
+        "media_id": media_id,
+        "thumbnail_url": thumbnail_url,
+    }
+
+
 @router.get("/auth/instagram/start")
 async def instagram_start(
     request: Request,
@@ -2629,6 +2658,7 @@ async def create_bulk_posts(
     media_urls: list[str] = Form(...),
     media_types: list[str] = Form(...),
     thumbnail_urls: list[str] = Form(default=[]),
+    batch_thumbnail_url: str = Form(""),
     storage_paths: list[str] = Form(default=[]),
     thumbnail_storage_paths: list[str] = Form(default=[]),
     drive_media_urls: list[str] = Form(default=[]),
@@ -2702,7 +2732,13 @@ async def create_bulk_posts(
                     drive_credentials_encrypted[media_index]
                     if media_index < len(drive_credentials_encrypted) else None
                 ),
-                thumbnail_url=thumbnail_urls[media_index] if media_index < len(thumbnail_urls) and thumbnail_urls[media_index] else None,
+                thumbnail_url=(
+                    batch_thumbnail_url.strip()
+                    if normalized_type == "REELS" and batch_thumbnail_url.strip()
+                    else thumbnail_urls[media_index]
+                    if media_index < len(thumbnail_urls) and thumbnail_urls[media_index]
+                    else None
+                ),
                 storage_path=storage_paths[media_index] if media_index < len(storage_paths) else None,
                 thumbnail_storage_path=thumbnail_storage_paths[media_index] if media_index < len(thumbnail_storage_paths) else None,
                 media_type=normalized_type,
