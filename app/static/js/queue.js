@@ -7,7 +7,8 @@ function setupSelectableCards(cards, inputSelector) {
     input?.dispatchEvent(new Event("change", { bubbles: true }));
   });
   cards.forEach((card, index) => {
-    card.addEventListener("mousedown", event => {
+    card.classList.add("selectable-card");
+    card.addEventListener("pointerdown", event => {
       if (event.button !== 0 || event.target.closest("form,button,video,input")) return;
       event.preventDefault();
       event.stopPropagation();
@@ -26,13 +27,13 @@ function setupSelectableCards(cards, inputSelector) {
       dragging = true;
       sync();
     });
-    card.addEventListener("mouseenter", event => {
+    card.addEventListener("pointerenter", event => {
       if (!dragging || event.buttons !== 1) return;
       card.querySelector(inputSelector).checked = true;
       sync();
     });
   });
-  document.addEventListener("mouseup", () => { dragging = false; });
+  document.addEventListener("pointerup", () => { dragging = false; });
   sync();
 }
 
