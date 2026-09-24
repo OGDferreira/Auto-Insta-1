@@ -2021,58 +2021,6 @@ async def delete_feed_items(
     return {"deleted": deleted, "errors": errors, "throttled_seconds": 2}
 
 
-@router.post("/api/feed/thumbnail")
-async def update_feed_thumbnail(
-    request: Request,
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    payload = await request.json()
-    thumbnail_url = str(payload.get("thumbnail_url") or "").strip()
-    if not thumbnail_url:
-        raise HTTPException(status_code=400, detail="A thumbnail é obrigatória")
-    if not thumbnail_url.startswith(("http://", "https://")):
-        raise HTTPException(status_code=400, detail="A thumbnail precisa ser uma URL pública")
-    raw_media = payload.get("media")
-    if isinstance(raw_media, list):
-        targets = [
-            (int(item.get("account_id") or 0), str(item.get("media_id") or "").strip())
-            for item in raw_media if isinstance(item, dict)
-        ]
-    else:
-        targets = [(int(payload.get("account_id") or 0), str(payload.get("media_id") or "").strip())]
-    targets = list(dict.fromkeys((account_id, media_id) for account_id, media_id in targets if account_id and media_id))
-    if not targets:
-        raise HTTPException(status_code=400, detail="Selecione ao menos um vídeo")
-    accounts = (await db.scalars(select(InstagramAccount).where(
-        InstagramAccount.owner_id == workspace_owner_id(user),
-        InstagramAccount.id.in_({account_id for account_id, _ in targets}),
-        InstagramAccount.access_token_encrypted != "",
-    ))).all()
-    accounts_by_id = {account.id: account for account in accounts}
-    if len(accounts_by_id) != len({account_id for account_id, _ in targets}):
-        raise HTTPException(status_code=404, detail="Uma ou mais contas não foram encontradas")
-    settings = get_settings()
-    updated = []
-    errors = []
-    async with httpx.AsyncClient(timeout=30) as client:
-        for account_id, media_id in targets:
-            account = accounts_by_id[account_id]
-            response = await client.post(
-                f"https://graph.instagram.com/{settings.graph_api_version}/{media_id}",
-                data={
-                    "cover_url": thumbnail_url,
-                    "comment_enabled": "true",
-                    "access_token": decrypt_token(account.access_token_encrypted),
-                },
-            )
-            if response.is_error:
-                errors.append({"account": account.username, "media_id": media_id, "error": _meta_api_error(response)})
-            else:
-                updated.append({"account_id": account_id, "media_id": media_id})
-    return {"thumbnail_url": thumbnail_url, "updated": updated, "errors": errors}
-
-
 @router.get("/auth/instagram/start")
 async def instagram_start(
     request: Request,
