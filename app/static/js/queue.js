@@ -114,10 +114,55 @@ export function initQueueModule() {
     button.type = "button";
     button.className = "secondary batch-icon-action";
     button.dataset.removeBatchThumbnail = batch.dataset.batchId;
-    button.title = "Remover thumbnail das publicações";
+    button.title = "Remover thumbnail das próximas publicações";
     button.setAttribute("aria-label", button.title);
     button.innerHTML = '<i data-lucide="image-minus"></i>';
     actions.insertBefore(button, actions.firstElementChild);
+  });
+  const thumbnailPicker = document.createElement("input");
+  thumbnailPicker.type = "file";
+  thumbnailPicker.accept = "image/jpeg,image/png,image/webp";
+  thumbnailPicker.hidden = true;
+  document.body.appendChild(thumbnailPicker);
+  let thumbnailBatchId = null;
+  document.querySelectorAll("[data-set-batch-thumbnail]").forEach(button => {
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      thumbnailBatchId = button.dataset.setBatchThumbnail;
+      thumbnailPicker.value = "";
+      thumbnailPicker.click();
+    });
+  });
+  thumbnailPicker.addEventListener("change", async () => {
+    const file = thumbnailPicker.files?.[0];
+    if (!file || !thumbnailBatchId) return;
+    try {
+      const upload = new FormData();
+      upload.append("media", file, file.name);
+      const uploadResponse = await fetch("/media/upload", { method: "POST", body: upload });
+      const uploadPayload = await uploadResponse.json();
+      if (!uploadResponse.ok) throw new Error(uploadPayload.detail || "Falha ao enviar a thumbnail.");
+      if (uploadPayload.media_type !== "IMAGE") throw new Error("A thumbnail precisa ser uma imagem.");
+      const response = await fetch(`/api/queue/batches/${thumbnailBatchId}/thumbnail`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set",
+          thumbnail_url: uploadPayload.thumbnail_url,
+          thumbnail_storage_path: uploadPayload.thumbnail_storage_path,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Falha ao alterar as thumbnails.");
+      window.showToast?.(`${payload.updated} próxima(s) publicação(ões) atualizada(s).`, "success");
+      window.location.reload();
+    } catch (error) {
+      window.showToast?.(error.message, "error");
+    } finally {
+      thumbnailPicker.value = "";
+      thumbnailBatchId = null;
+    }
   });
   if (window.lucide) window.lucide.createIcons();
   document.querySelectorAll("[data-batch-actions] form, [data-batch-actions] button").forEach(action => {
@@ -128,7 +173,7 @@ export function initQueueModule() {
     button.addEventListener("click", async event => {
       event.preventDefault();
       event.stopPropagation();
-      if (!window.confirm("Remover a thumbnail de todas as publicações deste lote?")) return;
+      if (!window.confirm("Remover a thumbnail das próximas publicações deste lote?")) return;
       button.disabled = true;
       try {
         const response = await fetch(`/api/queue/batches/${button.dataset.removeBatchThumbnail}/thumbnail`, {

@@ -2741,6 +2741,7 @@ async def update_batch_thumbnail(
     posts = (await db.scalars(select(ScheduledPost).where(
         ScheduledPost.owner_id == owner_id,
         ScheduledPost.batch_id == batch_id,
+        ScheduledPost.status.in_(PENDING_STATUSES),
     ))).all()
     for post in posts:
         if action == "remove":
