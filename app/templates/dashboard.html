@@ -5,12 +5,13 @@
 <link rel="stylesheet" href="/static/css/feed.css">
 <link rel="stylesheet" href="/static/css/calendar.css">
 <link rel="stylesheet" href="/static/css/analytics.css">
+<link rel="stylesheet" href="/static/css/profile-metrics.css">
 <style>
   body > nav { padding:.4rem 0 .5rem; margin-bottom:.75rem; }
   .queue-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:.75rem; }
-  .queue-card { position:relative; overflow:hidden; padding:0; background:rgba(18,13,31,.68); border:1px solid rgba(139,92,246,.2); border-radius:14px; }
+  .queue-card { position:relative; overflow:hidden; padding:0; background:rgba(20,10,12,.76); border:1px solid rgba(133,10,24,.35); border-radius:14px; }
   .selectable-card { touch-action:none; }
-  .queue-card.selected { border-color:var(--cyan); box-shadow:0 0 0 2px rgba(56,189,248,.28),0 18px 50px rgba(37,99,235,.2); }
+  .queue-card.selected { border-color:var(--cyan); box-shadow:0 0 0 2px rgba(213,43,65,.28),0 18px 50px rgba(133,10,24,.2); }
   .queue-media { aspect-ratio:1 / 1; background:#080b14; overflow:hidden; }
   .queue-media-content,.queue-media-content img,.queue-media-content video { width:100%; height:100%; display:block; object-fit:cover; }
   .queue-card-body { padding:.85rem; }
@@ -41,7 +42,7 @@
   .privacy-blur { filter:blur(10px); transition:filter .2s ease; }
   .account-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:.75rem; }
   .account-list .account-row { display:flex; min-width:0; align-items:center; gap:.6rem; padding:.8rem; border:1px solid var(--line); border-radius:14px; background:linear-gradient(145deg,rgba(17,24,39,.96),rgba(7,11,24,.96)); }
-  .account-list .account-row.status-connected { border-color:#3b82f6; box-shadow:0 0 18px rgba(59,130,246,.26); }
+  .account-list .account-row.status-connected { border-color:#4fc47a; box-shadow:0 0 18px rgba(79,196,122,.16); }
   .account-list .account-row.status-disconnected,.account-list .account-row.status-suspended { border-color:#f43f5e; box-shadow:0 0 20px rgba(244,63,94,.3); }
   .account-list .account-row.status-error { border-color:#ef4444; box-shadow:0 0 20px rgba(239,68,68,.28); }
   .account-list .account-row.status-pending { border-color:#facc15; box-shadow:0 0 20px rgba(250,204,21,.2); }
@@ -71,7 +72,7 @@
   .drive-selection-actions button { width:auto; padding:.45rem .65rem; font-size:.78rem; }
   .drive-picker { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:.65rem; overflow:auto; padding:.9rem 0; }
   .drive-file { position:relative; min-height:78px; display:flex; flex-direction:column; align-items:flex-start; gap:.35rem; padding:.75rem; text-align:left; background:#0c111e; border:1px solid var(--line); border-radius:12px; user-select:none; touch-action:none; }
-  .drive-file:hover,.drive-file.selected { border-color:var(--cyan); background:rgba(124,58,237,.16); transform:translateY(-2px); box-shadow:0 10px 28px rgba(124,58,237,.18); }
+  .drive-file:hover,.drive-file.selected { border-color:var(--cyan); background:rgba(133,10,24,.16); transform:translateY(-2px); box-shadow:0 10px 28px rgba(133,10,24,.18); }
   .drive-file-check { position:absolute; top:.55rem; right:.55rem; display:grid; place-items:center; width:22px; height:22px; border:1px solid var(--line); border-radius:6px; color:transparent; }
   .drive-file.selected .drive-file-check { color:#160b24; background:var(--cyan); border-color:var(--cyan); }
   .drive-file-name { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); font-weight:700; }
@@ -85,7 +86,7 @@
   .queue-card-body { position:relative; }
   .batch-list { display:grid; gap:.65rem; margin-bottom:1rem; }
   .batch-accordion { border:1px solid var(--line); border-radius:12px; background:rgba(17,24,39,.7); overflow:hidden; }
-  .batch-accordion[open] { border-color:rgba(56,189,248,.45); }
+  .batch-accordion[open] { border-color:rgba(213,43,65,.45); }
   .batch-accordion.paused { border-color:#facc15; }
   .batch-summary { display:flex; align-items:center; justify-content:space-between; gap:.8rem; padding:.85rem .9rem; cursor:pointer; list-style:none; }
   .batch-summary::-webkit-details-marker { display:none; }
@@ -102,11 +103,11 @@
   .batch-status-count.awaiting { color:#facc15; border-color:rgba(250,204,21,.35); }
   .batch-status-count.failed { color:var(--danger); border-color:rgba(244,63,94,.35); }
   .batch-status-count.completed { color:#4ade80; border-color:rgba(74,222,128,.35); }
-  .batch-status-count.processing { color:var(--cyan); border-color:rgba(56,189,248,.35); }
+  .batch-status-count.processing { color:var(--cyan); border-color:rgba(213,43,65,.35); }
   .batch-content { padding:0 .9rem .9rem; }
   .batch-accounts-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:.55rem; margin:.2rem 0 .8rem; }
   .batch-account-summary { display:flex; flex-direction:column; align-items:flex-start; gap:.3rem; width:100%; padding:.65rem .7rem; text-align:left; background:rgba(8,11,20,.45); border:1px solid var(--line); border-radius:10px; }
-  .batch-account-summary:hover,.batch-account-summary.active { border-color:var(--cyan); background:rgba(56,189,248,.08); transform:none; box-shadow:none; }
+  .batch-account-summary:hover,.batch-account-summary.active { border-color:var(--cyan); background:rgba(213,43,65,.08); transform:none; box-shadow:none; }
   .batch-account-summary strong { overflow:hidden; text-overflow:ellipsis; max-width:100%; }
   .batch-account-statuses { display:flex; flex-wrap:wrap; gap:.25rem; }
   .batch-account-status { color:var(--muted); font-size:.65rem; }
@@ -241,16 +242,16 @@
       position:fixed; z-index:20; left:0; right:0; bottom:0;
       display:flex; justify-content:space-around; gap:0; margin:0;
       padding:.45rem .35rem calc(.45rem + env(safe-area-inset-bottom));
-      border:1px solid rgba(37,99,235,.28); border-radius:16px 16px 0 0;
-      background:rgba(8,15,23,.88); backdrop-filter:blur(24px);
+      border:1px solid rgba(133,10,24,.38); border-radius:16px 16px 0 0;
+      background:rgba(12,8,9,.94); backdrop-filter:blur(24px);
       box-shadow:0 -12px 35px rgba(0,0,0,.3);
     }
     .workspace-tab { flex:1; justify-content:center; min-height:2.9rem; padding:.45rem .2rem; border:0; border-radius:10px; }
     .workspace-tab span { display:none; }
     .workspace-tab i { width:20px; height:20px; margin:0; }
     .workspace-tab { font-size:0; }
-    .workspace-tab.active { color:var(--cyan); background:rgba(116,224,219,.1); }
-    .global-search{display:flex;align-items:center;gap:.55rem;max-width:680px;margin:0 auto 1.1rem;padding:.55rem .75rem;border:1px solid var(--line);border-radius:12px;background:rgba(11,18,32,.72);color:var(--muted)}
+    .workspace-tab.active { color:var(--cyan); background:rgba(213,43,65,.16); }
+    .global-search{display:flex;align-items:center;gap:.55rem;max-width:680px;margin:0 auto 1.1rem;padding:.55rem .75rem;border:1px solid var(--line);border-radius:12px;background:rgba(19,13,15,.85);color:var(--muted)}
     .global-search input{min-width:0;margin:0;padding:.35rem;background:transparent;border:0;box-shadow:none}
     .global-search input:focus{box-shadow:none}
     .global-search kbd{padding:.15rem .35rem;border:1px solid var(--line);border-radius:5px;font-size:.7rem;white-space:nowrap}
@@ -485,11 +486,20 @@
   </section>
 
   <section id="analytics" class="workspace-view" data-panel="analytics">
-    <div class="analytics-toolbar"><div><div class="eyebrow">Performance</div><h2>Analytics do Instagram</h2><p class="section-note">Dados consultados diretamente na Graph API; métricas indisponíveis são sinalizadas.</p></div><div class="calendar-controls"><label>Conta<select id="analytics-account-filter"><option value="">Todas as contas</option>{% for account in accounts %}<option value="{{ account.id }}">@{{ account.username }}</option>{% endfor %}</select></label><label>Período<select id="analytics-period"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="90">90 dias</option></select></label><button type="button" class="secondary" id="analytics-refresh">Atualizar</button><a class="button secondary" href="/metrics"><i data-lucide="users-round"></i> Perfis & Métricas</a></div></div>
-    <div class="analytics-cards"><div class="analytics-card"><small>Seguidores</small><strong data-analytics-metric="followers">—</strong></div><div class="analytics-card"><small>Alcance</small><strong data-analytics-metric="reach">—</strong></div><div class="analytics-card"><small>Impressões</small><strong data-analytics-metric="impressions">—</strong></div><div class="analytics-card"><small>Visitas ao perfil</small><strong data-analytics-metric="profile_views">—</strong></div></div>
-    <div id="analytics-account-metrics" class="analytics-account-metrics" aria-live="polite"></div>
-    <div class="panel analytics-panel"><h3>Resumo por conta</h3><div class="table-wrap"><table class="analytics-table"><thead><tr><th>Conta</th><th>Seguidores</th><th>Alcance</th><th>Impressões</th><th>Visitas</th><th>Cliques</th></tr></thead><tbody id="analytics-account-table"><tr><td colspan="6">Carregando...</td></tr></tbody></table></div></div>
-    <div class="panel analytics-panel"><h3>Publicações recentes</h3><div class="table-wrap"><table class="analytics-table"><thead><tr><th>Conta</th><th>Tipo</th><th>Curtidas</th><th>Comentários</th><th>Compart.</th><th>Salvos</th><th>Visualizações</th><th>Legenda</th></tr></thead><tbody id="analytics-media-table"><tr><td colspan="8">Carregando...</td></tr></tbody></table></div></div>
+    <main class="profile-metrics">
+      <header class="metrics-header"><div><h1>Perfis &amp; Métricas</h1><p>Veja seguidores, publicações e visualizações dos perfis conectados.</p></div><div class="metrics-header-actions"><button type="button" id="profile-metrics-refresh"><i data-lucide="refresh-cw"></i> Atualizar</button></div></header>
+      <div class="profile-metrics-layout">
+        <aside class="profile-list" id="metrics-profile-list" aria-label="Perfis Instagram">
+          {% for account in accounts if account.access_token_encrypted %}<button type="button" class="profile-option" data-metrics-account="{{ account.id }}" data-username="{{ account.username }}" aria-pressed="false">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}<span class="profile-option-initial">{{ account.username[:1]|upper }}</span>{% endif %}<span class="profile-option-copy"><span class="profile-option-name">@{{ account.username }}</span><span class="profile-option-followers" data-account-followers>— seguidores</span></span></button>{% else %}<div class="profile-list-empty">Nenhum perfil autorizado.</div>{% endfor %}
+        </aside>
+        <section class="profile-metrics-content" aria-label="Feed e métricas do perfil selecionado">
+          <div class="selected-profile-bar"><div class="selected-profile-title"><i data-lucide="sparkles"></i><span id="selected-profile-name">Selecione um perfil</span></div><p class="metrics-status" id="profile-metrics-status" aria-live="polite"></p></div>
+          <div class="profile-stat-grid" aria-live="polite"><article class="profile-stat"><span class="profile-stat-label"><i data-lucide="users-round"></i> Seguidores</span><strong data-profile-stat="followers">—</strong></article><article class="profile-stat"><span class="profile-stat-label"><i data-lucide="images"></i> Posts</span><strong data-profile-stat="media_count">—</strong></article><article class="profile-stat"><span class="profile-stat-label"><i data-lucide="user-round-plus"></i> Seguindo</span><strong data-profile-stat="following">—</strong></article></div>
+          <div class="profile-feed-heading"><h2>Mídias recentes</h2><span class="section-note" id="profile-feed-count"></span></div>
+          <div class="profile-feed" id="profile-feed" aria-live="polite"><div class="profile-feed-message">Selecione um perfil para carregar as métricas.</div></div>
+        </section>
+      </div>
+    </main>
   </section>
 
   <section id="automations" class="workspace-view" data-panel="automations">
@@ -563,7 +573,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 const chartStatus={{ chart_status|tojson }},volumeDays={{ volume_days|tojson }},funnelMetrics={{ metrics.funnel|tojson }},pixStatus={{ metrics.pix_status|tojson }};
-if(window.Chart){new Chart(document.getElementById("status-chart"),{type:"doughnut",data:{labels:["Publicadas","Agendadas","Falhas"],datasets:[{data:[chartStatus.published,chartStatus.scheduled,chartStatus.failed],backgroundColor:["#22c55e","#2563eb","#f43f5e"],borderWidth:0}]},options:{maintainAspectRatio:false,cutout:"72%",plugins:{legend:{labels:{color:"#f8fafc",boxWidth:10}}}}});new Chart(document.getElementById("volume-chart"),{type:"line",data:{labels:volumeDays.map(item=>item.label),datasets:[{label:"Publicações",data:volumeDays.map(item=>item.published),borderColor:"#38bdf8",backgroundColor:"rgba(56,189,248,.15)",fill:true,tension:.35},{label:"Interações",data:volumeDays.map(item=>item.interactions),borderColor:"#2563eb",tension:.35}]},options:{scales:{x:{ticks:{color:"#94a3b8"}},y:{beginAtZero:true,ticks:{color:"#94a3b8"}}},plugins:{legend:{labels:{color:"#f8fafc"}}}}})}
+if(window.Chart){new Chart(document.getElementById("status-chart"),{type:"doughnut",data:{labels:["Publicadas","Agendadas","Falhas"],datasets:[{data:[chartStatus.published,chartStatus.scheduled,chartStatus.failed],backgroundColor:["#4fc47a","#d52b41","#fb5269"],borderWidth:0}]},options:{maintainAspectRatio:false,cutout:"72%",plugins:{legend:{labels:{color:"#f8f1f2",boxWidth:10}}}}});new Chart(document.getElementById("volume-chart"),{type:"line",data:{labels:volumeDays.map(item=>item.label),datasets:[{label:"Publicações",data:volumeDays.map(item=>item.published),borderColor:"#d52b41",backgroundColor:"rgba(213,43,65,.15)",fill:true,tension:.35},{label:"Interações",data:volumeDays.map(item=>item.interactions),borderColor:"#81202d",tension:.35}]},options:{scales:{x:{ticks:{color:"#ad9da1"}},y:{beginAtZero:true,ticks:{color:"#ad9da1"}}},plugins:{legend:{labels:{color:"#f8f1f2"}}}}})}
 const files=document.getElementById("bulk-files"),list=document.getElementById("media-items"),time=document.getElementById("bulk-time"),form=document.getElementById("bulk-form"),captionFields=document.getElementById("caption-fields"),globalCaption=document.getElementById("global-caption-field"),driveButton=document.getElementById("drive-import"),loopEnabled=document.getElementById("loop-enabled"),scheduleField=document.getElementById("schedule-field"),scheduleNote=document.getElementById("schedule-note");
 const pad=value=>String(value).padStart(2,"0");
 const escapeHtml=value=>String(value).replace(/[&<>\"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[char]));
@@ -712,7 +722,7 @@ if(form){form.addEventListener("submit",event=>{const looping=Boolean(loopEnable
   import "/static/js/feed.js";
   import "/static/js/automations.js";
   import "/static/js/calendar.js";
-  import "/static/js/analytics.js";
+  import "/static/js/profile-metrics.js";
   import "/static/js/ux.js";
   import "/static/js/direct-campaign.js";
 </script>

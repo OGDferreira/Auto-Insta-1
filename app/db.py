@@ -90,6 +90,7 @@ async def init_db() -> None:
                 "connection_status": "TEXT NOT NULL DEFAULT 'connected'",
                 "status_reason": "TEXT",
                 "status_checked_at": "DATETIME",
+                "token_expires_at": "DATETIME",
                 "ice_breakers": "TEXT NOT NULL DEFAULT '[]'",
             }
             columns = await connection.exec_driver_sql("PRAGMA table_info(automation_rules)")
@@ -165,6 +166,7 @@ async def init_db() -> None:
                     "facebook_page_id": "VARCHAR(120)",
                     "status_reason": "TEXT",
                     "status_checked_at": "TIMESTAMP WITH TIME ZONE",
+                    "token_expires_at": "TIMESTAMP WITH TIME ZONE",
                     "ice_breakers": "TEXT NOT NULL DEFAULT '[]'",
                 },
                 "bot_events": {

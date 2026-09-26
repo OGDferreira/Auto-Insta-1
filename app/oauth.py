@@ -1,4 +1,5 @@
 import secrets
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httpx
@@ -12,6 +13,18 @@ OAUTH_SCOPES = (
     "instagram_business_manage_comments",
     "instagram_business_manage_insights",
 )
+
+
+def token_expiration_from_data(token_data: dict) -> datetime | None:
+    try:
+        lifetime_seconds = int(token_data.get("expires_in", 0))
+    except (TypeError, ValueError):
+        return None
+    return (
+        datetime.now(timezone.utc) + timedelta(seconds=lifetime_seconds)
+        if lifetime_seconds > 0
+        else None
+    )
 
 
 def authorization_url(state: str) -> str:
@@ -54,7 +67,7 @@ async def exchange_code(code: str) -> dict:
         return response.json()
 
 
-async def exchange_long_lived_token(short_token: str) -> str:
+async def exchange_long_lived_token_data(short_token: str) -> dict:
     settings = get_settings()
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.get(
@@ -66,7 +79,12 @@ async def exchange_long_lived_token(short_token: str) -> str:
             },
         )
         response.raise_for_status()
-        return response.json()["access_token"]
+        return response.json()
+
+
+async def exchange_long_lived_token(short_token: str) -> str:
+    token_data = await exchange_long_lived_token_data(short_token)
+    return token_data["access_token"]
 
 
 async def fetch_profile(access_token: str) -> dict:

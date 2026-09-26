@@ -1,9 +1,21 @@
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
 
-from app.oauth import OAUTH_SCOPES, authorization_url, new_state
+from app.oauth import OAUTH_SCOPES, authorization_url, new_state, token_expiration_from_data
+
+
+def test_token_expiration_uses_oauth_lifetime_and_leaves_unknown_values_empty():
+    before = datetime.now(timezone.utc)
+
+    expiry = token_expiration_from_data({"expires_in": 60 * 60 * 24 * 60})
+
+    assert expiry is not None
+    assert before + timedelta(days=59) < expiry <= before + timedelta(days=60, seconds=1)
+    assert token_expiration_from_data({}) is None
+    assert token_expiration_from_data({"expires_in": "invalid"}) is None
 
 
 def test_authorization_url_has_required_scopes(monkeypatch):

@@ -47,10 +47,11 @@ from .models import NotificationSubscription
 from .oauth import (
     authorization_url,
     exchange_code,
-    exchange_long_lived_token,
+    exchange_long_lived_token_data,
     fetch_instagram_business_account,
     fetch_profile,
     new_state,
+    token_expiration_from_data,
 )
 from .observability import get_recent_logs
 from .security import decrypt_token, encrypt_token, hash_password, verify_password
@@ -1056,12 +1057,38 @@ async def hub(request: Request, user: User = Depends(current_user), db: AsyncSes
     query = select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
     accounts = (await db.scalars(query)).all()
     account_views = {}
+    token_expiry_details = {}
+    now = datetime.now(timezone.utc)
     for account in accounts:
         rows = (await db.scalars(select(InstagramMetric).where(
             InstagramMetric.account_id == account.id
         ).order_by(InstagramMetric.metric_date.desc()).limit(10))).all()
         account_views[account.id] = _metric_views_by_account(rows, [account.id])[account.id]
-    response = templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_status_classes": account_status_classes(accounts), "account_views": account_views, "notice": request.session.pop("access_notice", None)})
+        expires_at = account.token_expires_at
+        if not account.access_token_encrypted:
+            token_expiry_details[account.id] = {"label": "Sem token autorizado", "expired": True}
+        elif expires_at is None:
+            token_expiry_details[account.id] = {
+                "label": "Prazo não informado · reconecte para sincronizar",
+                "expired": False,
+            }
+        else:
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            remaining_seconds = (expires_at - now).total_seconds()
+            expiry_date = local_scheduled_datetime(expires_at)
+            if remaining_seconds <= 0:
+                label = f"Token expirado · {expiry_date}"
+            else:
+                remaining_days = int((remaining_seconds + 86399) // 86400)
+                duration = f"{remaining_days} dia(s)" if remaining_days else "menos de 1 dia"
+                label = f"Expira em {duration} · {expiry_date}"
+            token_expiry_details[account.id] = {
+                "label": label,
+                "expired": remaining_seconds <= 0,
+                "warning": remaining_seconds <= 7 * 86400,
+            }
+    response = templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_status_classes": account_status_classes(accounts), "account_views": account_views, "token_expiry_details": token_expiry_details, "notice": request.session.pop("access_notice", None)})
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -2083,8 +2110,11 @@ async def instagram_callback(
     try:
         token_data = await exchange_code(code)
         short_token = token_data["access_token"]
+        token_expires_at = token_expiration_from_data(token_data)
         try:
-            access_token = await exchange_long_lived_token(short_token)
+            long_token_data = await exchange_long_lived_token_data(short_token)
+            access_token = long_token_data["access_token"]
+            token_expires_at = token_expiration_from_data(long_token_data)
         except httpx.HTTPStatusError as exc:
             access_token = short_token
             logger.warning(
@@ -2142,6 +2172,7 @@ async def instagram_callback(
         account.username = profile.get("username", account.username)
         account.profile_picture_url = profile.get("profile_picture_url", account.profile_picture_url)
         account.access_token_encrypted = encrypt_token(access_token)
+        account.token_expires_at = token_expires_at
     else:
         account = InstagramAccount(
             owner_id=owner_id,
@@ -2154,6 +2185,7 @@ async def instagram_callback(
             username=profile.get("username", ""),
             profile_picture_url=profile.get("profile_picture_url"),
             access_token_encrypted=encrypt_token(access_token),
+            token_expires_at=token_expires_at,
         )
         db.add(account)
     await db.flush()
