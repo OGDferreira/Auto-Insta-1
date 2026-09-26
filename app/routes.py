@@ -18,7 +18,6 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from supabase import create_client
-from PIL import Image, ImageDraw
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -29,6 +28,7 @@ from .db import get_db
 from .jobs import (
     PENDING_STATUSES,
     _refresh_account_status,
+    _advance_loop_after_post,
     collect_instagram_insights,
     schedule_post,
     unschedule_post,
@@ -327,19 +327,6 @@ def _list_drive_children(service, folder_id: str) -> list[dict]:
             return entries
 
 
-def _thumbnail_bytes(content: bytes, media_type: str) -> bytes:
-    if media_type.startswith("image/"):
-        image = Image.open(io.BytesIO(content)).convert("RGB")
-        image.thumbnail((640, 640))
-    else:
-        image = Image.new("RGB", (640, 360), "#111827")
-        draw = ImageDraw.Draw(image)
-        draw.text((24, 160), "Pré-visualização do vídeo", fill="#38bdf8")
-    output = io.BytesIO()
-    image.save(output, format="JPEG", quality=72, optimize=True)
-    return output.getvalue()
-
-
 @router.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
@@ -373,12 +360,10 @@ async def upload_media(
     if not settings.supabase_url or not storage_key:
         raise HTTPException(status_code=503, detail="Supabase Storage não configurado")
 
-    thumbnail_content = _thumbnail_bytes(content, upload_content_type)
     def upload_to_storage() -> dict[str, str]:
         client = create_client(settings.supabase_url, storage_key)
         folder = uuid4().hex
         path = f"{folder}/{filename}"
-        thumbnail_path = f"{folder}/thumbnail.jpg"
         client.storage.from_(settings.supabase_storage_bucket).upload(
             path,
             content,
@@ -387,16 +372,10 @@ async def upload_media(
                 "upsert": False,
             },
         )
-        client.storage.from_(settings.supabase_storage_bucket).upload(
-            thumbnail_path, thumbnail_content,
-            file_options={"content-type": "image/jpeg", "upsert": False},
-        )
         bucket = client.storage.from_(settings.supabase_storage_bucket)
         return {
             "url": bucket.get_public_url(path),
-            "thumbnail_url": bucket.get_public_url(thumbnail_path),
             "storage_path": path,
-            "thumbnail_storage_path": thumbnail_path,
         }
 
     try:
@@ -494,14 +473,11 @@ async def drive_import(
         media_type = metadata["mimeType"]
         filename = f"{uuid4().hex}{Path(metadata['name']).suffix.lower()}"
         folder = uuid4().hex
-        path, thumb_path = f"{folder}/{filename}", f"{folder}/thumbnail.jpg"
+        path = f"{folder}/{filename}"
         client = create_client(settings.supabase_url, storage_key)
         bucket = client.storage.from_(settings.supabase_storage_bucket)
         bucket.upload(path, content, file_options={"content-type": media_type, "upsert": False})
-        bucket.upload(thumb_path, _thumbnail_bytes(content, media_type),
-                      file_options={"content-type": "image/jpeg", "upsert": False})
-        return {"url": bucket.get_public_url(path), "thumbnail_url": bucket.get_public_url(thumb_path),
-                "storage_path": path, "thumbnail_storage_path": thumb_path,
+        return {"url": bucket.get_public_url(path), "storage_path": path,
                 "media_type": "VIDEO" if media_type.startswith("video/") else "IMAGE"}
     try:
         if bool(file_id) == bool(folder_id):
@@ -1102,7 +1078,7 @@ async def refresh_metrics(user: User = Depends(current_user)):
     return response
 
 
-@router.get("/metrics", response_class=HTMLResponse)
+@router.get("/metrics/sharkbot", response_class=HTMLResponse)
 async def metrics_page(request: Request, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     owner_id = workspace_owner_id(user)
     accounts = (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == owner_id))).all()
@@ -1142,6 +1118,28 @@ async def metrics_page(request: Request, user: User = Depends(current_user), db:
             "generated": counts["pix_generated"],
         },
         "events": events,
+    })
+
+
+@router.get("/metrics", response_class=HTMLResponse)
+async def instagram_metrics_page(
+    request: Request,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    accounts = (await db.scalars(
+        select(InstagramAccount)
+        .where(
+            InstagramAccount.owner_id == owner_id,
+            InstagramAccount.access_token_encrypted != "",
+        )
+        .order_by(InstagramAccount.username)
+    )).all()
+    return templates.TemplateResponse("instagram_metrics.html", {
+        "request": request,
+        "user": user,
+        "accounts": accounts,
     })
 
 
@@ -1671,7 +1669,7 @@ async def calendar_posts(
                 "account": post.account.username,
                 "batch_id": post.batch_id,
                 "batch": post.batch.name if post.batch else None,
-                "media_url": post.thumbnail_url or post.media_url,
+                "media_url": post.media_url,
                 "media_type": post.media_type,
                 "caption": post.caption,
                 "scheduled_for": post.scheduled_for.isoformat(),
@@ -1877,6 +1875,7 @@ async def reschedule_calendar_post(
 async def analytics(
     account_ids: list[int] = Query(default=[]),
     period_days: int = 30,
+    include_media: bool = True,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1901,21 +1900,24 @@ async def analytics(
                 token = decrypt_token(account.access_token_encrypted)
                 profile = await client.get(
                     f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}",
-                    params={"fields": "id,username,followers_count,media_count", "access_token": token},
+                    params={"fields": "id,username,followers_count,follows_count,media_count", "access_token": token},
                 )
                 profile_data = profile.json() if not profile.is_error else {}
-                insights = await client.get(
-                    f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
-                    params={
-                        "metric": "reach,impressions,profile_views,website_clicks",
-                        "period": "day",
-                        "since": start_date.isoformat(),
-                        "until": datetime.now(timezone.utc).date().isoformat(),
-                        "access_token": token,
-                    },
-                )
                 insight_values = {}
-                if not insights.is_error:
+                if include_media:
+                    insights = await client.get(
+                        f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
+                        params={
+                            "metric": "reach,impressions,profile_views,website_clicks",
+                            "period": "day",
+                            "since": start_date.isoformat(),
+                            "until": datetime.now(timezone.utc).date().isoformat(),
+                            "access_token": token,
+                        },
+                    )
+                else:
+                    insights = None
+                if insights is not None and not insights.is_error:
                     for item in insights.json().get("data", []):
                         values = item.get("values", [])
                         insight_values[item.get("name")] = sum(int(value.get("value", 0) or 0) for value in values)
@@ -1923,6 +1925,7 @@ async def analytics(
                     "account_id": account.id,
                     "account": account.username,
                     "followers": profile_data.get("followers_count", 0),
+                    "following": profile_data.get("follows_count", 0),
                     "media_count": profile_data.get("media_count", 0),
                     "growth": 0,
                     "reach": insight_values.get("reach", 0),
@@ -1930,6 +1933,8 @@ async def analytics(
                     "profile_views": insight_values.get("profile_views", 0),
                     "link_clicks": insight_values.get("website_clicks", 0),
                 })
+                if not include_media:
+                    continue
                 media = await _feed_media_for_account(client, account, token, settings)
                 for item in media[:25]:
                     media_insights = {}
@@ -1952,13 +1957,16 @@ async def analytics(
                         "account": account.username,
                         "id": media_id,
                         "media_url": item.get("thumbnail_url") or item.get("media_url"),
+                        "thumbnail_url": item.get("thumbnail_url"),
+                        "timestamp": item.get("timestamp"),
+                        "permalink": item.get("permalink"),
                         "caption": item.get("caption", ""),
                         "media_type": item.get("media_type"),
-                        "likes": media_insights.get("likes"),
-                        "comments": media_insights.get("comments"),
+                        "likes": media_insights.get("likes") if media_insights.get("likes") is not None else item.get("like_count"),
+                        "comments": media_insights.get("comments") if media_insights.get("comments") is not None else item.get("comments_count"),
                         "shares": media_insights.get("shares"),
                         "saves": media_insights.get("saved"),
-                        "views": media_insights.get("views"),
+                        "views": media_insights.get("views") if media_insights.get("views") is not None else media_insights.get("impressions"),
                         "engagement": media_insights.get("total_interactions"),
                     })
             except Exception as exc:
@@ -2620,25 +2628,25 @@ async def create_bulk_posts(
     account_ids: list[int] = Form(...),
     media_urls: list[str] = Form(...),
     media_types: list[str] = Form(...),
-    thumbnail_urls: list[str] = Form(default=[]),
-    batch_thumbnail_url: str = Form(""),
     storage_paths: list[str] = Form(default=[]),
-    thumbnail_storage_paths: list[str] = Form(default=[]),
     drive_media_urls: list[str] = Form(default=[]),
     drive_account_emails: list[str] = Form(default=[]),
     drive_credentials_encrypted: list[str] = Form(default=[]),
     captions: list[str] = Form(default=[]),
     caption_mode: str = Form("global"),
     caption: str = Form(""),
-    scheduled_for: str = Form(...),
+    scheduled_for: str = Form(""),
     interval_minutes: int = Form(1),
     batch_name: str = Form(""),
+    is_loop: bool = Form(False),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
     owner_id = workspace_owner_id(user)
     if interval_minutes < 1:
         raise HTTPException(status_code=400, detail="O intervalo mínimo é de 1 minuto")
+    if is_loop and interval_minutes > 1440:
+        raise HTTPException(status_code=400, detail="O intervalo máximo do Loop é de 1440 minutos")
     if not media_urls or len(media_urls) != len(media_types):
         raise HTTPException(status_code=400, detail="Lista de mídias inválida")
     if len(media_urls) > MAX_BATCH_MEDIA:
@@ -2663,9 +2671,15 @@ async def create_bulk_posts(
         raise HTTPException(status_code=404, detail="Conta não encontrada")
     accounts_by_id = {account.id: account for account in accounts}
     ordered_accounts = [accounts_by_id[account_id] for account_id in dict.fromkeys(account_ids)]
-    first_time = parse_scheduled_datetime(scheduled_for)
-    if first_time <= datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="O horário do agendamento deve estar no futuro")
+    if is_loop:
+        first_time = datetime.now(timezone.utc) + timedelta(minutes=3)
+    else:
+        try:
+            first_time = parse_scheduled_datetime(scheduled_for)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="O horário do agendamento é inválido") from exc
+        if first_time <= datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail="O horário do agendamento deve estar no futuro")
 
     posts_to_schedule = []
     base_name = batch_name.strip()[:140] or f"Lote de {first_time.astimezone(LOCAL_TIMEZONE).strftime('%d/%m %H:%M')}"
@@ -2673,6 +2687,8 @@ async def create_bulk_posts(
         owner_id=owner_id,
         name=base_name,
         account_ids=json.dumps([account.id for account in ordered_accounts]),
+        is_loop=is_loop,
+        loop_interval_minutes=interval_minutes,
     )
     db.add(batch)
     await db.flush()
@@ -2695,17 +2711,10 @@ async def create_bulk_posts(
                     drive_credentials_encrypted[media_index]
                     if media_index < len(drive_credentials_encrypted) else None
                 ),
-                thumbnail_url=(
-                    batch_thumbnail_url.strip()
-                    if normalized_type == "REELS" and batch_thumbnail_url.strip()
-                    else thumbnail_urls[media_index]
-                    if media_index < len(thumbnail_urls) and thumbnail_urls[media_index]
-                    else None
-                ),
                 storage_path=storage_paths[media_index] if media_index < len(storage_paths) else None,
-                thumbnail_storage_path=thumbnail_storage_paths[media_index] if media_index < len(thumbnail_storage_paths) else None,
                 media_type=normalized_type,
                 caption=caption,
+                loop_index=media_index if is_loop else None,
                 scheduled_for=first_time + timedelta(minutes=media_index * interval_minutes),
             )
             db.add(post)
@@ -2715,43 +2724,6 @@ async def create_bulk_posts(
     for post in posts_to_schedule:
         schedule_post(post.id, post.scheduled_for)
     return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
-
-
-@router.patch("/api/queue/batches/{batch_id}/thumbnail")
-async def update_batch_thumbnail(
-    batch_id: int,
-    request: Request,
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    payload = await request.json()
-    action = str(payload.get("action") or "").strip().lower()
-    if action not in {"set", "remove"}:
-        raise HTTPException(status_code=400, detail="Ação de thumbnail inválida")
-    thumbnail_url = str(payload.get("thumbnail_url") or "").strip()
-    thumbnail_storage_path = str(payload.get("thumbnail_storage_path") or "").strip()
-    if action == "set" and not thumbnail_url:
-        raise HTTPException(status_code=400, detail="Selecione uma mídia para adicionar a thumbnail")
-    owner_id = workspace_owner_id(user)
-    batch = await db.scalar(select(PostingBatch).where(
-        PostingBatch.id == batch_id, PostingBatch.owner_id == owner_id
-    ))
-    if not batch:
-        raise HTTPException(status_code=404, detail="Lote não encontrado")
-    posts = (await db.scalars(select(ScheduledPost).where(
-        ScheduledPost.owner_id == owner_id,
-        ScheduledPost.batch_id == batch_id,
-        ScheduledPost.status.in_(PENDING_STATUSES),
-    ))).all()
-    for post in posts:
-        if action == "remove":
-            post.thumbnail_url = None
-            post.thumbnail_storage_path = None
-        else:
-            post.thumbnail_url = thumbnail_url
-            post.thumbnail_storage_path = thumbnail_storage_path or None
-    await db.commit()
-    return {"batch_id": batch_id, "updated": len(posts), "action": action}
 
 
 @router.post("/batches/{batch_id}/pause")
@@ -2797,6 +2769,20 @@ async def resume_batch(
     await db.commit()
     for post in posts:
         schedule_post(post.id, post.scheduled_for)
+    if batch.is_loop:
+        latest_by_account = {}
+        loop_posts = (await db.scalars(
+            select(ScheduledPost)
+            .where(
+                ScheduledPost.batch_id == batch.id,
+                ScheduledPost.loop_index.is_not(None),
+            )
+            .order_by(ScheduledPost.id.desc())
+        )).all()
+        for post in loop_posts:
+            latest_by_account.setdefault(post.account_id, post)
+        for post in latest_by_account.values():
+            await _advance_loop_after_post(post.id)
     return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -2827,6 +2813,8 @@ async def delete_batch(
 async def update_batch_accounts(
     batch_id: int,
     account_ids: list[int] = Form(default=[]),
+    batch_name: str = Form(""),
+    interval_minutes: int | None = Form(None),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -2836,6 +2824,13 @@ async def update_batch_accounts(
     ))
     if not batch:
         raise HTTPException(status_code=404, detail="Lote não encontrado")
+    previous_interval = batch.loop_interval_minutes
+    if interval_minutes is not None:
+        if not batch.is_loop or not 1 <= interval_minutes <= 1440:
+            raise HTTPException(status_code=400, detail="Intervalo do Loop deve estar entre 1 e 1440 minutos")
+        batch.loop_interval_minutes = interval_minutes
+    if batch_name.strip():
+        batch.name = batch_name.strip()[:160]
     selected_ids = list(dict.fromkeys(account_ids))
     if not selected_ids:
         raise HTTPException(status_code=400, detail="Selecione pelo menos uma conta")
@@ -2855,7 +2850,39 @@ async def update_batch_accounts(
         for post in pending_posts:
             if post.account_id in removed_ids:
                 await db.delete(post)
-    if added_ids and pending_posts:
+    if added_ids and batch.is_loop:
+        playlist_posts = (await db.scalars(
+            select(ScheduledPost)
+            .where(
+                ScheduledPost.batch_id == batch.id,
+                ScheduledPost.loop_index.is_not(None),
+            )
+            .order_by(ScheduledPost.loop_index, ScheduledPost.id)
+        )).all()
+        templates_by_index = {}
+        for post in playlist_posts:
+            templates_by_index.setdefault(post.loop_index, post)
+        first_time = datetime.now(timezone.utc) + timedelta(minutes=3)
+        for account_id in added_ids:
+            for media_index, template in templates_by_index.items():
+                db.add(ScheduledPost(
+                    owner_id=owner_id,
+                    account_id=account_id,
+                    batch_id=batch.id,
+                    media_url=template.media_url,
+                    original_media_url=template.original_media_url,
+                    drive_media_url=template.drive_media_url,
+                    drive_account_email=template.drive_account_email,
+                    drive_credentials_encrypted=template.drive_credentials_encrypted,
+                    storage_path=template.storage_path,
+                    media_type=template.media_type,
+                    caption=template.caption,
+                    loop_index=media_index,
+                    scheduled_for=first_time + timedelta(
+                        minutes=media_index * batch.loop_interval_minutes
+                    ),
+                ))
+    elif added_ids and pending_posts:
         templates_by_media = {}
         for post in pending_posts:
             templates_by_media.setdefault(
@@ -2870,15 +2897,30 @@ async def update_batch_accounts(
                     batch_id=batch.id,
                     media_url=template.media_url,
                     original_media_url=template.original_media_url,
-                    thumbnail_url=template.thumbnail_url,
                     storage_path=template.storage_path,
-                    thumbnail_storage_path=template.thumbnail_storage_path,
                     media_type=template.media_type,
                     caption=template.caption,
                     scheduled_for=template.scheduled_for,
                 ))
     batch.account_ids = json.dumps(selected_ids)
+    rescheduled_posts = []
+    if batch.is_loop and batch.loop_interval_minutes != previous_interval:
+        pending_by_account = {}
+        for post in pending_posts:
+            if post.account_id in selected_ids and post.loop_index is not None:
+                pending_by_account.setdefault(post.account_id, []).append(post)
+        for account_posts in pending_by_account.values():
+            first_time = min(post.scheduled_for for post in account_posts)
+            for post in sorted(account_posts, key=lambda item: item.loop_index):
+                post.scheduled_for = first_time + timedelta(
+                    minutes=post.loop_index * batch.loop_interval_minutes
+                )
+                rescheduled_posts.append(post)
     await db.commit()
+    for post in rescheduled_posts:
+        unschedule_post(post.id)
+        if batch.status == "active":
+            schedule_post(post.id, post.scheduled_for)
     new_posts = (await db.scalars(select(ScheduledPost).where(
         ScheduledPost.batch_id == batch.id,
         ScheduledPost.account_id.in_(added_ids),

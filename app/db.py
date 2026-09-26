@@ -115,15 +115,24 @@ async def init_db() -> None:
                 "drive_media_url": "TEXT",
                 "drive_account_email": "TEXT",
                 "drive_credentials_encrypted": "TEXT",
-                "thumbnail_url": "TEXT",
                 "storage_path": "TEXT",
-                "thumbnail_storage_path": "TEXT",
                 "batch_id": "INTEGER",
+                "loop_index": "INTEGER",
             }
             for name, definition in new_columns.items():
                 if name not in existing:
                     await connection.exec_driver_sql(
                         f"ALTER TABLE scheduled_posts ADD COLUMN {name} {definition}"
+                    )
+            columns = await connection.exec_driver_sql("PRAGMA table_info(posting_batches)")
+            existing = {row[1] for row in columns}
+            for name, definition in {
+                "is_loop": "BOOLEAN NOT NULL DEFAULT 0",
+                "loop_interval_minutes": "INTEGER NOT NULL DEFAULT 1",
+            }.items():
+                if name not in existing:
+                    await connection.exec_driver_sql(
+                        f"ALTER TABLE posting_batches ADD COLUMN {name} {definition}"
                     )
             columns = await connection.exec_driver_sql("PRAGMA table_info(bot_events)")
             existing = {row[1] for row in columns}
@@ -170,10 +179,13 @@ async def init_db() -> None:
                     "drive_media_url": "TEXT",
                     "drive_account_email": "VARCHAR(320)",
                     "drive_credentials_encrypted": "TEXT",
-                    "thumbnail_url": "TEXT",
                     "storage_path": "TEXT",
-                    "thumbnail_storage_path": "TEXT",
                     "batch_id": "INTEGER",
+                    "loop_index": "INTEGER",
+                },
+                "posting_batches": {
+                    "is_loop": "BOOLEAN NOT NULL DEFAULT FALSE",
+                    "loop_interval_minutes": "INTEGER NOT NULL DEFAULT 1",
                 },
                 "automation_rules": {
                     "owner_id": "INTEGER NOT NULL",

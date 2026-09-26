@@ -419,6 +419,83 @@ async def schedule_pending_posts() -> None:
         schedule_post(post.id, post.scheduled_for)
 
 
+async def _advance_loop_after_post(post_id: int) -> None:
+    """Queue the next playlist item after this account drains its current queue."""
+    async with SessionLocal() as db:
+        post = await db.get(ScheduledPost, post_id)
+        if post is None or post.batch_id is None or post.loop_index is None:
+            return
+        batch = await db.get(PostingBatch, post.batch_id)
+        if batch is None or not batch.is_loop or batch.status != "active":
+            return
+        if post.account_id not in set(json.loads(batch.account_ids or "[]")):
+            return
+        pending = await db.scalar(
+            select(ScheduledPost.id)
+            .where(
+                ScheduledPost.batch_id == batch.id,
+                ScheduledPost.account_id == post.account_id,
+                ScheduledPost.status.in_((*PENDING_STATUSES, "processing")),
+            )
+            .limit(1)
+        )
+        if pending is not None:
+            return
+        latest_post = await db.scalar(
+            select(ScheduledPost)
+            .where(
+                ScheduledPost.batch_id == batch.id,
+                ScheduledPost.account_id == post.account_id,
+                ScheduledPost.loop_index.is_not(None),
+            )
+            .order_by(ScheduledPost.id.desc())
+            .limit(1)
+        )
+        if latest_post is None or latest_post.status == "processing":
+            return
+        media_count = await db.scalar(
+            select(func.count(func.distinct(ScheduledPost.loop_index))).where(
+                ScheduledPost.batch_id == batch.id,
+                ScheduledPost.loop_index.is_not(None),
+            )
+        )
+        if not media_count:
+            return
+        next_index = (latest_post.loop_index + 1) % media_count
+        template = await db.scalar(
+            select(ScheduledPost)
+            .where(
+                ScheduledPost.batch_id == batch.id,
+                ScheduledPost.loop_index == next_index,
+            )
+            .order_by(ScheduledPost.id)
+            .limit(1)
+        )
+        account = await db.get(InstagramAccount, post.account_id)
+        if template is None or account is None:
+            return
+        next_post = ScheduledPost(
+            owner_id=batch.owner_id,
+            account_id=account.id,
+            batch_id=batch.id,
+            media_url=template.media_url,
+            original_media_url=template.original_media_url,
+            drive_media_url=template.drive_media_url,
+            drive_account_email=template.drive_account_email,
+            drive_credentials_encrypted=template.drive_credentials_encrypted,
+            storage_path=template.storage_path,
+            media_type=template.media_type,
+            caption=template.caption,
+            loop_index=next_index,
+            scheduled_for=datetime.now(timezone.utc)
+            + timedelta(minutes=batch.loop_interval_minutes),
+        )
+        db.add(next_post)
+        await db.flush()
+        await db.commit()
+        schedule_post(next_post.id, next_post.scheduled_for)
+
+
 def _drive_file_id(url: str | None) -> str | None:
     if not url:
         return None
@@ -538,6 +615,7 @@ async def _publish(post_id: int) -> None:
                     post.status = "blocked" if account.connection_status == "disconnected" else "failed"
                     post.error_message = account.status_reason or "A conta não está autorizada para publicar."
                     await db.commit()
+                    await _advance_loop_after_post(post_id)
                     return
             
             # Este projeto usa Instagram Login, cujo token é válido em graph.instagram.com.
@@ -567,8 +645,6 @@ async def _publish(post_id: int) -> None:
                 }
                 if media_type == "REELS":
                     params["media_type"] = media_type
-                    if post.thumbnail_url and post.thumbnail_url != post.media_url:
-                        params["cover_url"] = post.thumbnail_url
                 
                 # ETAPA A: Criar o Container de Mídia
                 container = await client.post(f"{base}/{account.instagram_user_id}/media", params=params)
@@ -595,20 +671,6 @@ async def _publish(post_id: int) -> None:
                     
             post.status = "published"
             post.error_message = None
-            if post.storage_path and post.thumbnail_storage_path and post.thumbnail_url:
-                try:
-                    storage_key = settings.supabase_service_role or settings.supabase_key
-                    if settings.supabase_url and storage_key:
-                        def remove_original() -> None:
-                            client = create_client(settings.supabase_url, storage_key)
-                            client.storage.from_(settings.supabase_storage_bucket).remove([post.storage_path])
-                        await asyncio.to_thread(remove_original)
-                        post.media_url = post.thumbnail_url
-                        post.original_media_url = None
-                        post.storage_path = None
-                except Exception:
-                    logger.exception("Falha ao remover mídia original do post %s", post_id)
-            
         except Exception as exc:
             error_message = str(exc)[:1000]
             if _is_authentication_error(error_message):
@@ -622,6 +684,7 @@ async def _publish(post_id: int) -> None:
             logger.exception("Falha ao publicar post %s: %s", post_id, exc)
             
         await db.commit()
+        await _advance_loop_after_post(post_id)
 
 
 async def process_due_posts() -> None:

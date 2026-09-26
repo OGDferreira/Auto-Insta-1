@@ -104,6 +104,8 @@ class PostingBatch(Base):
     name: Mapped[str] = mapped_column(String(160), default="Lote de publicações")
     status: Mapped[str] = mapped_column(String(20), default="active", index=True)
     account_ids: Mapped[str] = mapped_column(Text, default="[]")
+    is_loop: Mapped[bool] = mapped_column(Boolean, default=False)
+    loop_interval_minutes: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     owner: Mapped[User] = relationship(back_populates="posting_batches")
     scheduled_posts: Mapped[list["ScheduledPost"]] = relationship(
@@ -121,14 +123,13 @@ class ScheduledPost(Base):
     batch_id: Mapped[int | None] = mapped_column(
         ForeignKey("posting_batches.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    loop_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     media_url: Mapped[str] = mapped_column(Text)
     original_media_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     drive_media_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     drive_account_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     drive_credentials_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
-    thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     storage_path: Mapped[str | None] = mapped_column(Text, nullable=True)
-    thumbnail_storage_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     media_type: Mapped[str] = mapped_column(String(20), default="IMAGE")
     caption: Mapped[str] = mapped_column(Text, default="")
     scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
