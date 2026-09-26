@@ -131,6 +131,23 @@
   .loop-tabs { display:flex; gap:.5rem; margin:.35rem 0 .8rem; border-bottom:1px solid var(--line); }
   .loop-tab { width:auto; padding:.55rem .8rem; color:var(--muted); background:transparent; border-radius:0; box-shadow:none; border-bottom:2px solid transparent; }
   .loop-tab:hover,.loop-tab.active { color:var(--text); border-color:var(--cyan); background:transparent; box-shadow:none; transform:none; }
+  .loop-tab[aria-selected="true"] { color:var(--cyan); border-color:var(--cyan); }
+  .loop-view-panel[hidden],.loop-details[hidden],.loop-error-panel[hidden] { display:none!important; }
+  .loop-details { margin:.2rem .9rem .9rem; padding:.85rem; border-top:1px solid var(--line); background:rgba(8,11,20,.32); }
+  .loop-details-heading,.loop-schedule-row,.loop-error-heading { display:flex; align-items:center; justify-content:space-between; gap:.7rem; }
+  .loop-schedule-account { margin-top:.75rem; }
+  .loop-schedule-account h4,.loop-error-group h4 { margin:.2rem 0 .4rem; font-size:.78rem; }
+  .loop-schedule-list,.loop-error-list { display:grid; gap:.35rem; margin:0; padding:0; list-style:none; }
+  .loop-schedule-row,.loop-error-row { padding:.55rem .65rem; border:1px solid var(--line); border-radius:7px; background:rgba(17,24,39,.65); font-size:.74rem; }
+  .loop-schedule-row small,.loop-error-row small,.loop-error-row time { display:block; margin-top:.2rem; color:var(--muted); font-size:.68rem; }
+  .loop-schedule-state { color:var(--cyan); white-space:nowrap; }
+  .loop-error-panel { display:grid; gap:.75rem; }
+  .loop-error-group { padding:.8rem; border:1px solid rgba(244,63,94,.28); border-radius:8px; background:rgba(244,63,94,.035); }
+  .loop-error-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:.7rem; }
+  .loop-error-row form,.loop-details-heading button { width:auto; margin:0; }
+  .loop-error-row button,.loop-details-heading button { padding:.38rem .55rem; font-size:.7rem; }
+  .loop-details-toggle { width:auto; padding:.42rem .6rem; font-size:.7rem; }
+  .loop-empty { margin:.5rem 0; }
   .loop-card { margin:.75rem 0; border:1px solid var(--line); border-radius:9px; background:rgba(17,24,39,.7); }
   .loop-card-summary { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; padding:.9rem 1rem; }
   .loop-card-title { display:flex; align-items:center; gap:.55rem; min-width:0; font-weight:700; }
@@ -279,22 +296,30 @@
     <div class="section-heading"><div><div class="eyebrow">Publicações</div><h2>Fila de conteúdo</h2></div><span class="section-note">{{ posts|length }} itens</span></div>
     <section class="loop-board" aria-labelledby="loop-board-title">
       <div class="loop-board-header"><h3 class="loop-board-title" id="loop-board-title"><i data-lucide="infinity"></i> Loops</h3><button class="loop-new-button" type="button" data-loop-create><i data-lucide="plus"></i> Novo loop</button></div>
-      <div class="loop-tabs" role="tablist" aria-label="Tipo de Loop"><button class="loop-tab active" type="button" role="tab" aria-selected="true">Contínuos</button></div>
       {% set loop_groups = queue_groups|selectattr("batch.is_loop")|list %}
+      {% set loop_errors = namespace(posts=[]) %}
+      {% for loop_group in loop_groups %}
+        {% set loop_errors.posts = loop_errors.posts + (loop_group.posts|selectattr("status", "in", ["failed", "blocked"])|list) %}
+      {% endfor %}
+      <div class="loop-tabs" role="tablist" aria-label="Visualização de loops"><button class="loop-tab active" id="loop-tab-active" type="button" role="tab" data-loop-view="active" aria-controls="loop-panel-active" aria-selected="true">Loops ({{ loop_groups|length }})</button><button class="loop-tab" id="loop-tab-errors" type="button" role="tab" data-loop-view="errors" aria-controls="loop-panel-errors" aria-selected="false">Erros de Publicação ({{ loop_errors.posts|length }})</button></div>
+      <div class="loop-view-panel" id="loop-panel-active" role="tabpanel" aria-labelledby="loop-tab-active" data-loop-panel="active">
       {% if loop_groups %}
         {% for group in loop_groups %}
         {% set batch = group.batch %}
         {% set batch_posts = group.posts %}
         {% set published_count = batch_posts|selectattr("status", "equalto", "published")|list|length %}
         {% set pending_count = (batch_posts|selectattr("status", "equalto", "scheduled")|list|length) + (batch_posts|selectattr("status", "equalto", "aguardando")|list|length) + (batch_posts|selectattr("status", "equalto", "pending")|list|length) %}
+        {% set processing_count = batch_posts|selectattr("status", "equalto", "processing")|list|length %}
+        {% set loop_error_count = batch_posts|selectattr("status", "in", ["failed", "blocked"])|list|length %}
         <article class="loop-card" data-loop-card="{{ batch.id }}">
           <div class="loop-card-summary">
             <div class="loop-card-main"><div class="loop-card-title"><span>{{ batch.name }}</span><span class="loop-active-badge">{{ "pausado" if batch.status == "paused" else "ativo" }}</span></div>
-              <div class="loop-card-meta"><span>{{ batch.loop_interval_minutes }} min entre mídias</span><span>{{ batch_account_ids[batch.id]|length }} conta(s)</span><span>{{ batch_posts|selectattr("loop_index", "defined")|map(attribute="loop_index")|unique|list|length }} vídeos no pool</span></div>
+              <div class="loop-card-meta"><span>Intervalo: {{ batch.loop_interval_minutes }} min</span><span>{{ batch_account_ids[batch.id]|length }} conta(s)</span><span>{{ batch_posts|selectattr("loop_index", "defined")|map(attribute="loop_index")|unique|list|length }} mídias</span><span>{{ loop_error_count }} falha(s)</span></div>
               <div class="loop-account-chips" aria-label="Contas participantes">{% for account_group in group.account_groups if account_group.account.id in batch_account_ids[batch.id] %}<span class="loop-account-chip">@{{ account_group.account.username }}</span>{% endfor %}</div>
-              <p class="loop-totals"><strong>{{ published_count }} publicados</strong> · {{ pending_count }} na fila</p>
+              <p class="loop-totals"><strong>{{ published_count }} publicados</strong> · {{ pending_count }} na fila · {{ processing_count }} processando · {{ loop_error_count }} com erro</p>
             </div>
             <div class="loop-card-actions">
+              <button type="button" class="secondary loop-details-toggle" data-loop-details-toggle="{{ batch.id }}" aria-expanded="false" aria-controls="loop-details-{{ batch.id }}"><i data-lucide="calendar-clock"></i> Ver publicações e horários</button>
               <button type="button" class="secondary" data-loop-edit="{{ batch.id }}" title="Editar Loop" aria-label="Editar Loop {{ batch.name }}"><i data-lucide="pencil"></i></button>
               {% if batch.status == "paused" %}<form method="post" action="/batches/{{ batch.id }}/resume"><button type="submit" class="secondary" title="Retomar Loop" aria-label="Retomar Loop"><i data-lucide="play"></i></button></form>{% else %}<form method="post" action="/batches/{{ batch.id }}/pause"><button type="submit" class="secondary" title="Pausar Loop" aria-label="Pausar Loop"><i data-lucide="pause"></i></button></form>{% endif %}
               <form method="post" action="/batches/{{ batch.id }}/delete" data-delete-batch><button type="submit" class="secondary" title="Excluir Loop" aria-label="Excluir Loop"><i data-lucide="trash-2"></i></button></form>
@@ -309,9 +334,28 @@
             <div class="loop-media-pool">{% set pool = namespace(indices=[]) %}{% for post in batch_posts|sort(attribute="loop_index") %}{% if post.loop_index is not none and post.loop_index not in pool.indices %}{% set pool.indices = pool.indices + [post.loop_index] %}<div class="loop-media-row"><span class="loop-media-kind">{{ "VÍDEO" if post.media_type == "REELS" else "IMAGEM" }}</span><span class="loop-media-name">{{ post.media_url.rsplit("/", 1)[-1].split("?", 1)[0] }}</span></div>{% endif %}{% endfor %}</div>
             <div class="loop-editor-actions"><button type="submit"><i data-lucide="save"></i> Salvar alterações</button></div>
           </form>
+          <div class="loop-details" id="loop-details-{{ batch.id }}" data-loop-details="{{ batch.id }}" hidden>
+            <div class="loop-details-heading"><strong>Publicações e horários programados</strong><span class="muted">{{ batch.loop_interval_minutes }} min entre mídias</span></div>
+            {% set scheduled_loop_posts = batch_posts|selectattr("status", "in", ["scheduled", "pending", "aguardando", "processing"])|sort(attribute="scheduled_for")|list %}
+            {% if scheduled_loop_posts %}
+              {% for account_group in group.account_groups if account_group.account.id in batch_account_ids[batch.id] %}
+                {% set account_scheduled_posts = account_group.posts|selectattr("status", "in", ["scheduled", "pending", "aguardando", "processing"])|sort(attribute="scheduled_for")|list %}
+                {% if account_scheduled_posts %}<section class="loop-schedule-account"><h4>@{{ account_group.account.username }} · conta #{{ account_group.account.id }}</h4><ol class="loop-schedule-list">{% for post in account_scheduled_posts %}<li class="loop-schedule-row"><div><strong>Mídia {{ post.loop_index + 1 }} · {{ "Vídeo" if post.media_type == "REELS" else "Imagem" }}</strong><small>{{ local_scheduled_datetime(post.scheduled_for) }}</small></div><span class="loop-schedule-state">{{ "Processando" if post.status == "processing" else "Agendada" }}</span></li>{% endfor %}</ol></section>{% endif %}
+              {% endfor %}
+            {% else %}<p class="muted loop-empty">Sem publicações na fila no momento. A próxima mídia será agendada após a conclusão do ciclo atual.</p>{% endif %}
+          </div>
         </article>
         {% endfor %}
       {% else %}<p class="muted loop-empty">Nenhum Loop criado.</p>{% endif %}
+      </div>
+      <section class="loop-view-panel loop-error-panel" id="loop-panel-errors" role="tabpanel" aria-labelledby="loop-tab-errors" data-loop-panel="errors" hidden aria-label="Erros de Publicação">
+        {% if loop_errors.posts %}
+          {% for group in loop_groups %}
+            {% set group_loop_errors = group.posts|selectattr("status", "in", ["failed", "blocked"])|list %}
+            {% if group_loop_errors %}<article class="loop-error-group"><div class="loop-error-heading"><h4>{{ group.batch.name }}</h4><span class="batch-status-count failed">{{ group_loop_errors|length }} falha(s)</span></div><ul class="loop-error-list">{% for post in group_loop_errors %}<li class="loop-error-row"><div><strong>@{{ post.account.username }} · conta #{{ post.account_id }}</strong><small>Mídia {{ (post.loop_index + 1) if post.loop_index is not none else "-" }} · {{ post.media_type }} · {{ post.status }}</small><small>{{ post.error_message or "Falha sem detalhe retornado." }}</small><time>{% if post.error_at %}{{ local_scheduled_datetime(post.error_at) }}{% else %}Horário não registrado para falha anterior{% endif %}</time></div><form method="post" action="/posts/{{ post.id }}/retry"><button class="secondary" type="submit" title="Tentar publicar novamente"><i data-lucide="rotate-cw"></i> Tentar novamente</button></form></li>{% endfor %}</ul></article>{% endif %}
+          {% endfor %}
+        {% else %}<p class="muted loop-empty">Nenhum erro de publicação nos loops.</p>{% endif %}
+      </section>
     </section>
     <div class="queue-layout">
       <div class="panel composer">

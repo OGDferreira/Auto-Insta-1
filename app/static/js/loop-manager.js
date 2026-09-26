@@ -3,6 +3,34 @@ function setEditorVisibility(editor, visible) {
 }
 
 export function initLoopManager() {
+  const loopTabs = [...document.querySelectorAll("[data-loop-view]")];
+  const loopPanels = [...document.querySelectorAll("[data-loop-panel]")];
+  loopTabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      const selectedView = tab.dataset.loopView;
+      loopTabs.forEach(item => {
+        const selected = item === tab;
+        item.classList.toggle("active", selected);
+        item.setAttribute("aria-selected", String(selected));
+      });
+      loopPanels.forEach(panel => {
+        panel.hidden = panel.dataset.loopPanel !== selectedView;
+      });
+    });
+  });
+
+  document.querySelectorAll("[data-loop-details-toggle]").forEach(button => {
+    button.addEventListener("click", () => {
+      const details = document.querySelector(`#loop-details-${button.dataset.loopDetailsToggle}`);
+      if (!details) return;
+      const expanded = button.getAttribute("aria-expanded") !== "true";
+      details.hidden = !expanded;
+      button.setAttribute("aria-expanded", String(expanded));
+      button.innerHTML = `<i data-lucide="${expanded ? "calendar-off" : "calendar-clock"}"></i> ${expanded ? "Ocultar publicações e horários" : "Ver publicações e horários"}`;
+      if (window.lucide) window.lucide.createIcons();
+    });
+  });
+
   document.querySelectorAll("[data-loop-edit]").forEach(button => {
     button.addEventListener("click", () => {
       const editor = document.querySelector(`[data-loop-editor="${button.dataset.loopEdit}"]`);

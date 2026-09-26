@@ -496,6 +496,13 @@ async def _advance_loop_after_post(post_id: int) -> None:
         schedule_post(next_post.id, next_post.scheduled_for)
 
 
+async def _advance_loop_safely(post_id: int) -> None:
+    try:
+        await _advance_loop_after_post(post_id)
+    except Exception:
+        logger.exception("Falha ao agendar a próxima mídia do Loop após o post %s", post_id)
+
+
 def _drive_file_id(url: str | None) -> str | None:
     if not url:
         return None
@@ -586,7 +593,7 @@ async def _publish(post_id: int) -> None:
         claimed = await db.execute(
             update(ScheduledPost)
             .where(ScheduledPost.id == post_id, ScheduledPost.status.in_(PENDING_STATUSES))
-            .values(status="processing")
+            .values(status="processing", error_at=None)
         )
         if claimed.rowcount != 1:
             return
@@ -606,7 +613,16 @@ async def _publish(post_id: int) -> None:
         if account is None or account.owner_id != post.owner_id:
             post.status = "failed"
             post.error_message = "Instagram account no longer belongs to this owner"
+            post.error_at = datetime.now(timezone.utc)
+            logger.error(
+                "Falha na publicação do post %s para conta %s às %s: %s",
+                post.id,
+                post.account_id,
+                post.error_at.isoformat(),
+                post.error_message,
+            )
             await db.commit()
+            await _advance_loop_safely(post_id)
             return
         try:
             token = decrypt_token(account.access_token_encrypted)
@@ -614,8 +630,16 @@ async def _publish(post_id: int) -> None:
                 if not await _refresh_account_status(status_client, account, token, settings):
                     post.status = "blocked" if account.connection_status == "disconnected" else "failed"
                     post.error_message = account.status_reason or "A conta não está autorizada para publicar."
+                    post.error_at = datetime.now(timezone.utc)
+                    logger.error(
+                        "Falha na publicação do post %s para conta %s às %s: %s",
+                        post.id,
+                        account.id,
+                        post.error_at.isoformat(),
+                        post.error_message,
+                    )
                     await db.commit()
-                    await _advance_loop_after_post(post_id)
+                    await _advance_loop_safely(post_id)
                     return
             
             # Este projeto usa Instagram Login, cujo token é válido em graph.instagram.com.
@@ -671,6 +695,7 @@ async def _publish(post_id: int) -> None:
                     
             post.status = "published"
             post.error_message = None
+            post.error_at = None
         except Exception as exc:
             error_message = str(exc)[:1000]
             if _is_authentication_error(error_message):
@@ -681,10 +706,17 @@ async def _publish(post_id: int) -> None:
             else:
                 post.status = "failed"
             post.error_message = error_message
-            logger.exception("Falha ao publicar post %s: %s", post_id, exc)
+            post.error_at = datetime.now(timezone.utc)
+            logger.exception(
+                "Falha ao publicar post %s para conta %s às %s: %s",
+                post_id,
+                post.account_id,
+                post.error_at.isoformat(),
+                exc,
+            )
             
         await db.commit()
-        await _advance_loop_after_post(post_id)
+        await _advance_loop_safely(post_id)
 
 
 async def process_due_posts() -> None:

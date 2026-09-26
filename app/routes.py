@@ -1050,12 +1050,10 @@ async def delete_selected_accounts(
 
 
 @router.get("/hub", response_class=HTMLResponse)
-async def hub(request: Request, status_filter: str = "", user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+async def hub(request: Request, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     owner_id = workspace_owner_id(user)
     await _remove_stale_pending_accounts(db, owner_id)
     query = select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
-    if status_filter in ACCOUNT_STATUS_CLASSES:
-        query = query.where(InstagramAccount.connection_status == status_filter)
     accounts = (await db.scalars(query)).all()
     account_views = {}
     for account in accounts:
@@ -1063,7 +1061,7 @@ async def hub(request: Request, status_filter: str = "", user: User = Depends(cu
             InstagramMetric.account_id == account.id
         ).order_by(InstagramMetric.metric_date.desc()).limit(10))).all()
         account_views[account.id] = _metric_views_by_account(rows, [account.id])[account.id]
-    response = templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_status_classes": account_status_classes(accounts), "account_views": account_views, "status_filter": status_filter, "notice": request.session.pop("access_notice", None)})
+    response = templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_status_classes": account_status_classes(accounts), "account_views": account_views, "notice": request.session.pop("access_notice", None)})
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -1257,6 +1255,7 @@ async def api_status(
                 "media_type": post.media_type,
                 "status": post.status,
                 "error_message": post.error_message,
+                "error_at": local_scheduled_datetime(post.error_at) if post.error_at else None,
                 "scheduled_for": local_scheduled_datetime(post.scheduled_for),
                 "account": post.account.username if post.account else "",
             }
@@ -1675,6 +1674,7 @@ async def calendar_posts(
                 "scheduled_for": post.scheduled_for.isoformat(),
                 "status": post.status,
                 "error_message": post.error_message,
+                "error_at": post.error_at.isoformat() if post.error_at else None,
                 "conflict": conflicts[
                     f"{post.account_id}:{post.scheduled_for.astimezone(timezone.utc).isoformat()}"
                 ] > 1,
@@ -1827,6 +1827,7 @@ async def retry_batch_failures(
     for post in failed_posts:
         post.status = "scheduled"
         post.error_message = None
+        post.error_at = None
         post.scheduled_for = next_time
         next_time += interval
     await db.commit()
@@ -2184,8 +2185,27 @@ async def instagram_callback(
             .where(BotEvent.account_id == pending_account.id)
             .values(account_id=account.id)
         )
+        loop_batches = (await db.scalars(select(PostingBatch).where(
+            PostingBatch.owner_id == owner_id,
+            PostingBatch.is_loop.is_(True),
+        ))).all()
+        for batch in loop_batches:
+            account_ids = json.loads(batch.account_ids or "[]")
+            if pending_account.id in account_ids:
+                batch.account_ids = json.dumps(list(dict.fromkeys(
+                    account.id if account_id == pending_account.id else account_id
+                    for account_id in account_ids
+                )))
         await db.delete(pending_account)
+    loop_posts_to_schedule = []
+    if account.connection_status in {"active", "connected"}:
+        loop_posts_to_schedule = await _include_account_in_existing_loops(
+            db, owner_id, account.id
+        )
     await db.commit()
+    for should_schedule, post_id, scheduled_for in loop_posts_to_schedule:
+        if should_schedule:
+            schedule_post(post_id, scheduled_for)
     return RedirectResponse("/hub" if user.role == "collaborator" else "/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -2403,6 +2423,7 @@ async def retry_post(
     if not authorized:
         post.status = "blocked"
         post.error_message = account.status_reason or "A conta ainda não está autorizada para publicar."
+        post.error_at = datetime.now(timezone.utc)
         await db.commit()
         raise HTTPException(status_code=400, detail=post.error_message)
     media_url = post.original_media_url or post.media_url
@@ -2410,10 +2431,12 @@ async def retry_post(
     if not media_available:
         post.status = "failed"
         post.error_message = media_error
+        post.error_at = datetime.now(timezone.utc)
         await db.commit()
         raise HTTPException(status_code=400, detail=media_error)
     post.status = "scheduled"
     post.error_message = None
+    post.error_at = None
     post.scheduled_for = datetime.now(timezone.utc) + timedelta(seconds=2)
     await db.commit()
     schedule_post(post.id, post.scheduled_for)
@@ -2466,9 +2489,11 @@ async def retry_blocked_posts(
             available_posts.append(post)
         else:
             post.error_message = media_error
+            post.error_at = datetime.now(timezone.utc)
     for index, post in enumerate(available_posts):
         post.status = "scheduled"
         post.error_message = None
+        post.error_at = None
         post.scheduled_for = now + timedelta(minutes=index * intervalo)
     await db.commit()
     for post in available_posts:
@@ -2519,6 +2544,7 @@ async def retry_failed_posts(
     for index, post in enumerate(posts):
         post.status = "scheduled"
         post.error_message = None
+        post.error_at = None
         post.scheduled_for = first_time + timedelta(minutes=index * intervalo)
     await db.commit()
     for post in posts:
@@ -2930,6 +2956,70 @@ async def update_batch_accounts(
         if batch.status == "active":
             schedule_post(post.id, post.scheduled_for)
     return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
+
+
+async def _include_account_in_existing_loops(
+    db: AsyncSession,
+    owner_id: int,
+    account_id: int,
+) -> list[tuple[bool, int, datetime]]:
+    batches = (await db.scalars(select(PostingBatch).where(
+        PostingBatch.owner_id == owner_id,
+        PostingBatch.is_loop.is_(True),
+        PostingBatch.status.in_(("active", "paused")),
+    ))).all()
+    created_posts = []
+    for batch in batches:
+        playlist_posts = (await db.scalars(
+            select(ScheduledPost)
+            .where(
+                ScheduledPost.batch_id == batch.id,
+                ScheduledPost.loop_index.is_not(None),
+            )
+            .order_by(ScheduledPost.loop_index, ScheduledPost.id)
+        )).all()
+        templates_by_index = {}
+        for post in playlist_posts:
+            templates_by_index.setdefault(post.loop_index, post)
+        if not templates_by_index:
+            continue
+
+        account_ids = list(dict.fromkeys(json.loads(batch.account_ids or "[]")))
+        if account_id not in account_ids:
+            account_ids.append(account_id)
+            batch.account_ids = json.dumps(account_ids)
+        existing_indices = set((await db.scalars(
+            select(ScheduledPost.loop_index).where(
+                ScheduledPost.batch_id == batch.id,
+                ScheduledPost.account_id == account_id,
+                ScheduledPost.loop_index.is_not(None),
+            )
+        )).all())
+        first_time = datetime.now(timezone.utc) + timedelta(minutes=3)
+        for media_index, template in sorted(templates_by_index.items()):
+            if media_index in existing_indices:
+                continue
+            post = ScheduledPost(
+                owner_id=owner_id,
+                account_id=account_id,
+                batch_id=batch.id,
+                media_url=template.media_url,
+                original_media_url=template.original_media_url,
+                drive_media_url=template.drive_media_url,
+                drive_account_email=template.drive_account_email,
+                drive_credentials_encrypted=template.drive_credentials_encrypted,
+                storage_path=template.storage_path,
+                media_type=template.media_type,
+                caption=template.caption,
+                loop_index=media_index,
+                scheduled_for=first_time + timedelta(
+                    minutes=media_index * batch.loop_interval_minutes
+                ),
+            )
+            db.add(post)
+            await db.flush()
+            created_posts.append((batch.status == "active", post.id, post.scheduled_for))
+    return created_posts
 
 
 @router.post("/batches/{batch_id}/accounts/{account_id}/delete")

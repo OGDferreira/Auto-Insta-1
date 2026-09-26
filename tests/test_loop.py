@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
+import json
 import re
+from types import SimpleNamespace
 
 import pytest
 from starlette.requests import Request
@@ -151,5 +153,166 @@ async def test_loop_restarts_playlist_and_includes_added_accounts(monkeypatch):
         assert re.search(r'name="account_ids" value="1" checked', editor.group(1))
         assert re.search(r'name="account_ids" value="3"\s*>', editor.group(1))
         assert 'class="loop-board-title"' in html
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_new_account_is_added_to_existing_loop_playlist():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with session_factory() as db:
+        owner = User(email="dynamic@example.com", username="dynamic", password_hash="hash")
+        db.add(owner)
+        await db.flush()
+        existing_account = InstagramAccount(
+            owner_id=owner.id,
+            instagram_user_id="ig-dynamic-1",
+            username="existing",
+            access_token_encrypted="encrypted",
+        )
+        new_account = InstagramAccount(
+            owner_id=owner.id,
+            instagram_user_id="ig-dynamic-2",
+            username="new_account",
+            access_token_encrypted="encrypted",
+            connection_status="connected",
+        )
+        db.add_all([existing_account, new_account])
+        await db.flush()
+        batch = PostingBatch(
+            owner_id=owner.id,
+            name="Dynamic loop",
+            account_ids=json.dumps([existing_account.id]),
+            is_loop=True,
+            loop_interval_minutes=4,
+        )
+        db.add(batch)
+        await db.flush()
+        now = datetime.now(timezone.utc)
+        db.add_all([
+            ScheduledPost(
+                owner_id=owner.id,
+                account_id=existing_account.id,
+                batch_id=batch.id,
+                loop_index=index,
+                media_url=f"https://example.com/video-{index}.mp4",
+                media_type="REELS",
+                caption="Loop caption",
+                status="published",
+                scheduled_for=now,
+            )
+            for index in range(2)
+        ])
+        await db.commit()
+
+        to_schedule = await routes._include_account_in_existing_loops(
+            db, owner.id, new_account.id
+        )
+        await db.commit()
+
+        new_posts = (await db.scalars(
+            select(ScheduledPost)
+            .where(
+                ScheduledPost.batch_id == batch.id,
+                ScheduledPost.account_id == new_account.id,
+            )
+            .order_by(ScheduledPost.loop_index)
+        )).all()
+        assert [post.media_url for post in new_posts] == [
+            "https://example.com/video-0.mp4",
+            "https://example.com/video-1.mp4",
+        ]
+        assert json.loads(batch.account_ids) == [existing_account.id, new_account.id]
+        assert len(to_schedule) == 2
+        assert all(should_schedule for should_schedule, _, _ in to_schedule)
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_loop_failure_is_timestamped_and_does_not_stop_next_cycle(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(jobs, "SessionLocal", session_factory)
+    monkeypatch.setattr(jobs, "get_settings", lambda: SimpleNamespace())
+    monkeypatch.setattr(jobs, "decrypt_token", lambda _token: "token")
+    scheduled = []
+    monkeypatch.setattr(jobs, "schedule_post", lambda post_id, when: scheduled.append((post_id, when)))
+
+    class FakeHttpClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return False
+
+    async def reject_account(_client, account, _token, _settings):
+        account.connection_status = "error"
+        account.status_reason = "Instagram permission denied"
+        return False
+
+    monkeypatch.setattr(jobs.httpx, "AsyncClient", lambda **_kwargs: FakeHttpClient())
+    monkeypatch.setattr(jobs, "_refresh_account_status", reject_account)
+
+    async with session_factory() as db:
+        owner = User(email="failure@example.com", username="failure", password_hash="hash")
+        db.add(owner)
+        await db.flush()
+        account = InstagramAccount(
+            owner_id=owner.id,
+            instagram_user_id="ig-failure",
+            username="failure_account",
+            access_token_encrypted="encrypted",
+        )
+        db.add(account)
+        await db.flush()
+        batch = PostingBatch(
+            owner_id=owner.id,
+            name="Failure loop",
+            account_ids=json.dumps([account.id]),
+            is_loop=True,
+            loop_interval_minutes=1,
+        )
+        db.add(batch)
+        await db.flush()
+        failed_post = ScheduledPost(
+            owner_id=owner.id,
+            account_id=account.id,
+            batch_id=batch.id,
+            loop_index=0,
+            media_url="https://example.com/failure.mp4",
+            media_type="REELS",
+            scheduled_for=datetime.now(timezone.utc),
+        )
+        db.add(failed_post)
+        await db.commit()
+        failed_post_id = failed_post.id
+        batch_id = batch.id
+        account_id = account.id
+
+    await jobs._publish(failed_post_id)
+
+    async with session_factory() as db:
+        failed_post = await db.get(ScheduledPost, failed_post_id)
+        next_post = await db.scalar(
+            select(ScheduledPost).where(
+                ScheduledPost.batch_id == batch_id,
+                ScheduledPost.account_id == account_id,
+                ScheduledPost.id != failed_post_id,
+            )
+        )
+        assert failed_post.status == "failed"
+        assert failed_post.error_message == "Instagram permission denied"
+        assert failed_post.error_at is not None
+        assert next_post is not None
+        assert next_post.loop_index == 0
+        assert next_post.status in jobs.PENDING_STATUSES
+        assert len(scheduled) == 1
 
     await engine.dispose()
