@@ -1,1 +1,0 @@
-"""Auto-Insta application package."""
