@@ -1,0 +1,199 @@
+import { escapeHtml, showModuleToast } from "./dashboard.js";
+
+let rules = [];
+let media = { media_url: null, drive_media_url: null, drive_account_email: null, drive_credentials_encrypted: null };
+
+function accountIds() {
+  return [...document.getElementById("automation-account").selectedOptions].map(option => Number(option.value));
+}
+
+function resetForm() {
+  const form = document.getElementById("automation-form");
+  form.reset();
+  document.getElementById("automation-edit-id").value = "";
+  document.getElementById("automation-media-status").hidden = true;
+  document.getElementById("automation-cancel").hidden = true;
+  document.getElementById("automation-submit").textContent = "Salvar automação";
+  updateTriggerFields();
+  media = { media_url: null, drive_media_url: null, drive_account_email: null, drive_credentials_encrypted: null };
+}
+
+function fillForm(rule) {
+  document.getElementById("automation-edit-id").value = rule.id;
+  document.getElementById("automation-type").value = rule.rule_type;
+  document.getElementById("automation-keywords").value = rule.trigger_keywords || "";
+  document.getElementById("automation-message").value = rule.message_text || "";
+  document.getElementById("automation-dm-followup").value = rule.dm_followup_text || "";
+  const targets = new Set(rule.target_account_ids || (rule.account_id ? [rule.account_id] : []));
+  [...document.getElementById("automation-account").options].forEach(option => { option.selected = Number(option.value) === 0 ? !targets.size : targets.has(Number(option.value)); });
+  media = { media_url: rule.media_url, drive_media_url: rule.drive_media_url, drive_account_email: rule.drive_account_email, drive_credentials_encrypted: rule.drive_credentials_encrypted };
+  const status = document.getElementById("automation-media-status");
+  status.hidden = !(media.media_url || media.drive_media_url);
+  status.textContent = status.hidden ? "" : "Anexo atual mantido";
+  document.getElementById("automation-cancel").hidden = false;
+  document.getElementById("automation-submit").textContent = "Salvar alterações";
+  updateTriggerFields();
+  document.getElementById("automations").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function updateTriggerFields() {
+  const isComment = document.getElementById("automation-type").value === "comment_reply";
+  document.getElementById("automation-keywords-field").hidden = !isComment;
+  document.getElementById("automation-dm-followup-field").hidden = !isComment;
+  document.getElementById("automation-message-label").firstChild.textContent = isComment
+    ? "Resposta Pública no Comentário"
+    : "Mensagem";
+}
+
+function renderRules() {
+  const list = document.getElementById("automation-list");
+  list.innerHTML = rules.map(rule => `<article class="automation-card">
+    <header><strong>${rule.rule_type === "comment_reply" ? "Comentário" : "Direct (DM)"}</strong><div class="automation-card-actions">
+      <button type="button" class="text-button" data-edit-automation="${rule.id}" title="Editar"><i data-lucide="pencil"></i></button>
+      <button type="button" class="text-button" data-delete-automation="${rule.id}" title="Excluir"><i data-lucide="trash-2"></i></button>
+    </div></header>
+    <small class="muted">${rule.target_account_ids?.length ? `${rule.target_account_ids.length} conta(s)` : "Todas as contas"} · Palavra-chave: <b>${escapeHtml(rule.trigger_keywords || "—")}</b></small>
+    <p>${escapeHtml(rule.message_text || "Resposta com mídia")}</p>
+    ${rule.media_url || rule.drive_media_url ? '<div class="automation-media-preview">Anexo de mídia</div>' : ""}
+    <label class="select-all-accounts"><input type="checkbox" data-toggle-automation="${rule.id}" ${rule.is_active ? "checked" : ""}> Ativa</label>
+  </article>`).join("") || "<p class=\"muted\">Nenhuma automação cadastrada.</p>";
+  if (window.lucide) window.lucide.createIcons();
+}
+
+async function loadRules() {
+  const response = await fetch("/api/automations", { cache: "no-store" });
+  const payload = await response.json();
+  if (!response.ok) return showModuleToast(payload.detail || "Falha ao carregar automações.", "error");
+  rules = payload.items || [];
+  renderRules();
+}
+
+async function save(event) {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  const keywords = document.getElementById("automation-keywords").value.trim();
+  const isComment = document.getElementById("automation-type").value === "comment_reply";
+  if (isComment && !keywords) return showModuleToast("Informe a palavra-chave do gatilho.", "error");
+  const id = document.getElementById("automation-edit-id").value;
+  const payload = {
+    target_account_ids: accountIds(),
+    rule_type: document.getElementById("automation-type").value,
+    trigger_keywords: keywords,
+    message_text: document.getElementById("automation-message").value.trim(),
+    dm_followup_text: document.getElementById("automation-dm-followup").value.trim(),
+    ...media,
+    is_active: true,
+  };
+  const response = await fetch(id ? `/api/automations/${id}` : "/api/automations", {
+    method: id ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json();
+  if (!response.ok) return showModuleToast(result.detail || "Não foi possível salvar a automação.", "error");
+  showModuleToast(id ? "Automação atualizada." : "Automação salva.", "success");
+  resetForm();
+  loadRules();
+}
+
+export function initAutomationsModule() {
+  const form = document.getElementById("automation-form");
+  if (!form) return;
+  form.addEventListener("submit", save, true);
+  document.getElementById("automation-type")?.addEventListener("change", updateTriggerFields);
+  updateTriggerFields();
+  document.addEventListener("automation-media-selected", event => { media = { ...event.detail }; });
+  document.getElementById("automation-account")?.addEventListener("change", event => {
+    const select = event.currentTarget;
+    const selected = [...select.selectedOptions];
+    const global = selected.some(option => option.value === "0");
+    if (global && selected.length > 1) select.options[0].selected = false;
+    else if (global) [...select.options].forEach(option => { option.selected = option.value === "0"; });
+    else if (![...select.selectedOptions].length) select.options[0].selected = true;
+  });
+  document.getElementById("automation-cancel")?.addEventListener("click", resetForm);
+  document.getElementById("automation-refresh")?.addEventListener("click", loadRules);
+  document.getElementById("automation-file")?.addEventListener("change", async event => {
+    event.stopImmediatePropagation();
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const body = new FormData();
+    body.append("media", file, file.name);
+    const response = await fetch("/media/upload", { method: "POST", body });
+    const payload = await response.json();
+    if (!response.ok) return showModuleToast(payload.detail || "Falha no upload.", "error");
+    media = { media_url: payload.url, drive_media_url: null, drive_account_email: null, drive_credentials_encrypted: null };
+    const status = document.getElementById("automation-media-status");
+    status.hidden = false;
+    status.textContent = `Anexo selecionado: ${file.name}`;
+  }, true);
+  const iceForm = document.getElementById("ice-breakers-form");
+  const iceFields = document.getElementById("ice-breaker-fields");
+  const iceAdd = document.getElementById("ice-breaker-add");
+  let iceCount = 1;
+  async function loadIceBreakers(accountId) {
+    if (!accountId) return;
+    const response = await fetch(`/api/automations/ice-breakers/${accountId}`, { cache: "no-store" });
+    if (!response.ok) return;
+    const result = await response.json();
+    const saved = (result.ice_breakers || []).map(item => item.question).filter(Boolean).slice(0, 4);
+    if (!saved.length) return;
+    iceFields.innerHTML = "";
+    iceCount = saved.length;
+    saved.forEach((question, index) => {
+      const label = document.createElement("label");
+      label.innerHTML = `Pergunta ${index + 1}<input type="text" maxlength="80" required>`;
+      label.querySelector("input").value = question;
+      iceFields.appendChild(label);
+    });
+  }
+  document.getElementById("ice-breakers-account")?.addEventListener("change", event => {
+    iceFields.innerHTML = '<label>Pergunta 1<input type="text" maxlength="80" required placeholder="Ex.: Quero saber mais"></label>';
+    iceCount = 1;
+    loadIceBreakers(event.target.value);
+  });
+  iceAdd?.addEventListener("click", () => {
+    if (iceCount >= 4) return showModuleToast("O Instagram permite no máximo 4 perguntas.", "error");
+    iceCount += 1;
+    const label = document.createElement("label");
+    label.innerHTML = `Pergunta ${iceCount}<input type="text" maxlength="80" required placeholder="Ex.: Como funciona?">`;
+    iceFields.appendChild(label);
+  });
+  iceForm?.addEventListener("submit", async event => {
+    event.preventDefault();
+    const accountId = document.getElementById("ice-breakers-account").value;
+    const questions = [...iceFields.querySelectorAll("input")].map(input => input.value.trim());
+    if (!accountId || questions.some(question => !question)) return showModuleToast("Selecione a conta e preencha todas as perguntas.", "error");
+    const response = await fetch("/api/automations/ice-breakers", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({account_id: Number(accountId), questions}),
+    });
+    const result = await response.json();
+    const status = document.getElementById("ice-breaker-status");
+    if (!response.ok) {
+      status.textContent = result.detail || "Falha ao salvar os botões.";
+      return showModuleToast(status.textContent, "error");
+    }
+    status.textContent = "Botões salvos na conta com sucesso.";
+    showModuleToast("Ice Breakers configurados.", "success");
+  });
+  document.getElementById("automation-list")?.addEventListener("click", async event => {
+    const edit = event.target.closest("[data-edit-automation]");
+    if (edit) return fillForm(rules.find(rule => rule.id === Number(edit.dataset.editAutomation)));
+    const remove = event.target.closest("[data-delete-automation]");
+    if (remove) {
+      if (!confirm("Excluir esta automação?")) return;
+      await fetch(`/api/automations/${remove.dataset.deleteAutomation}`, { method: "DELETE" });
+      return loadRules();
+    }
+  });
+  document.getElementById("automation-list")?.addEventListener("change", async event => {
+    const input = event.target.closest("[data-toggle-automation]");
+    if (!input) return;
+    await fetch(`/api/automations/${input.dataset.toggleAutomation}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ is_active: input.checked }) });
+  });
+  loadRules();
+}
+
+initAutomationsModule();

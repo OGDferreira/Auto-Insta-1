@@ -1,0 +1,11 @@
+.feed-account-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}
+.feed-account-card{display:flex;align-items:center;gap:.65rem;padding:.8rem;border:1px solid var(--line);border-radius:14px;background:linear-gradient(145deg,rgba(17,24,39,.96),rgba(7,11,24,.96));cursor:pointer;text-align:left}
+.feed-account-card:hover,.feed-account-card.selected{border-color:#3b82f6;box-shadow:0 0 18px rgba(59,130,246,.26);transform:translateY(-1px)}
+.feed-account-card input{display:none}
+.selectable-card{touch-action:none}
+.feed-account-card .profile-avatar{flex:none}
+.feed-account-card strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feed-account-card small{display:block;color:var(--muted);margin-top:.2rem}
+.compact-action{padding:.45rem .6rem;font-size:.72rem}
+.feed-metrics{display:flex;gap:.55rem;flex-wrap:wrap;margin-top:.45rem;color:var(--muted);font-size:.72rem}.feed-metrics span{white-space:nowrap}
+.campaign-contacts{display:grid;gap:.4rem;margin:.7rem 0}.campaign-contact{margin:0;padding:.55rem .7rem;border:1px solid var(--line);border-radius:9px}

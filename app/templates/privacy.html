@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Política de Privacidade – Auto-Insta{% endblock %}
+{% block content %}
+<style>
+  .privacy-page { max-width: 900px; margin: 2.5rem auto 1rem; }
+  .privacy-header { padding: 2rem; margin-bottom: 1rem; }
+  .privacy-header h1 { margin-bottom: .6rem; }
+  .privacy-date { color: var(--cyan); font-size: .82rem; font-weight: 700; }
+  .privacy-content { padding: 2rem; }
+  .privacy-content section { padding: 1.35rem 0; border-bottom: 1px solid var(--line); }
+  .privacy-content section:first-child { padding-top: 0; }
+  .privacy-content section:last-child { padding-bottom: 0; border-bottom: 0; }
+  .privacy-content h2 { font-size: 1.2rem; margin: 0 0 .65rem; }
+  .privacy-content p { line-height: 1.7; margin: .55rem 0; }
+  .privacy-content ul { color: var(--muted); line-height: 1.7; padding-left: 1.3rem; }
+  .privacy-content li + li { margin-top: .45rem; }
+  .privacy-note { padding: .85rem 1rem; border-left: 3px solid var(--cyan); background: rgba(85,214,255,.06); border-radius: 0 10px 10px 0; }
+  @media (max-width: 650px) {
+    .privacy-page { margin-top: 1.25rem; }
+    .privacy-header, .privacy-content { padding: 1.25rem; }
+  }
+</style>
+
+<main class="privacy-page">
+  <header class="card privacy-header">
+    <div class="eyebrow">Transparência e confiança</div>
+    <h1>Política de Privacidade – Auto-Insta</h1>
+    <div class="privacy-date">Última atualização: Setembro de 2026</div>
+    <p>Esta Política explica como o Auto-Insta trata informações durante o uso das suas ferramentas de agendamento, publicação e automação para o Instagram.</p>
+  </header>
+
+  <article class="card privacy-content">
+    <section>
+      <h2>1. Finalidade do aplicativo</h2>
+      <p>O Auto-Insta permite organizar e agendar publicações, publicar Reels e fotos e configurar automações de respostas no Instagram por meio da Graph API da Meta. O aplicativo executa somente as ações solicitadas pelo titular da conta e autorizadas durante a conexão com o Instagram.</p>
+    </section>
+
+    <section>
+      <h2>2. Informações tratadas</h2>
+      <p>Para disponibilizar esses recursos, podemos tratar:</p>
+      <ul>
+        <li>Identificadores da conta do Instagram, nome de usuário e informações públicas do perfil;</li>
+        <li>Tokens de acesso fornecidos pela Meta para executar as permissões autorizadas;</li>
+        <li>Fotos, vídeos, legendas e horários enviados para agendamento;</li>
+        <li>Eventos de Webhooks relacionados a mensagens diretas e comentários, quando essas automações estiverem habilitadas.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>3. Uso restrito dos dados</h2>
+      <p>As informações são usadas exclusivamente para executar as automações autorizadas pela conta conectada: criar e publicar mídias, manter a fila de agendamento e responder mensagens ou comentários conforme as regras configuradas pelo usuário.</p>
+    </section>
+
+    <section>
+      <h2>4. Não compartilhamento</h2>
+      <p>O Auto-Insta não vende, aluga, repassa ou compartilha dados pessoais com terceiros para publicidade, prospecção ou qualquer finalidade não autorizada. As solicitações necessárias à publicação e às automações são enviadas à Meta por meio das APIs oficiais, conforme as permissões concedidas pelo usuário.</p>
+    </section>
+
+    <section>
+      <h2>5. Retenção e exclusão de dados</h2>
+      <p>Os dados são mantidos apenas enquanto forem necessários para oferecer o serviço ou enquanto a conta permanecer conectada. Para revogar o acesso:</p>
+      <ol>
+        <li>Abra o Instagram ou o Facebook e acesse <strong>Configurações e privacidade</strong>;</li>
+        <li>Abra a <strong>Central de Contas</strong> e procure por <strong>Senha e segurança</strong> ou <strong>Aplicativos e sites</strong>;</li>
+        <li>Localize o Auto-Insta e selecione a opção para remover ou revogar o acesso.</li>
+      </ol>
+      <p>Para solicitar a exclusão dos dados armazenados pelo Auto-Insta, remova a conta conectada no painel do aplicativo e envie uma solicitação pelo canal de suporte informado no próprio serviço, indicando o usuário e o e-mail da conta. A solicitação será analisada e os dados elegíveis serão excluídos, salvo quando a retenção for exigida por obrigação legal ou necessária para segurança e prevenção de abuso.</p>
+    </section>
+
+    <section>
+      <h2>6. Segurança e armazenamento</h2>
+      <p>Tokens de acesso são cifrados antes de serem armazenados. O acesso às contas e publicações é separado por usuário autenticado, e as comunicações de produção devem ocorrer por HTTPS. As mídias enviadas para publicação podem ser armazenadas temporariamente em uma URL pública necessária para que a Meta consiga processá-las.</p>
+      <p class="privacy-note">Nenhum sistema conectado à internet é absolutamente imune a riscos. Recomendamos manter a senha protegida, revisar periodicamente as permissões concedidas e revogar o acesso quando o aplicativo não for mais utilizado.</p>
+    </section>
+
+    <section>
+      <h2>7. Contato de suporte</h2>
+      <p>Para dúvidas sobre esta Política, acesso, correção ou exclusão de dados, entre em contato pelo canal de suporte informado no Auto-Insta e inclua o e-mail usado no cadastro e uma descrição objetiva da solicitação.</p>
+    </section>
+  </article>
+</main>
+{% endblock %}
