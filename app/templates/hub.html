@@ -10,6 +10,12 @@
 <style>
 .hub-bulk-toolbar button[hidden]{display:none!important}
 @media(max-width:540px){.hub-bulk-toolbar{flex-wrap:wrap}.hub-bulk-toolbar form{flex:1}.hub-bulk-toolbar button{width:100%}.hub-bulk-count{margin-left:auto}}
+.account-row{background:#23272E!important}
+.account-row.selected{background:#4B515A!important;outline-color:rgba(142,150,161,.32)}
+.account-row.status-connected{border-left-color:#D7DCE2!important}
+.account-row.status-disconnected,.account-row.status-suspended,.account-row.status-error{border-left-color:#8E96A1!important}
+.account-row.status-pending{border-left-color:#4B515A!important}
+.hub-summary strong{color:var(--text)}
 </style>
 <main class="hub-page">
   <section class="hero"><div class="eyebrow">Acesso autorizado</div><h1>Hub de Contas</h1><p>Conecte, importe e gerencie as contas deste workspace.</p></section>

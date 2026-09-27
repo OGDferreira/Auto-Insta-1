@@ -50,6 +50,16 @@
   .profile-feed-message[hidden]{display:none}
   @media(max-width:760px){.profile-metrics-layout{grid-template-columns:1fr}.profile-list{display:flex;max-height:none;overflow-x:auto;overflow-y:hidden;padding-bottom:.2rem}.profile-option{width:165px;min-width:165px}.profile-feed{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media(max-width:480px){.profile-metrics{margin-top:.2rem}.metrics-header{align-items:flex-start}.metrics-header h1{font-size:1.18rem}.metrics-header-actions{gap:.3rem}.metrics-header-actions button,.metrics-header-actions a{padding:.42rem .5rem}.profile-stat-grid{gap:.35rem}.profile-stat{padding:.45rem}.profile-stat-label{font-size:.59rem}.profile-stat strong{font-size:.86rem}}
+  .profile-list-empty,.profile-option,.selected-profile-bar,.profile-stat,.profile-feed-card{background:#23272E}
+  .profile-option:hover{border-color:#8E96A1;background:#4B515A}
+  .profile-option[aria-pressed="true"]{background:#4B515A;box-shadow:0 0 0 1px rgba(142,150,161,.16)}
+  .profile-option img,.profile-option-initial{background:#4B515A}.profile-option-initial{color:#D7DCE2}
+  .selected-profile-title i,.profile-stat-label i{color:#8E96A1}
+  .metrics-status.error{color:#8E96A1}
+  .profile-feed-media{background:#0D0F12}
+  .profile-feed-type{background:rgba(35,39,46,.85);color:#D7DCE2}
+  .profile-feed-counts,.profile-feed-date,.profile-feed-caption{color:#8E96A1}
+  .profile-feed-message{border-color:#4B515A}
 </style>
 <main class="profile-metrics">
   <header class="metrics-header">

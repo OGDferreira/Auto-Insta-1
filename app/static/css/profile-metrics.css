@@ -9,7 +9,7 @@
 .profile-list-empty{padding:.9rem;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--muted);font-size:.78rem}
 .profile-option{display:flex;align-items:center;gap:.5rem;width:100%;min-height:48px;padding:.38rem .48rem;text-align:left;border:1px solid var(--line);border-radius:7px;background:#120d0f;color:var(--text);box-shadow:none;cursor:pointer}
 .profile-option:hover{transform:none;border-color:#69303a;background:#1b1114;box-shadow:none}
-.profile-option[aria-pressed="true"]{border-color:var(--cyan);background:#231014;box-shadow:0 0 0 1px rgba(213,43,65,.16)}
+.profile-option[aria-pressed="true"]{border-color:var(--cyan);background:#23272E;box-shadow:0 0 0 1px rgba(142,150,161,.16)}
 .profile-option img,.profile-option-initial{width:28px;height:28px;flex:none;border-radius:50%;object-fit:cover;background:#291519}
 .profile-option-initial{display:grid;place-items:center;color:#f4c7cc;font-weight:700;font-size:.72rem}
 .profile-option-copy{display:block;min-width:0;flex:1}
