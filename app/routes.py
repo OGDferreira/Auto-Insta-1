@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 
 import logging
 import io
@@ -15,6 +16,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from supabase import create_client
@@ -36,6 +38,8 @@ from .jobs import (
 from .models import (
     AutomationRule,
     BotEvent,
+    CollaboratorConnection,
+    CollaboratorDailyBonus,
     DirectContact,
     InstagramAccount,
     InstagramMetric,
@@ -119,6 +123,29 @@ def account_status_classes(accounts: list[InstagramAccount]) -> dict[int, str]:
     }
 
 
+def _account_publication_stats(
+    posts: list[ScheduledPost],
+    account_ids: list[int],
+) -> dict[int, dict[str, int]]:
+    stats = {
+        account_id: {"published": 0, "failed": 0, "pending": 0, "processing": 0}
+        for account_id in account_ids
+    }
+    for post in posts:
+        account_stats = stats.get(post.account_id)
+        if account_stats is None:
+            continue
+        if post.status == "published":
+            account_stats["published"] += 1
+        elif post.status in {"failed", "blocked"}:
+            account_stats["failed"] += 1
+        elif post.status == "processing":
+            account_stats["processing"] += 1
+        elif post.status in PENDING_STATUSES:
+            account_stats["pending"] += 1
+    return stats
+
+
 def _metric_views_by_account(
     metric_rows: list[InstagramMetric],
     account_ids: list[int],
@@ -149,7 +176,9 @@ async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> 
     if user.role == "collaborator" and request.url.path not in {
         "/hub", "/auth/instagram/start", "/auth/callback", "/media/upload",
         "/logout", "/profile", "/collaborators",
-    } and not request.url.path.startswith(("/accounts/", "/api/drive/", "/api/notifications/")):
+    } and not request.url.path.startswith((
+        "/accounts/", "/api/drive/", "/api/notifications/", "/collaborators/",
+    )):
         request.session["access_notice"] = "Acesso restrito: colaboradores usam apenas o Hub de Contas."
         raise HTTPException(status_code=307, headers={"Location": "/hub"})
     return user
@@ -185,7 +214,184 @@ def local_scheduled_datetime(value: datetime) -> str:
     return utc_value.astimezone(LOCAL_TIMEZONE).strftime("%d/%m/%Y %H:%M")
 
 
+def format_brl(value: object) -> str:
+    amount = Decimal(str(value or 0)).quantize(Decimal("0.01"))
+    formatted = f"{amount:,.2f}".replace(",", "\0").replace(".", ",").replace("\0", ".")
+    return f"R$ {formatted}"
+
+
+def _local_day_bounds(value: date) -> tuple[datetime, datetime]:
+    start = datetime.combine(value, time.min, tzinfo=LOCAL_TIMEZONE).astimezone(timezone.utc)
+    end = datetime.combine(value + timedelta(days=1), time.min, tzinfo=LOCAL_TIMEZONE).astimezone(timezone.utc)
+    return start, end
+
+
+def _decimal_money(value: object, field_name: str) -> Decimal:
+    try:
+        amount = Decimal(str(value)).quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"Valor inválido para {field_name}") from exc
+    if not amount.is_finite() or amount < 0 or amount > Decimal("99999999.99"):
+        raise HTTPException(status_code=400, detail=f"Valor fora do limite para {field_name}")
+    return amount
+
+
+def _validate_collaborator_compensation(
+    rate_per_account: object,
+    daily_target: int,
+    daily_bonus: object,
+) -> tuple[Decimal, int, Decimal]:
+    rate = _decimal_money(rate_per_account, "valor por conta")
+    bonus = _decimal_money(daily_bonus, "bônus diário")
+    if daily_target < 0 or daily_target > 100000:
+        raise HTTPException(status_code=400, detail="A meta diária deve estar entre 0 e 100000 contas")
+    if bonus and not daily_target:
+        raise HTTPException(status_code=400, detail="Defina uma meta diária para configurar o bônus")
+    return rate, daily_target, bonus
+
+
+async def _record_collaborator_connection(
+    db: AsyncSession,
+    collaborator: User,
+    account: InstagramAccount,
+) -> None:
+    if (
+        collaborator.role != "collaborator"
+        or collaborator.parent_id is None
+        or account.connection_status not in {"connected", "active"}
+    ):
+        return
+    existing = await db.scalar(
+        select(CollaboratorConnection.id).where(
+            CollaboratorConnection.owner_id == collaborator.parent_id,
+            CollaboratorConnection.instagram_user_id == account.instagram_user_id,
+        )
+    )
+    if existing is not None:
+        return
+
+    connected_at = datetime.now(timezone.utc)
+    local_date = connected_at.astimezone(LOCAL_TIMEZONE).date()
+    day_start, day_end = _local_day_bounds(local_date)
+    connection = CollaboratorConnection(
+        owner_id=collaborator.parent_id,
+        collaborator_id=collaborator.id,
+        instagram_account_id=account.id,
+        instagram_user_id=account.instagram_user_id,
+        connected_at=connected_at,
+        rate_per_account=_decimal_money(collaborator.collaborator_rate_per_account, "valor por conta"),
+        daily_target=collaborator.collaborator_daily_target,
+        daily_bonus=_decimal_money(collaborator.collaborator_daily_bonus, "bônus diário"),
+    )
+    try:
+        async with db.begin_nested():
+            db.add(connection)
+            await db.flush()
+    except IntegrityError:
+        return
+
+    if connection.daily_target <= 0 or connection.daily_bonus <= 0:
+        return
+    connection_count = await db.scalar(
+        select(func.count(CollaboratorConnection.id)).where(
+            CollaboratorConnection.collaborator_id == collaborator.id,
+            CollaboratorConnection.connected_at >= day_start,
+            CollaboratorConnection.connected_at < day_end,
+        )
+    )
+    if connection_count < connection.daily_target:
+        return
+    existing_bonus = await db.scalar(
+        select(CollaboratorDailyBonus.id).where(
+            CollaboratorDailyBonus.collaborator_id == collaborator.id,
+            CollaboratorDailyBonus.local_date == local_date,
+        )
+    )
+    if existing_bonus is not None:
+        return
+    try:
+        async with db.begin_nested():
+            db.add(CollaboratorDailyBonus(
+                owner_id=collaborator.parent_id,
+                collaborator_id=collaborator.id,
+                local_date=local_date,
+                target=connection.daily_target,
+                amount=connection.daily_bonus,
+                awarded_at=connected_at,
+            ))
+            await db.flush()
+    except IntegrityError:
+        return
+
+
+async def _collaborator_daily_summary(
+    db: AsyncSession,
+    collaborator: User,
+    start_date: date,
+    end_date: date,
+) -> list[dict]:
+    start_at, _ = _local_day_bounds(start_date)
+    _, end_at = _local_day_bounds(end_date)
+    connections = (await db.scalars(
+        select(CollaboratorConnection)
+        .where(
+            CollaboratorConnection.collaborator_id == collaborator.id,
+            CollaboratorConnection.connected_at >= start_at,
+            CollaboratorConnection.connected_at < end_at,
+        )
+        .order_by(CollaboratorConnection.connected_at, CollaboratorConnection.id)
+    )).all()
+    bonuses = (await db.scalars(
+        select(CollaboratorDailyBonus).where(
+            CollaboratorDailyBonus.collaborator_id == collaborator.id,
+            CollaboratorDailyBonus.local_date >= start_date,
+            CollaboratorDailyBonus.local_date <= end_date,
+        )
+    )).all()
+    connections_by_day: dict[date, list[CollaboratorConnection]] = {}
+    for item in connections:
+        item_time = item.connected_at
+        if item_time.tzinfo is None:
+            item_time = item_time.replace(tzinfo=timezone.utc)
+        connections_by_day.setdefault(item_time.astimezone(LOCAL_TIMEZONE).date(), []).append(item)
+    bonuses_by_day = {item.local_date: item for item in bonuses}
+    days = []
+    cursor = start_date
+    while cursor <= end_date:
+        daily_connections = connections_by_day.get(cursor, [])
+        daily_bonus = bonuses_by_day.get(cursor)
+        count = len(daily_connections)
+        target = daily_bonus.target if daily_bonus else (
+            daily_connections[-1].daily_target if daily_connections else collaborator.collaborator_daily_target
+        )
+        rate_counts: dict[Decimal, int] = {}
+        for item in daily_connections:
+            rate = Decimal(str(item.rate_per_account))
+            rate_counts[rate] = rate_counts.get(rate, 0) + 1
+        subtotal = sum(
+            (Decimal(str(item.rate_per_account)) for item in daily_connections),
+            Decimal("0.00"),
+        )
+        bonus_amount = Decimal(str(daily_bonus.amount)) if daily_bonus else Decimal("0.00")
+        days.append({
+            "date": cursor,
+            "connections": count,
+            "rate_summary": " · ".join(
+                f"{format_brl(rate)} × {count}"
+                for rate, count in sorted(rate_counts.items())
+            ) or "—",
+            "rate_total": subtotal,
+            "target": target,
+            "goal_reached": target > 0 and count >= target,
+            "bonus": bonus_amount,
+            "total": subtotal + bonus_amount,
+        })
+        cursor += timedelta(days=1)
+    return days
+
+
 templates.env.globals["local_scheduled_datetime"] = local_scheduled_datetime
+templates.env.globals["format_brl"] = format_brl
 
 
 def _notification_payload(total_views: int, account_count: int) -> str:
@@ -693,7 +899,11 @@ async def dashboard(
         return RedirectResponse("/hub", status_code=status.HTTP_303_SEE_OTHER)
     owner_id = workspace_owner_id(user)
     await _remove_stale_pending_accounts(db, owner_id)
-    accounts = (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == owner_id))).all()
+    accounts = (await db.scalars(
+        select(InstagramAccount)
+        .where(InstagramAccount.owner_id == owner_id)
+        .order_by(InstagramAccount.created_at, InstagramAccount.id)
+    )).all()
     batches = (
         await db.scalars(
             select(PostingBatch)
@@ -702,7 +912,7 @@ async def dashboard(
         )
     ).all()
     batch_account_ids = {
-        batch.id: set(json.loads(batch.account_ids or "[]"))
+        batch.id: list(dict.fromkeys(json.loads(batch.account_ids or "[]")))
         for batch in batches
     }
     if account_id is not None and not any(account.id == account_id for account in accounts):
@@ -717,10 +927,21 @@ async def dashboard(
             posts_query.order_by(ScheduledPost.scheduled_for.desc())
         )
     ).all()
-    def build_account_groups(batch_posts):
+    accounts_by_id = {account.id: account for account in accounts}
+
+    def build_account_groups(batch_posts, account_ids=None):
         grouped = {}
         for post in batch_posts:
             grouped.setdefault(post.account_id, []).append(post)
+        if account_ids is not None:
+            return [
+                {
+                    "account": accounts_by_id[account_id],
+                    "posts": grouped.get(account_id, []),
+                }
+                for account_id in account_ids
+                if account_id in accounts_by_id
+            ]
         return [
             {
                 "account": account_posts[0].account,
@@ -735,7 +956,10 @@ async def dashboard(
         queue_groups.append({
             "batch": batch,
             "posts": batch_posts,
-            "account_groups": build_account_groups(batch_posts),
+            "account_groups": build_account_groups(
+                batch_posts,
+                batch_account_ids[batch.id],
+            ),
         })
     queue_groups = [group for group in queue_groups if group["posts"]]
     unbatched_posts = [post for post in posts if post.batch_id is None]
@@ -809,6 +1033,9 @@ async def dashboard(
             "accounts": accounts,
             "account_status_classes": account_status_classes(accounts),
             "account_views": account_views,
+            "account_publication_stats": _account_publication_stats(
+                posts, [account.id for account in accounts]
+            ),
             "posts": posts,
             "batches": batches,
             "queue_groups": queue_groups,
@@ -1054,9 +1281,39 @@ async def delete_selected_accounts(
 async def hub(request: Request, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     owner_id = workspace_owner_id(user)
     await _remove_stale_pending_accounts(db, owner_id)
-    query = select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
+    query = (
+        select(InstagramAccount)
+        .where(InstagramAccount.owner_id == owner_id)
+        .order_by(InstagramAccount.created_at, InstagramAccount.id)
+    )
     accounts = (await db.scalars(query)).all()
+    account_publication_stats = {
+        account.id: {"published": 0, "failed": 0, "pending": 0, "processing": 0}
+        for account in accounts
+    }
+    publication_counts = await db.execute(
+        select(ScheduledPost.account_id, ScheduledPost.status, func.count(ScheduledPost.id))
+        .where(ScheduledPost.owner_id == owner_id)
+        .group_by(ScheduledPost.account_id, ScheduledPost.status)
+    )
+    for account_id, post_status, count in publication_counts:
+        stats = account_publication_stats.get(account_id)
+        if stats is None:
+            continue
+        if post_status == "published":
+            stats["published"] += count
+        elif post_status in {"failed", "blocked"}:
+            stats["failed"] += count
+        elif post_status == "processing":
+            stats["processing"] += count
+        elif post_status in PENDING_STATUSES:
+            stats["pending"] += count
     account_views = {}
+    collaborator_today = None
+    if user.role == "collaborator":
+        today = datetime.now(LOCAL_TIMEZONE).date()
+        today_rows = await _collaborator_daily_summary(db, user, today, today)
+        collaborator_today = today_rows[0]
     token_expiry_details = {}
     now = datetime.now(timezone.utc)
     for account in accounts:
@@ -1088,7 +1345,7 @@ async def hub(request: Request, user: User = Depends(current_user), db: AsyncSes
                 "expired": remaining_seconds <= 0,
                 "warning": remaining_seconds <= 7 * 86400,
             }
-    response = templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_status_classes": account_status_classes(accounts), "account_views": account_views, "token_expiry_details": token_expiry_details, "notice": request.session.pop("access_notice", None)})
+    response = templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_status_classes": account_status_classes(accounts), "account_views": account_views, "account_publication_stats": account_publication_stats, "token_expiry_details": token_expiry_details, "collaborator_today": collaborator_today, "notice": request.session.pop("access_notice", None)})
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -1172,12 +1429,18 @@ async def instagram_metrics_page(
 async def create_collaborator(
     username: str = Form(...),
     password: str = Form(...),
+    rate_per_account: Decimal = Form(Decimal("0")),
+    daily_target: int = Form(0),
+    daily_bonus: Decimal = Form(Decimal("0")),
     user: User = Depends(admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     username = username.strip()
     if not USERNAME_PATTERN.fullmatch(username):
         raise HTTPException(status_code=400, detail="Nome de usuário inválido")
+    rate, target, bonus = _validate_collaborator_compensation(
+        rate_per_account, daily_target, daily_bonus
+    )
     if await db.scalar(select(User).where(User.username == username)):
         raise HTTPException(status_code=409, detail="Nome de usuário já está em uso")
     collaborator = User(
@@ -1186,10 +1449,130 @@ async def create_collaborator(
         password_hash=hash_password(password),
         role="collaborator",
         parent_id=user.id,
+        collaborator_rate_per_account=rate,
+        collaborator_daily_target=target,
+        collaborator_daily_bonus=bonus,
     )
     db.add(collaborator)
     await db.commit()
     return RedirectResponse("/dashboard#overview", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/api/collaborators")
+async def list_collaborators(
+    user: User = Depends(admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    collaborators = (await db.scalars(
+        select(User)
+        .where(User.role == "collaborator", User.parent_id == user.id)
+        .order_by(User.created_at, User.id)
+    )).all()
+    return {
+        "collaborators": [
+            {
+                "id": collaborator.id,
+                "username": collaborator.username,
+                "rate_per_account": float(collaborator.collaborator_rate_per_account or 0),
+                "daily_target": collaborator.collaborator_daily_target,
+                "daily_bonus": float(collaborator.collaborator_daily_bonus or 0),
+                "report_url": f"/collaborators/{collaborator.id}/report",
+            }
+            for collaborator in collaborators
+        ]
+    }
+
+
+@router.put("/api/collaborators/{collaborator_id}")
+async def update_collaborator_compensation(
+    collaborator_id: int,
+    request: Request,
+    user: User = Depends(admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    collaborator = await db.scalar(select(User).where(
+        User.id == collaborator_id,
+        User.role == "collaborator",
+        User.parent_id == user.id,
+    ))
+    if collaborator is None:
+        raise HTTPException(status_code=404, detail="Colaborador não encontrado")
+    payload = await request.json()
+    try:
+        target = int(payload.get("daily_target", -1))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Meta diária inválida") from exc
+    rate, target, bonus = _validate_collaborator_compensation(
+        payload.get("rate_per_account"), target, payload.get("daily_bonus")
+    )
+    collaborator.collaborator_rate_per_account = rate
+    collaborator.collaborator_daily_target = target
+    collaborator.collaborator_daily_bonus = bonus
+    await db.commit()
+    return {
+        "id": collaborator.id,
+        "rate_per_account": float(rate),
+        "daily_target": target,
+        "daily_bonus": float(bonus),
+    }
+
+
+@router.get("/collaborators/{collaborator_id}/report", response_class=HTMLResponse)
+async def collaborator_report(
+    request: Request,
+    collaborator_id: int,
+    period: str = "month",
+    from_date: date | None = None,
+    to_date: date | None = None,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user.role == "collaborator":
+        if collaborator_id != user.id:
+            raise HTTPException(status_code=404, detail="Colaborador não encontrado")
+        collaborator = user
+    else:
+        collaborator = await db.scalar(select(User).where(
+            User.id == collaborator_id,
+            User.role == "collaborator",
+            User.parent_id == user.id,
+        ))
+        if collaborator is None:
+            raise HTTPException(status_code=404, detail="Colaborador não encontrado")
+    today = datetime.now(LOCAL_TIMEZONE).date()
+    if from_date is None or to_date is None:
+        if period == "day":
+            from_date = to_date = today
+        elif period == "week":
+            from_date = today - timedelta(days=today.weekday())
+            to_date = today
+        elif period == "month":
+            from_date = today.replace(day=1)
+            to_date = today
+        else:
+            raise HTTPException(status_code=400, detail="Período inválido")
+    if from_date > to_date or (to_date - from_date).days > 365:
+        raise HTTPException(status_code=400, detail="O período deve abranger no máximo 366 dias")
+    daily_rows = await _collaborator_daily_summary(db, collaborator, from_date, to_date)
+    totals = {
+        "connections": sum(item["connections"] for item in daily_rows),
+        "subtotal": sum((item["rate_total"] for item in daily_rows), Decimal("0.00")),
+        "bonus": sum((item["bonus"] for item in daily_rows), Decimal("0.00")),
+        "total": sum((item["total"] for item in daily_rows), Decimal("0.00")),
+    }
+    response = templates.TemplateResponse("collaborator_report.html", {
+        "request": request,
+        "user": user,
+        "collaborator": collaborator,
+        "daily_rows": daily_rows,
+        "totals": totals,
+        "period": period,
+        "from_date": from_date,
+        "to_date": to_date,
+        "is_manager": user.role == "admin",
+    })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response
 
 
 @router.get("/api/status")
@@ -2231,6 +2614,7 @@ async def instagram_callback(
         await db.delete(pending_account)
     loop_posts_to_schedule = []
     if account.connection_status in {"active", "connected"}:
+        await _record_collaborator_connection(db, user, account)
         loop_posts_to_schedule = await _include_account_in_existing_loops(
             db, owner_id, account.id
         )

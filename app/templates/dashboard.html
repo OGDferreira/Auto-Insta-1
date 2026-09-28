@@ -9,10 +9,10 @@
 <style>
   body > nav { padding:.4rem 0 .5rem; margin-bottom:.75rem; }
   .queue-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:.75rem; }
-  .queue-card { position:relative; overflow:hidden; padding:0; background:rgba(35,39,46,.76); border:1px solid rgba(75,81,90,.35); border-radius:14px; }
+  .queue-card { position:relative; overflow:hidden; padding:0; background:rgba(31,42,36,.76); border:1px solid rgba(62,90,76,.45); border-radius:14px; }
   .selectable-card { touch-action:none; }
-  .queue-card.selected { border-color:var(--cyan); box-shadow:0 0 0 2px rgba(142,150,161,.28),0 18px 50px rgba(0,0,0,.2); }
-  .queue-media { aspect-ratio:1 / 1; background:#080b14; overflow:hidden; }
+  .queue-card.selected { border-color:var(--cyan); box-shadow:0 0 0 2px rgba(212,175,55,.24),0 18px 50px rgba(0,0,0,.2); }
+  .queue-media { aspect-ratio:1 / 1; background:#0A0A0C; overflow:hidden; }
   .queue-media-content,.queue-media-content img,.queue-media-content video { width:100%; height:100%; display:block; object-fit:cover; }
   .queue-card-body { padding:.85rem; }
   .queue-card-head { display:flex; align-items:center; gap:.5rem; padding-right:2rem; }
@@ -20,8 +20,8 @@
   .queue-account span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .queue-account img,.queue-account-initial { width:24px; height:24px; flex:none; border-radius:50%; object-fit:cover; display:grid; place-items:center; background:linear-gradient(135deg,var(--cyan),var(--primary)); color:#07101c; font-size:.68rem; }
   .queue-meta { display:flex; align-items:center; justify-content:space-between; gap:.5rem; margin-top:.7rem; color:var(--muted); font-size:.72rem; }
-  .queue-delete { position:absolute; top:.65rem; right:.65rem; width:30px; height:30px; padding:0; border:1px solid rgba(255,112,136,.35); border-radius:8px; background:rgba(8,11,20,.78); color:var(--danger); font-size:1rem; z-index:1; }
-  .queue-delete:hover { background:rgba(255,112,136,.15); transform:none; box-shadow:none; }
+  .queue-delete { position:absolute; top:.65rem; right:.65rem; width:30px; height:30px; padding:0; border:1px solid rgba(239,68,68,.35); border-radius:8px; background:rgba(10,10,12,.82); color:var(--danger); font-size:1rem; z-index:1; }
+  .queue-delete:hover { background:rgba(239,68,68,.15); transform:none; box-shadow:none; }
   .caption-mode { display:flex; gap:.5rem; margin:.8rem 0; }
   .caption-mode label { flex:1; margin:0; padding:.65rem; border:1px solid var(--line); border-radius:9px; color:var(--text); font-size:.78rem; cursor:pointer; }
   .caption-mode input { display:inline-block; width:auto; margin:0 .35rem 0 0; }
@@ -41,11 +41,17 @@
   .queue-toolbar-actions select { width:auto; margin:0; padding:.5rem .65rem; }
   .privacy-blur { filter:blur(10px); transition:filter .2s ease; }
   .account-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:.75rem; }
-  .account-list .account-row { display:flex; min-width:0; align-items:center; gap:.6rem; padding:.8rem; border:1px solid var(--line); border-radius:14px; background:linear-gradient(145deg,rgba(17,24,39,.96),rgba(7,11,24,.96)); }
-  .account-list .account-row.status-connected { border-color:#D7DCE2; box-shadow:0 0 18px rgba(215,220,226,.16); }
-  .account-list .account-row.status-disconnected,.account-list .account-row.status-suspended { border-color:#8E96A1; box-shadow:0 0 20px rgba(142,150,161,.3); }
-  .account-list .account-row.status-error { border-color:#8E96A1; box-shadow:0 0 20px rgba(142,150,161,.28); }
-  .account-list .account-row.status-pending { border-color:#4B515A; box-shadow:0 0 20px rgba(75,81,90,.2); }
+  .account-list .account-row { display:flex; min-width:0; align-items:center; gap:.6rem; padding:.8rem; border:1px solid var(--line); border-radius:14px; background:linear-gradient(145deg,rgba(31,42,36,.96),rgba(10,10,12,.96)); }
+  .account-list .account-row.status-connected { border-color:var(--success); box-shadow:0 0 18px rgba(34,197,94,.12); }
+  .account-list .account-row.status-disconnected,.account-list .account-row.status-suspended,.account-list .account-row.status-error { border-color:var(--danger); box-shadow:0 0 20px rgba(239,68,68,.2); }
+  .account-list .account-row.status-pending { border-color:var(--warning); box-shadow:0 0 20px rgba(250,204,21,.12); }
+  .account-list .account-row.publication-warning { border-color:var(--warning); }
+  .account-list .account-row.publication-error { border-color:var(--danger); }
+  .account-list .account-row.status-disconnected,.account-list .account-row.status-suspended,.account-list .account-row.status-error { border-color:var(--danger)!important; }
+  .account-publication-status { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.3rem; font-size:.65rem; font-weight:600; }
+  .account-publication-status .published { color:var(--success); }
+  .account-publication-status .failed { color:var(--danger); }
+  .account-publication-status .queued { color:var(--warning); }
   @media (max-width:1200px) { .queue-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } }
   @media (max-width:850px) { .queue-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:.55rem; } .queue-card-body { padding:.6rem; } .queue-account { font-size:.72rem; } .queue-meta { align-items:flex-start; flex-direction:column; gap:.3rem; } }
   @media (max-width:520px) { .queue-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .queue-media { aspect-ratio:1 / 1; } }
@@ -54,7 +60,7 @@
   .account-list .account-row .account-automation small { display:none; }
     .account-status-reason { display:block; margin-top:.2rem; color:var(--muted); font-size:.68rem; font-weight:500; }
     .retry-post { width:auto; margin-top:.55rem; padding:.35rem .55rem; font-size:.7rem; }
-    .status-badge.blocked { color:#fff7ed; background:#c2410c; border-color:#fb923c; }
+    .status-badge.blocked { color:#fff; background:#991b1b; border-color:var(--danger); }
     .account-status-checked { display:block; margin-top:.15rem; color:var(--muted); font-size:.62rem; font-weight:500; }
   .account-list .profile-avatar { width:38px; height:38px; }
   .account-list .text-button { padding:.4rem; background:transparent; color:var(--danger); }
@@ -62,32 +68,34 @@
   #status-chart { max-width:180px; max-height:180px; margin:0 auto; display:block; }
   .queue-select { position:absolute; top:.78rem; left:.78rem; z-index:2; width:18px; height:18px; accent-color:var(--primary); }
   .queue-select { display:none; }
-  .drive-modal-backdrop { position:fixed; inset:0; z-index:60; display:grid; place-items:center; padding:1rem; background:rgba(2,6,23,.78); backdrop-filter:blur(8px); }
+  .drive-modal-backdrop { position:fixed; inset:0; z-index:60; display:grid; place-items:center; padding:1rem; background:rgba(10,10,12,.82); backdrop-filter:blur(8px); }
   .drive-modal { width:min(900px,100%); max-height:min(80vh,720px); display:flex; flex-direction:column; padding:1.25rem; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:0 24px 90px rgba(0,0,0,.5); }
   .drive-modal-header,.drive-modal-actions { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+  .drive-header-actions { display:flex; align-items:center; gap:.45rem; }
+  .drive-header-actions button { width:auto; white-space:nowrap; }
   .drive-modal-header h3 { margin:.3rem 0 0; }
   .drive-close { width:34px; height:34px; padding:0; }
   .drive-selection-toolbar { display:flex; align-items:center; justify-content:space-between; gap:.75rem; padding:.7rem 0 0; border-top:1px solid var(--line); }
   .drive-selection-actions { display:flex; align-items:center; gap:.45rem; flex-wrap:wrap; }
   .drive-selection-actions button { width:auto; padding:.45rem .65rem; font-size:.78rem; }
   .drive-picker { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:.65rem; overflow:auto; padding:.9rem 0; }
-  .drive-file { position:relative; min-height:78px; display:flex; flex-direction:column; align-items:flex-start; gap:.35rem; padding:.75rem; text-align:left; background:#0c111e; border:1px solid var(--line); border-radius:12px; user-select:none; touch-action:none; }
-  .drive-file:hover,.drive-file.selected { border-color:var(--cyan); background:rgba(75,81,90,.3); transform:translateY(-2px); box-shadow:0 10px 28px rgba(0,0,0,.18); }
+  .drive-file { position:relative; min-height:78px; display:flex; flex-direction:column; align-items:flex-start; gap:.35rem; padding:.75rem; text-align:left; background:var(--panel); border:1px solid var(--line); border-radius:12px; user-select:none; touch-action:none; }
+  .drive-file:hover,.drive-file.selected { border-color:var(--cyan); background:rgba(212,175,55,.12); transform:translateY(-2px); box-shadow:0 10px 28px rgba(0,0,0,.18); }
   .drive-file-check { position:absolute; top:.55rem; right:.55rem; display:grid; place-items:center; width:22px; height:22px; border:1px solid var(--line); border-radius:6px; color:transparent; }
-  .drive-file.selected .drive-file-check { color:#160b24; background:var(--cyan); border-color:var(--cyan); }
+  .drive-file.selected .drive-file-check { color:#0A0A0C; background:var(--cyan); border-color:var(--cyan); }
   .drive-file-name { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); font-weight:700; }
   .drive-file small { color:var(--muted); }
-  .drive-folder { border-color:rgba(142,150,161,.35); }
-  .drive-folder.selected { border-color:#8E96A1; background:rgba(142,150,161,.12); }
-  .drive-folder-icon { color:#8E96A1; }
+  .drive-folder { border-color:rgba(62,90,76,.55); }
+  .drive-folder.selected { border-color:var(--cyan); background:rgba(212,175,55,.12); }
+  .drive-folder-icon { color:var(--cyan); }
   .drive-folder-open { margin-top:auto; padding:.3rem .5rem; font-size:.7rem; }
   .drive-modal-actions { border-top:1px solid var(--line); padding-top:.9rem; }
   .drive-modal-actions button { width:auto; }
   .queue-card-body { position:relative; }
   .batch-list { display:grid; gap:.65rem; margin-bottom:1rem; }
-  .batch-accordion { border:1px solid var(--line); border-radius:12px; background:rgba(17,24,39,.7); overflow:hidden; }
-  .batch-accordion[open] { border-color:rgba(142,150,161,.45); }
-  .batch-accordion.paused { border-color:#8E96A1; }
+  .batch-accordion { border:1px solid var(--line); border-radius:12px; background:rgba(31,42,36,.7); overflow:hidden; }
+  .batch-accordion[open] { border-color:rgba(212,175,55,.45); }
+  .batch-accordion.paused { border-color:var(--warning); }
   .batch-summary { display:flex; align-items:center; justify-content:space-between; gap:.8rem; padding:.85rem .9rem; cursor:pointer; list-style:none; }
   .batch-summary::-webkit-details-marker { display:none; }
   .batch-summary::before { content:"▸"; color:var(--cyan); margin-right:.5rem; transition:transform .2s ease; }
@@ -100,14 +108,14 @@
   .batch-previews-hidden .batch-queue { display:none; }
   .batch-statuses { display:flex; align-items:center; gap:.35rem; flex-wrap:wrap; margin-top:.35rem; }
   .batch-status-count { display:inline-flex; align-items:center; gap:.2rem; padding:.2rem .4rem; border:1px solid var(--line); border-radius:999px; font-size:.68rem; line-height:1; background:transparent; cursor:pointer; }
-  .batch-status-count.awaiting { color:#8E96A1; border-color:rgba(142,150,161,.35); }
+  .batch-status-count.awaiting { color:var(--warning); border-color:rgba(250,204,21,.35); }
   .batch-status-count.failed { color:var(--danger); border-color:rgba(244,63,94,.35); }
-  .batch-status-count.completed { color:#D7DCE2; border-color:rgba(215,220,226,.35); }
-  .batch-status-count.processing { color:var(--cyan); border-color:rgba(142,150,161,.35); }
+  .batch-status-count.completed { color:var(--success); border-color:rgba(34,197,94,.35); }
+  .batch-status-count.processing { color:var(--cyan); border-color:rgba(212,175,55,.35); }
   .batch-content { padding:0 .9rem .9rem; }
   .batch-accounts-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:.55rem; margin:.2rem 0 .8rem; }
-  .batch-account-summary { display:flex; flex-direction:column; align-items:flex-start; gap:.3rem; width:100%; padding:.65rem .7rem; text-align:left; background:rgba(8,11,20,.45); border:1px solid var(--line); border-radius:10px; }
-  .batch-account-summary:hover,.batch-account-summary.active { border-color:var(--cyan); background:rgba(142,150,161,.08); transform:none; box-shadow:none; }
+  .batch-account-summary { display:flex; flex-direction:column; align-items:flex-start; gap:.3rem; width:100%; padding:.65rem .7rem; text-align:left; background:rgba(10,10,12,.55); border:1px solid var(--line); border-radius:10px; }
+  .batch-account-summary:hover,.batch-account-summary.active { border-color:var(--cyan); background:rgba(212,175,55,.08); transform:none; box-shadow:none; }
   .batch-account-summary strong { overflow:hidden; text-overflow:ellipsis; max-width:100%; }
   .batch-account-statuses { display:flex; flex-wrap:wrap; gap:.25rem; }
   .batch-account-status { color:var(--muted); font-size:.65rem; }
@@ -134,12 +142,12 @@
   .loop-tab:hover,.loop-tab.active { color:var(--text); border-color:var(--cyan); background:transparent; box-shadow:none; transform:none; }
   .loop-tab[aria-selected="true"] { color:var(--cyan); border-color:var(--cyan); }
   .loop-view-panel[hidden],.loop-details[hidden],.loop-error-panel[hidden] { display:none!important; }
-  .loop-details { margin:.2rem .9rem .9rem; padding:.85rem; border-top:1px solid var(--line); background:rgba(8,11,20,.32); }
+  .loop-details { margin:.2rem .9rem .9rem; padding:.85rem; border-top:1px solid var(--line); background:rgba(10,10,12,.42); }
   .loop-details-heading,.loop-schedule-row,.loop-error-heading { display:flex; align-items:center; justify-content:space-between; gap:.7rem; }
   .loop-schedule-account { margin-top:.75rem; }
   .loop-schedule-account h4,.loop-error-group h4 { margin:.2rem 0 .4rem; font-size:.78rem; }
   .loop-schedule-list,.loop-error-list { display:grid; gap:.35rem; margin:0; padding:0; list-style:none; }
-  .loop-schedule-row,.loop-error-row { padding:.55rem .65rem; border:1px solid var(--line); border-radius:7px; background:rgba(17,24,39,.65); font-size:.74rem; }
+  .loop-schedule-row,.loop-error-row { padding:.55rem .65rem; border:1px solid var(--line); border-radius:7px; background:rgba(31,42,36,.65); font-size:.74rem; }
   .loop-schedule-row small,.loop-error-row small,.loop-error-row time { display:block; margin-top:.2rem; color:var(--muted); font-size:.68rem; }
   .loop-schedule-state { color:var(--cyan); white-space:nowrap; }
   .loop-error-panel { display:grid; gap:.75rem; }
@@ -149,28 +157,43 @@
   .loop-error-row button,.loop-details-heading button { padding:.38rem .55rem; font-size:.7rem; }
   .loop-details-toggle { width:auto; padding:.42rem .6rem; font-size:.7rem; }
   .loop-empty { margin:.5rem 0; }
-  .loop-card { margin:.75rem 0; border:1px solid var(--line); border-radius:9px; background:rgba(17,24,39,.7); }
+  .loop-card { margin:.75rem 0; border:1px solid var(--line); border-radius:9px; background:rgba(31,42,36,.7); }
   .loop-card-summary { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; padding:.9rem 1rem; }
   .loop-card-title { display:flex; align-items:center; gap:.55rem; min-width:0; font-weight:700; }
   .loop-card-meta { display:flex; flex-wrap:wrap; gap:.55rem; margin-top:.3rem; color:var(--muted); font-size:.75rem; }
-  .loop-active-badge { padding:.15rem .4rem; border-radius:4px; background:rgba(215,220,226,.14); color:#D7DCE2; font-size:.7rem; }
+  .loop-active-badge { padding:.15rem .4rem; border-radius:4px; background:rgba(212,175,55,.14); color:var(--cyan); font-size:.7rem; }
   .loop-account-chips { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.6rem; }
-  .loop-account-chip { padding:.18rem .38rem; border-radius:4px; color:var(--text); background:#172332; font-size:.72rem; }
+  .loop-account-chip { padding:.18rem .38rem; border-radius:4px; color:var(--text); background:#1F2A24; font-size:.72rem; }
+  .loop-account-health { display:flex; align-items:center; gap:.45rem; border:1px solid var(--line); }
+  .loop-account-health.error { border-color:var(--danger); color:var(--danger); background:rgba(239,68,68,.08); }
+  .loop-account-health.warning { border-color:var(--warning); color:var(--warning); background:rgba(250,204,21,.07); }
+  .loop-account-health.success { border-color:var(--success); color:var(--success); background:rgba(34,197,94,.07); }
+  .loop-account-health.idle { border-color:var(--line); color:var(--muted); }
+  .loop-account-counters { display:inline-flex; align-items:center; gap:.3rem; margin-left:.15rem; }
+  .loop-account-counter { display:inline-flex; align-items:center; gap:.12rem; font-size:.65rem; font-weight:700; }
+  .loop-account-counter::before { width:7px; height:7px; content:""; border-radius:50%; background:currentColor; }
+  .loop-account-counter.published { color:var(--success); }
+  .loop-account-counter.failed { color:var(--danger); }
+  .loop-account-counter.queued { color:var(--warning); }
+  .loop-status-legend { display:flex; flex-wrap:wrap; gap:.8rem; margin:.5rem 0; font-size:.7rem; }
+  .loop-status-legend .published { color:var(--success); }
+  .loop-status-legend .failed { color:var(--danger); }
+  .loop-status-legend .queued { color:var(--warning); }
   .loop-card-actions { display:flex; align-items:center; gap:.4rem; }
   .loop-card-actions button,.loop-card-actions form { width:auto; margin:0; }
   .loop-card-actions button { width:32px; height:32px; padding:.35rem; }
   .loop-totals { margin:.7rem 0 0; color:var(--muted); font-size:.75rem; }
-  .loop-totals strong { color:#D7DCE2; }
-  .loop-editor { margin:0 1rem 1rem; padding:1rem; border:1px solid var(--line); border-radius:8px; background:rgba(9,15,24,.68); }
+  .loop-totals strong { color:var(--success); }
+  .loop-editor { margin:0 1rem 1rem; padding:1rem; border:1px solid var(--line); border-radius:8px; background:rgba(10,10,12,.86); }
   .loop-editor[hidden] { display:none; }
   .loop-editor-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:.6rem; font-size:.76rem; }
   .loop-editor-head button { width:auto; padding:.25rem .4rem; color:var(--muted); background:transparent; box-shadow:none; }
   .loop-editor-fields { display:grid; grid-template-columns:minmax(150px,1fr) minmax(130px,.55fr); gap:.6rem; }
   .loop-editor-fields label { margin:.3rem 0; font-size:.72rem; }
   .loop-account-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.4rem; margin:.45rem 0 .8rem; }
-  .loop-account-card { display:flex; align-items:center; gap:.45rem; min-width:0; margin:0; padding:.45rem .55rem; border:1px solid var(--line); border-radius:6px; color:var(--text); background:rgba(18,27,38,.64); cursor:pointer; transition:background .15s,border-color .15s; }
-  .loop-account-card:hover { border-color:#536273; }
-  .loop-account-card:has(input:checked) { border-color:var(--cyan); background:rgba(0,190,210,.13); }
+  .loop-account-card { display:flex; align-items:center; gap:.45rem; min-width:0; margin:0; padding:.45rem .55rem; border:1px solid var(--line); border-radius:6px; color:var(--text); background:rgba(31,42,36,.64); cursor:pointer; transition:background .15s,border-color .15s; }
+  .loop-account-card:hover { border-color:var(--cyan); }
+  .loop-account-card:has(input:checked) { border-color:var(--cyan); background:rgba(212,175,55,.13); }
   .loop-account-card input { width:15px; height:15px; flex:none; margin:0; accent-color:var(--cyan); }
   .loop-account-card img { width:20px; height:20px; flex:none; border-radius:50%; object-fit:cover; }
   .loop-account-card span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.72rem; }
@@ -178,7 +201,7 @@
   .loop-media-pool { max-height:190px; overflow:auto; border:1px solid var(--line); border-radius:6px; }
   .loop-media-row { display:flex; align-items:center; gap:.5rem; min-width:0; padding:.4rem .5rem; border-bottom:1px solid rgba(148,163,184,.12); font-size:.69rem; }
   .loop-media-row:last-child { border-bottom:0; }
-  .loop-media-kind { padding:.1rem .28rem; border-radius:3px; color:var(--cyan); background:rgba(0,190,210,.1); font-size:.62rem; }
+  .loop-media-kind { padding:.1rem .28rem; border-radius:3px; color:var(--cyan); background:rgba(212,175,55,.1); font-size:.62rem; }
   .loop-media-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .loop-editor-actions { display:flex; justify-content:flex-end; gap:.5rem; margin-top:.8rem; }
   .loop-editor-actions button { width:auto; }
@@ -187,20 +210,20 @@
   .publication-filter select { width:auto; min-width:220px; }
   .queue-error { position:absolute; top:.7rem; right:.7rem; display:grid; place-items:center; width:26px; height:26px; margin:0; padding:0; color:#fff; background:var(--danger); border:1px solid #fb7185; border-radius:50%; font:800 .85rem/1 "Space Grotesk",sans-serif; cursor:help; box-shadow:0 0 12px rgba(244,63,94,.35); }
   .feed-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:.75rem; }
-  .feed-item { position:relative; overflow:hidden; border:1px solid var(--line); border-radius:12px; background:#0c111e; }
+  .feed-item { position:relative; overflow:hidden; border:1px solid var(--line); border-radius:12px; background:var(--panel); }
   .feed-item img { width:100%; aspect-ratio:1; display:block; object-fit:cover; }
   .feed-item-body { padding:.6rem; }.feed-item-body small { color:var(--muted); display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .feed-item input { position:absolute; top:.65rem; left:.65rem; width:18px; height:18px; accent-color:var(--danger); }
   .automation-grid { display:grid; grid-template-columns:minmax(280px,390px) 1fr; gap:1rem; }
   .automation-list { display:grid; gap:.65rem; }
-  .automation-card { padding:.8rem; border:1px solid var(--line); border-radius:12px; background:rgba(17,24,39,.7); }
+  .automation-card { padding:.8rem; border:1px solid var(--line); border-radius:12px; background:rgba(31,42,36,.7); }
   .automation-card header { display:flex; align-items:center; justify-content:space-between; gap:.6rem; }
   .automation-card p { margin:.5rem 0 0; color:var(--muted); white-space:pre-wrap; overflow-wrap:anywhere; }
   .automation-media-preview { display:flex; align-items:center; gap:.5rem; margin-top:.55rem; color:var(--cyan); font-size:.75rem; }
   .automation-form-actions { display:flex; gap:.5rem; flex-wrap:wrap; }
   .automation-form-actions button { width:auto; }
-  .danger { background:var(--danger)!important; border-color:#fb7185!important; }
-  .retry-modal { position:fixed; inset:0; z-index:70; display:grid; place-items:center; padding:1rem; background:rgba(2,6,23,.78); backdrop-filter:blur(8px); }
+  .danger { background:var(--danger)!important; border-color:var(--danger)!important; color:#fff!important; }
+  .retry-modal { position:fixed; inset:0; z-index:70; display:grid; place-items:center; padding:1rem; background:rgba(10,10,12,.84); backdrop-filter:blur(8px); }
   .retry-modal[hidden] { display:none !important; }
   .retry-dialog { width:min(420px,100%); padding:1.25rem; background:var(--panel); border:1px solid var(--line); border-radius:16px; }
   .accounts-heading { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
@@ -242,7 +265,7 @@
       position:fixed; z-index:20; left:0; right:0; bottom:0;
       display:flex; justify-content:space-around; gap:0; margin:0;
       padding:.45rem .35rem calc(.45rem + env(safe-area-inset-bottom));
-      border:1px solid rgba(75,81,90,.38); border-radius:16px 16px 0 0;
+      border:1px solid rgba(62,90,76,.48); border-radius:16px 16px 0 0;
       background:rgba(12,8,9,.94); backdrop-filter:blur(24px);
       box-shadow:0 -12px 35px rgba(0,0,0,.3);
     }
@@ -250,7 +273,7 @@
     .workspace-tab span { display:none; }
     .workspace-tab i { width:20px; height:20px; margin:0; }
     .workspace-tab { font-size:0; }
-    .workspace-tab.active { color:var(--cyan); background:rgba(142,150,161,.16); }
+    .workspace-tab.active { color:var(--cyan); background:rgba(212,175,55,.16); }
     .global-search{display:flex;align-items:center;gap:.55rem;max-width:680px;margin:0 auto 1.1rem;padding:.55rem .75rem;border:1px solid var(--line);border-radius:12px;background:rgba(19,13,15,.85);color:var(--muted)}
     .global-search input{min-width:0;margin:0;padding:.35rem;background:transparent;border:0;box-shadow:none}
     .global-search input:focus{box-shadow:none}
@@ -304,6 +327,7 @@
       {% endfor %}
       <div class="loop-tabs" role="tablist" aria-label="Visualização de loops"><button class="loop-tab active" id="loop-tab-active" type="button" role="tab" data-loop-view="active" aria-controls="loop-panel-active" aria-selected="true">Loops ({{ loop_groups|length }})</button><button class="loop-tab" id="loop-tab-errors" type="button" role="tab" data-loop-view="errors" aria-controls="loop-panel-errors" aria-selected="false">Erros de Publicação ({{ loop_errors.posts|length }})</button></div>
       <div class="loop-view-panel" id="loop-panel-active" role="tabpanel" aria-labelledby="loop-tab-active" data-loop-panel="active">
+      <p class="loop-status-legend"><span class="published">● Publicados</span><span class="failed">● Falhas</span><span class="queued">● Na fila ou processando</span></p>
       {% if loop_groups %}
         {% for group in loop_groups %}
         {% set batch = group.batch %}
@@ -316,7 +340,7 @@
           <div class="loop-card-summary">
             <div class="loop-card-main"><div class="loop-card-title"><span>{{ batch.name }}</span><span class="loop-active-badge">{{ "pausado" if batch.status == "paused" else "ativo" }}</span></div>
               <div class="loop-card-meta"><span>Intervalo: {{ batch.loop_interval_minutes }} min</span><span>{{ batch_account_ids[batch.id]|length }} conta(s)</span><span>{{ batch_posts|selectattr("loop_index", "defined")|map(attribute="loop_index")|unique|list|length }} mídias</span><span>{{ loop_error_count }} falha(s)</span></div>
-              <div class="loop-account-chips" aria-label="Contas participantes">{% for account_group in group.account_groups if account_group.account.id in batch_account_ids[batch.id] %}<span class="loop-account-chip">@{{ account_group.account.username }}</span>{% endfor %}</div>
+              <div class="loop-account-chips" aria-label="Status das contas no loop">{% for account_group in group.account_groups if account_group.account.id in batch_account_ids[batch.id] %}{% set account_published = account_group.posts|selectattr("status", "equalto", "published")|list|length %}{% set account_failed = account_group.posts|selectattr("status", "in", ["failed", "blocked"])|list|length %}{% set account_pending = (account_group.posts|selectattr("status", "in", ["scheduled", "pending", "aguardando"])|list|length) + (account_group.posts|selectattr("status", "equalto", "processing")|list|length) %}{% set connection_status = account_status_classes.get(account_group.account.id, "error") %}{% set account_outcome = "error" if connection_status in ["disconnected", "suspended", "error"] or (account_failed and not account_published) else "warning" if connection_status != "connected" or account_failed or account_pending else "success" if account_published else "idle" %}<span class="loop-account-chip loop-account-health {{ account_outcome }}" title="{{ account_group.account.status_reason or 'Status e publicações desta conta no loop' }}">@{{ account_group.account.username }}<span class="loop-account-counters"><span class="loop-account-counter published" title="Publicadas" aria-label="{{ account_published }} publicadas">{{ account_published }}</span><span class="loop-account-counter failed" title="Falhas" aria-label="{{ account_failed }} falhas">{{ account_failed }}</span><span class="loop-account-counter queued" title="Na fila ou processando" aria-label="{{ account_pending }} na fila ou processando">{{ account_pending }}</span></span></span>{% endfor %}</div>
               <p class="loop-totals"><strong>{{ published_count }} publicados</strong> · {{ pending_count }} na fila · {{ processing_count }} processando · {{ loop_error_count }} com erro</p>
             </div>
             <div class="loop-card-actions">
@@ -469,7 +493,7 @@
 
   <section id="accounts" class="workspace-view" data-panel="accounts">
     <div class="section-heading accounts-heading"><div><div class="eyebrow">Conexões</div><div class="accounts-heading-title"><h2>Hub de contas</h2><select id="dashboard-account-filter" aria-label="Filtrar contas"><option value="">Todas</option><option value="pending">Pendentes</option><option value="connected">Online</option><option value="suspended">Suspensas</option></select></div></div><div class="accounts-heading-actions"><a class="button" href="/auth/instagram/start">Conectar contas</a><button class="button secondary" type="button" id="dashboard-import-accounts">Importar contas</button><form id="dashboard-remove-accounts" method="post" action="/accounts/delete-selected"><input type="hidden" name="return_to" value="/dashboard#accounts"><button class="secondary" type="submit" hidden>Remover selecionadas</button></form></div></div>
-    <div class="account-list" id="dashboard-account-list">{% if accounts %}{% for account in accounts %}{% set status_class = account_status_classes.get(account.id, "error") %}<div class="account-row status-{{ status_class }}" data-account-id="{{ account.id }}" data-account-status="{{ status_class }}" data-publications-url="/dashboard?account_id={{ account.id }}#queue" title="{{ account.status_reason or 'Conta conectada e funcional.' }}"><div class="profile-avatar small">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="Foto de @{{ account.username }}">{% else %}{{ account.username[:1]|upper }}{% endif %}</div><strong title="@{{ account.username }}">@{{ account.username }}<span class="account-views">{{ account_views.get(account.id, 0) }} visualizações</span>    <small class="account-status-reason" data-account-reason>{{ account.status_reason or ("Online e autorizada" if status_class == "connected" else status_class) }}</small><small class="account-status-checked" data-account-checked>{% if account.status_checked_at %}Verificada em {{ local_scheduled_datetime(account.status_checked_at) }}{% else %}Ainda não verificada{% endif %}</small></strong><form method="post" action="/accounts/{{ account.id }}/verify" data-verify-account><button class="text-button verify-account" type="submit" aria-label="Verificar autorização de @{{ account.username }}" title="Verificar autorização"><i data-lucide="refresh-cw"></i></button></form><a class="text-button" href="/auth/instagram/start" aria-label="Reconectar @{{ account.username }}" title="Reconectar conta"><i data-lucide="link"></i></a><form method="post" action="/accounts/{{ account.id }}/delete"><input type="hidden" name="return_to" value="/dashboard#accounts"><button class="text-button" type="submit" aria-label="Desconectar @{{ account.username }}"><i data-lucide="trash-2"></i></button></form></div>{% endfor %}{% else %}<div class="panel empty-state"><span>◎</span><h3>Nenhuma conta conectada</h3><p>Conecte uma conta Instagram para começar.</p><a class="button" href="/auth/instagram/start">Conectar conta</a></div>{% endif %}</div>
+    <div class="account-list" id="dashboard-account-list">{% if accounts %}{% for account in accounts %}{% set status_class = account_status_classes.get(account.id, "error") %}{% set stats = account_publication_stats[account.id] %}{% set outcome_class = "error" if status_class in ["disconnected", "suspended", "error"] or (stats.failed and not stats.published) else "warning" if status_class != "connected" or stats.failed or stats.pending or stats.processing else "success" %}<div class="account-row status-{{ status_class }} publication-{{ outcome_class }}" data-account-id="{{ account.id }}" data-account-status="{{ status_class }}" data-publications-url="/dashboard?account_id={{ account.id }}#queue" title="{{ account.status_reason or 'Conta conectada e funcional.' }}"><div class="profile-avatar small">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="Foto de @{{ account.username }}">{% else %}{{ account.username[:1]|upper }}{% endif %}</div><strong title="@{{ account.username }}">@{{ account.username }}<span class="account-views">{{ account_views.get(account.id, 0) }} visualizações</span><small class="account-status-reason" data-account-reason>{{ account.status_reason or ("Online e autorizada" if status_class == "connected" else status_class) }}</small><small class="account-status-checked" data-account-checked>{% if account.status_checked_at %}Verificada em {{ local_scheduled_datetime(account.status_checked_at) }}{% else %}Ainda não verificada{% endif %}</small><small class="account-publication-status"><span class="published">● {{ stats.published }} publicadas</span><span class="failed">● {{ stats.failed }} falhas</span><span class="queued">● {{ stats.pending }} na fila</span><span class="processing">● {{ stats.processing }} processando</span></small></strong><form method="post" action="/accounts/{{ account.id }}/verify" data-verify-account><button class="text-button verify-account" type="submit" aria-label="Verificar autorização de @{{ account.username }}" title="Verificar autorização"><i data-lucide="refresh-cw"></i></button></form><a class="text-button" href="/auth/instagram/start" aria-label="Reconectar @{{ account.username }}" title="Reconectar conta"><i data-lucide="link"></i></a><form method="post" action="/accounts/{{ account.id }}/delete"><input type="hidden" name="return_to" value="/dashboard#accounts"><button class="text-button" type="submit" aria-label="Desconectar @{{ account.username }}"><i data-lucide="trash-2"></i></button></form></div>{% endfor %}{% else %}<div class="panel empty-state"><span>◎</span><h3>Nenhuma conta conectada</h3><p>Conecte uma conta Instagram para começar.</p><a class="button" href="/auth/instagram/start">Conectar conta</a></div>{% endif %}</div>
   </section>
 
 
@@ -495,7 +519,7 @@
         <section class="profile-metrics-content" aria-label="Feed e métricas do perfil selecionado">
           <div class="selected-profile-bar"><div class="selected-profile-title"><i data-lucide="sparkles"></i><span id="selected-profile-name">Selecione um perfil</span></div><p class="metrics-status" id="profile-metrics-status" aria-live="polite"></p></div>
           <div class="profile-stat-grid" aria-live="polite"><article class="profile-stat"><span class="profile-stat-label"><i data-lucide="users-round"></i> Seguidores</span><strong data-profile-stat="followers">—</strong></article><article class="profile-stat"><span class="profile-stat-label"><i data-lucide="images"></i> Posts</span><strong data-profile-stat="media_count">—</strong></article><article class="profile-stat"><span class="profile-stat-label"><i data-lucide="user-round-plus"></i> Seguindo</span><strong data-profile-stat="following">—</strong></article></div>
-          <div class="profile-feed-heading"><h2>Mídias recentes</h2><span class="section-note" id="profile-feed-count"></span></div>
+          <div class="profile-feed-heading"><h2>Mídias recentes</h2><label class="profile-engagement-sort">Ordenar engajamento<select id="profile-engagement-sort" aria-label="Ordenar mídias por engajamento"><option value="desc">Maior para menor</option><option value="asc">Menor para maior</option></select></label><span class="section-note" id="profile-feed-count"></span></div>
           <div class="profile-feed" id="profile-feed" aria-live="polite"><div class="profile-feed-message">Selecione um perfil para carregar as métricas.</div></div>
         </section>
       </div>
@@ -573,7 +597,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 const chartStatus={{ chart_status|tojson }},volumeDays={{ volume_days|tojson }},funnelMetrics={{ metrics.funnel|tojson }},pixStatus={{ metrics.pix_status|tojson }};
-if(window.Chart){new Chart(document.getElementById("status-chart"),{type:"doughnut",data:{labels:["Publicadas","Agendadas","Falhas"],datasets:[{data:[chartStatus.published,chartStatus.scheduled,chartStatus.failed],backgroundColor:["#D7DCE2","#4B515A","#8E96A1"],borderWidth:0}]},options:{maintainAspectRatio:false,cutout:"72%",plugins:{legend:{labels:{color:"#D7DCE2",boxWidth:10}}}}});new Chart(document.getElementById("volume-chart"),{type:"line",data:{labels:volumeDays.map(item=>item.label),datasets:[{label:"Publicações",data:volumeDays.map(item=>item.published),borderColor:"#8E96A1",backgroundColor:"rgba(142,150,161,.15)",fill:true,tension:.35},{label:"Interações",data:volumeDays.map(item=>item.interactions),borderColor:"#4B515A",tension:.35}]},options:{scales:{x:{ticks:{color:"#8E96A1"}},y:{beginAtZero:true,ticks:{color:"#8E96A1"}}},plugins:{legend:{labels:{color:"#D7DCE2"}}}}})}
+if(window.Chart){new Chart(document.getElementById("status-chart"),{type:"doughnut",data:{labels:["Publicadas","Agendadas","Falhas"],datasets:[{data:[chartStatus.published,chartStatus.scheduled,chartStatus.failed],backgroundColor:["#22C55E","#D4AF37","#EF4444"],borderWidth:0}]},options:{maintainAspectRatio:false,cutout:"72%",plugins:{legend:{labels:{color:"#F2F6F3",boxWidth:10}}}}});new Chart(document.getElementById("volume-chart"),{type:"line",data:{labels:volumeDays.map(item=>item.label),datasets:[{label:"Publicações",data:volumeDays.map(item=>item.published),borderColor:"#D4AF37",backgroundColor:"rgba(212,175,55,.15)",fill:true,tension:.35},{label:"Interações",data:volumeDays.map(item=>item.interactions),borderColor:"#3E5A4C",tension:.35}]},options:{scales:{x:{ticks:{color:"#A9B7AE"}},y:{beginAtZero:true,ticks:{color:"#A9B7AE"}}},plugins:{legend:{labels:{color:"#F2F6F3"}}}}})}
 const files=document.getElementById("bulk-files"),list=document.getElementById("media-items"),time=document.getElementById("bulk-time"),form=document.getElementById("bulk-form"),captionFields=document.getElementById("caption-fields"),globalCaption=document.getElementById("global-caption-field"),driveButton=document.getElementById("drive-import"),loopEnabled=document.getElementById("loop-enabled"),scheduleField=document.getElementById("schedule-field"),scheduleNote=document.getElementById("schedule-note");
 const pad=value=>String(value).padStart(2,"0");
 const escapeHtml=value=>String(value).replace(/[&<>\"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[char]));
@@ -595,7 +619,7 @@ if(list&&window.Sortable)new Sortable(list,{animation:150,onEnd:event=>{const [i
 if(files){files.addEventListener("change",async()=>{for(const file of files.files){if(media.length>=30){alert("Cada lote pode conter no máximo 30 publicações.");break}const data=new FormData();data.append("media",file,file.name);const response=await fetch("/media/upload",{method:"POST",body:data});if(!response.ok){let message="Falha ao enviar "+file.name;try{const error=await response.json();message=error.detail||message}catch{}alert(message);continue}const result=await response.json();media.push({file,preview:URL.createObjectURL(file),url:result.url,storagePath:result.storage_path,type:result.media_type,caption:""})}files.value="";render()})}
 async function loadDrive(){driveButton.disabled=true;driveButton.textContent="Carregando Drive...";try{let response=await fetch("/api/drive/files");if(response.status===401){window.location.href="/auth/google/start";return}if(!response.ok)throw new Error("Falha ao listar arquivos");const data=await response.json();const backdrop=document.createElement("div");backdrop.className="drive-modal-backdrop";backdrop.innerHTML=`<div class="drive-modal" role="dialog" aria-modal="true" aria-labelledby="drive-title"><div class="drive-modal-header"><div><div class="eyebrow">Google Drive</div><h3 id="drive-title">Selecionar mídias</h3></div><button type="button" class="secondary drive-close" aria-label="Fechar"><i data-lucide="x"></i></button></div><div class="drive-picker">${data.files.map(file=>`<button type="button" class="drive-file" data-drive-id="${file.id}" data-drive-name="${escapeHtml(file.name)}"><span class="drive-file-check"><i data-lucide="check"></i></span><span class="drive-file-name">${escapeHtml(file.name)}</span><small>${file.mimeType||"mídia"}</small></button>`).join("")||"<p>Nenhuma imagem ou vídeo encontrado.</p>"}</div><div class="drive-modal-actions"><span class="muted drive-count">0 selecionadas</span><button type="button" class="secondary drive-cancel">Cancelar</button><button type="button" class="drive-confirm" disabled>Importar selecionadas</button></div></div>`;document.body.appendChild(backdrop);if(window.lucide)lucide.createIcons();const selected=new Set(),filesToImport=data.files,driveFiles=[...backdrop.querySelectorAll(".drive-file")];let anchor=-1,pendingIndex=-1,dragging=false,startX=0,startY=0;const update=()=>{driveFiles.forEach(file=>file.classList.toggle("selected",selected.has(file.dataset.driveId)));backdrop.querySelector(".drive-count").textContent=`${selected.size} selecionada(s)`;backdrop.querySelector(".drive-confirm").disabled=!selected.size};const selectRange=(index)=>{if(anchor<0){selected.add(driveFiles[index].dataset.driveId);anchor=index;return}const [start,end]=[anchor,index].sort((a,b)=>a-b);for(let i=start;i<=end;i++)selected.add(driveFiles[i].dataset.driveId)};const selectSingle=(index,event)=>{if(event.shiftKey)selectRange(index);else if(event.ctrlKey||event.metaKey){const id=driveFiles[index].dataset.driveId;selected.has(id)?selected.delete(id):selected.add(id);anchor=index}else{selected.clear();selected.add(driveFiles[index].dataset.driveId);anchor=index}};const onMove=event=>{if(pendingIndex<0)return;if(Math.hypot(event.clientX-startX,event.clientY-startY)<6)return;if(!dragging){dragging=true;if(!event.ctrlKey&&!event.metaKey&&!event.shiftKey)selected.clear();selected.add(driveFiles[pendingIndex].dataset.driveId);anchor=pendingIndex}const hovered=document.elementFromPoint(event.clientX,event.clientY)?.closest(".drive-file");const index=driveFiles.indexOf(hovered);if(index>=0)selectRange(index);update()};const onUp=event=>{if(pendingIndex<0)return;if(!dragging)selectSingle(pendingIndex,event);pendingIndex=-1;dragging=false;update();document.removeEventListener("mousemove",onMove);document.removeEventListener("mouseup",onUp)};driveFiles.forEach((file,index)=>file.addEventListener("mousedown",event=>{if(event.button!==0)return;event.preventDefault();pendingIndex=index;startX=event.clientX;startY=event.clientY;dragging=false;document.addEventListener("mousemove",onMove);document.addEventListener("mouseup",onUp)}));driveFiles.forEach((file,index)=>file.addEventListener("touchend",event=>{event.preventDefault();const id=driveFiles[index].dataset.driveId;if(selected.has(id))selected.delete(id);else selected.add(id);anchor=index;update()},{passive:false}));const close=()=>backdrop.remove();backdrop.querySelector(".drive-close").addEventListener("click",close);backdrop.querySelector(".drive-cancel").addEventListener("click",close);backdrop.querySelector(".drive-confirm").addEventListener("click",async()=>{const confirmButton=backdrop.querySelector(".drive-confirm");confirmButton.disabled=true;confirmButton.textContent="Importando...";for(const file of filesToImport.filter(item=>selected.has(item.id))){const body=new FormData();body.append("file_id",file.id);const imported=await fetch("/api/drive/import",{method:"POST",body});if(!imported.ok){showToast(`Falha ao importar ${file.name}.`,"error");continue}const result=await imported.json();const importedMedia=result.items?.[0];if(!importedMedia){showToast(`Falha ao importar ${file.name}.`,"error");continue}media.push({file:{name:file.name},preview:importedMedia.url,url:importedMedia.url,storagePath:importedMedia.storage_path,driveMediaUrl:importedMedia.drive_media_url,driveAccountEmail:importedMedia.drive_account_email,driveCredentialsEncrypted:importedMedia.drive_credentials_encrypted,type:importedMedia.media_type,caption:""})}render();close()});update()}catch(error){showToast(error.message,"error")}finally{driveButton.disabled=false;driveButton.innerHTML='<i data-lucide="hard-drive"></i> Importar do Drive';if(window.lucide)lucide.createIcons()}}
 driveButton?.addEventListener("click",()=>loadDriveFolders());
-async function loadDriveFolders(folderId="root",trail=[]){
+async function loadDriveFolders(folderId="root",trail=[],currentFolderName="Meu Drive"){
   driveButton.disabled=true;driveButton.textContent="Carregando Drive...";
   try{
     const response=await fetch(`/api/drive/files?folder_id=${encodeURIComponent(folderId)}`);
@@ -605,7 +629,7 @@ async function loadDriveFolders(folderId="root",trail=[]){
     let backdrop=document.querySelector(".drive-modal-backdrop");
     if(!backdrop){backdrop=document.createElement("div");backdrop.className="drive-modal-backdrop";document.body.appendChild(backdrop)}
     const selectedFiles=new Set(),selectedFolders=new Set();
-    backdrop.innerHTML=`<div class="drive-modal" role="dialog" aria-modal="true" aria-labelledby="drive-title"><div class="drive-modal-header"><div><div class="eyebrow">Google Drive</div><h3 id="drive-title">Selecionar mídias</h3><small class="muted">${trail.length?trail.join(" / "):"Meu Drive"}</small></div><button type="button" class="secondary drive-close" aria-label="Fechar"><i data-lucide="x"></i></button></div><div class="drive-selection-toolbar"><span class="muted">Seleção da pasta atual</span><div class="drive-selection-actions"><button type="button" class="secondary drive-select-all"><i data-lucide="check-check"></i>Selecionar tudo</button><button type="button" class="secondary drive-clear-selection" disabled><i data-lucide="square"></i>Limpar seleção</button></div></div><div class="drive-picker">${data.folders.map(folder=>`<div class="drive-file drive-folder" data-drive-folder="${folder.id}"><span class="drive-file-check"><i data-lucide="check"></i></span><span class="drive-folder-icon"><i data-lucide="folder"></i></span><span class="drive-file-name">${escapeHtml(folder.name)}</span><button type="button" class="secondary drive-folder-open" data-open-folder="${folder.id}" data-folder-name="${escapeHtml(folder.name)}">Abrir</button></div>`).join("")}${data.files.map(file=>`<button type="button" class="drive-file" data-drive-id="${file.id}" data-drive-name="${escapeHtml(file.name)}"><span class="drive-file-check"><i data-lucide="check"></i></span><span class="drive-file-name">${escapeHtml(file.name)}</span><small>${file.mimeType||"mídia"}</small></button>`).join("")||(!data.folders.length?"<p>Nenhuma imagem ou vídeo encontrado.</p>":"")}</div><div class="drive-modal-actions"><span class="muted drive-count">0 selecionadas</span><button type="button" class="secondary drive-cancel">Cancelar</button><button type="button" class="drive-confirm" disabled>Importar selecionadas</button></div></div>`;
+    backdrop.innerHTML=`<div class="drive-modal" role="dialog" aria-modal="true" aria-labelledby="drive-title"><div class="drive-modal-header"><div><div class="eyebrow">Google Drive</div><h3 id="drive-title">Selecionar mídias</h3><small class="muted">${escapeHtml([...trail.map(item=>item.name),currentFolderName].join(" / "))}</small></div><div class="drive-header-actions"><button type="button" class="secondary drive-back" ${trail.length?"":"disabled"}><i data-lucide="arrow-left"></i> Voltar</button><button type="button" class="secondary drive-close" aria-label="Fechar"><i data-lucide="x"></i></button></div></div><div class="drive-selection-toolbar"><span class="muted">Seleção da pasta atual</span><div class="drive-selection-actions"><button type="button" class="secondary drive-select-all"><i data-lucide="check-check"></i>Selecionar tudo</button><button type="button" class="secondary drive-clear-selection" disabled><i data-lucide="square"></i>Limpar seleção</button></div></div><div class="drive-picker">${data.folders.map(folder=>`<div class="drive-file drive-folder" data-drive-folder="${folder.id}"><span class="drive-file-check"><i data-lucide="check"></i></span><span class="drive-folder-icon"><i data-lucide="folder"></i></span><span class="drive-file-name">${escapeHtml(folder.name)}</span><button type="button" class="secondary drive-folder-open" data-open-folder="${folder.id}" data-folder-name="${escapeHtml(folder.name)}">Abrir</button></div>`).join("")}${data.files.map(file=>`<button type="button" class="drive-file" data-drive-id="${file.id}" data-drive-name="${escapeHtml(file.name)}"><span class="drive-file-check"><i data-lucide="check"></i></span><span class="drive-file-name">${escapeHtml(file.name)}</span><small>${file.mimeType||"mídia"}</small></button>`).join("")||(!data.folders.length?"<p>Nenhuma imagem ou vídeo encontrado.</p>":"")}</div><div class="drive-modal-actions"><span class="muted drive-count">0 selecionadas</span><button type="button" class="secondary drive-cancel">Cancelar</button><button type="button" class="drive-confirm" disabled>Importar selecionadas</button></div></div>`;
     if(window.lucide)lucide.createIcons();
     const update=()=>{backdrop.querySelectorAll(".drive-file").forEach(item=>item.classList.toggle("selected",selectedFiles.has(item.dataset.driveId)||selectedFolders.has(item.dataset.driveFolder)));const count=selectedFiles.size+selectedFolders.size;const visibleFiles=backdrop.querySelectorAll("[data-drive-id]");const allFilesSelected=visibleFiles.length>0&&selectedFiles.size===visibleFiles.length;backdrop.querySelector(".drive-count").textContent=`${count} selecionada(s)`;backdrop.querySelector(".drive-confirm").disabled=!count;backdrop.querySelector(".drive-select-all").disabled=!visibleFiles.length||allFilesSelected;backdrop.querySelector(".drive-clear-selection").disabled=!count};
     backdrop.querySelector(".drive-select-all").addEventListener("click",()=>{backdrop.querySelectorAll("[data-drive-id]").forEach(file=>selectedFiles.add(file.dataset.driveId));update()});
@@ -616,7 +640,8 @@ async function loadDriveFolders(folderId="root",trail=[]){
     const dragDriveSelection=(event)=>{if(pendingIndex<0)return;const hovered=document.elementFromPoint(event.clientX,event.clientY)?.closest("[data-drive-id]");const index=driveFiles.indexOf(hovered);if(index<0)return;if(!dragging){if(!event.ctrlKey&&!event.metaKey&&!event.shiftKey)selectedFiles.clear();dragging=true;didDrag=true;selectedFiles.add(driveFiles[pendingIndex].dataset.driveId);selectionAnchor=pendingIndex}selectRange(index);update()};
     driveFiles.forEach((file,index)=>file.addEventListener("mousedown",event=>{if(event.button!==0)return;event.preventDefault();pendingIndex=index;didDrag=false;document.addEventListener("mousemove",dragDriveSelection);document.addEventListener("mouseup",finishDriveSelection)}));
     backdrop.querySelectorAll("[data-drive-folder]").forEach(folder=>folder.addEventListener("click",()=>{selectedFolders.has(folder.dataset.driveFolder)?selectedFolders.delete(folder.dataset.driveFolder):selectedFolders.add(folder.dataset.driveFolder);update()}));
-    backdrop.querySelectorAll("[data-open-folder]").forEach(button=>button.addEventListener("click",event=>{event.stopPropagation();loadDriveFolders(button.dataset.openFolder,[...trail,button.dataset.folderName])}));
+    backdrop.querySelector(".drive-back").addEventListener("click",()=>{if(!trail.length)return;const previous=trail[trail.length-1];loadDriveFolders(previous.id,trail.slice(0,-1),previous.name)});
+    backdrop.querySelectorAll("[data-open-folder]").forEach(button=>button.addEventListener("click",event=>{event.stopPropagation();loadDriveFolders(button.dataset.openFolder,[...trail,{id:folderId,name:currentFolderName}],button.dataset.folderName)}));
     const closeDrive=()=>{backdrop.remove();driveButton.disabled=false;driveButton.innerHTML='<i data-lucide="hard-drive"></i> Importar do Drive';if(window.lucide)lucide.createIcons()};backdrop.querySelector(".drive-close").addEventListener("click",closeDrive);backdrop.querySelector(".drive-cancel").addEventListener("click",closeDrive);
     backdrop.querySelector(".drive-confirm").addEventListener("click",async event=>{const button=event.currentTarget;button.disabled=true;button.textContent="Importando...";const imports=[...selectedFiles].map(id=>({file_id:id})).concat([...selectedFolders].map(id=>({folder_id:id})));try{for(const item of imports){const body=new FormData();Object.entries(item).forEach(([key,value])=>body.append(key,value));const result=await fetch("/api/drive/import",{method:"POST",body});if(!result.ok)throw new Error((await result.json()).detail||"Falha ao importar do Drive");const payload=await result.json();(payload.items||[]).forEach((mediaItem,index)=>media.push({file:{name:item.folder_id?`Pasta ${index+1}`:item.file_id},preview:mediaItem.url,url:mediaItem.url,storagePath:mediaItem.storage_path,driveMediaUrl:mediaItem.drive_media_url,driveAccountEmail:mediaItem.drive_account_email,driveCredentialsEncrypted:mediaItem.drive_credentials_encrypted,type:mediaItem.media_type,caption:""}))}backdrop.remove();render()}catch(error){showToast(error.message,"error")}finally{driveButton.disabled=false;driveButton.innerHTML='<i data-lucide="hard-drive"></i> Importar do Drive';if(window.lucide)lucide.createIcons()}});
   }catch(error){showToast(error.message,"error");driveButton.disabled=false;driveButton.innerHTML='<i data-lucide="hard-drive"></i> Importar do Drive';if(window.lucide)lucide.createIcons()}

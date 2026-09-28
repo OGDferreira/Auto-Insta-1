@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Desempenho de {{ collaborator.username }} · Auto-Insta{% endblock %}
+{% block content %}
+<main class="report-page">
+  <header class="report-header">
+    <div><div class="eyebrow">Desempenho do colaborador</div><h1>{{ collaborator.username }}</h1><p>Conexões com sucesso e valores registrados no horário de São Paulo.</p></div>
+    {% if is_manager %}<a class="button secondary" href="/dashboard#overview">Voltar ao dashboard</a>{% else %}<a class="button secondary" href="/hub">Voltar ao Hub</a>{% endif %}
+  </header>
+  <section class="report-period">
+    <a class="button secondary{% if period == 'day' %} active{% endif %}" href="?period=day">Hoje</a>
+    <a class="button secondary{% if period == 'week' %} active{% endif %}" href="?period=week">Esta semana</a>
+    <a class="button secondary{% if period == 'month' %} active{% endif %}" href="?period=month">Este mês</a>
+    <form method="get" action="/collaborators/{{ collaborator.id }}/report"><input type="hidden" name="period" value="custom"><label>De<input type="date" name="from_date" value="{{ from_date.isoformat() }}" required></label><label>Até<input type="date" name="to_date" value="{{ to_date.isoformat() }}" required></label><button type="submit">Consultar período</button></form>
+  </section>
+  {% if is_manager %}
+  <section class="panel report-settings">
+    <h2>Regras de remuneração</h2>
+    <p>Alterações serão aplicadas somente a novas conexões; o histórico existente não será recalculado.</p>
+    <form id="report-compensation-form" data-collaborator-id="{{ collaborator.id }}">
+      <label>Valor por conta conectada (R$)<input name="rate_per_account" type="number" min="0" max="99999999.99" step="0.01" value="{{ '%.2f'|format(collaborator.collaborator_rate_per_account) }}" required></label>
+      <label>Meta diária de contas<input name="daily_target" type="number" min="0" step="1" value="{{ collaborator.collaborator_daily_target }}" required></label>
+      <label>Bônus ao atingir a meta (R$)<input name="daily_bonus" type="number" min="0" max="99999999.99" step="0.01" value="{{ '%.2f'|format(collaborator.collaborator_daily_bonus) }}" required></label>
+      <button type="submit">Salvar regras futuras</button>
+    </form>
+    <p id="report-settings-status" aria-live="polite"></p>
+  </section>
+  {% endif %}
+  <section class="report-summary">
+    <article class="metric"><small>Contas conectadas</small><strong>{{ totals.connections }}</strong></article>
+    <article class="metric"><small>Subtotal</small><strong>{{ format_brl(totals.subtotal) }}</strong></article>
+    <article class="metric"><small>Bônus aplicados</small><strong>{{ format_brl(totals.bonus) }}</strong></article>
+    <article class="metric"><small>Total a pagar</small><strong>{{ format_brl(totals.total) }}</strong></article>
+  </section>
+  <section class="panel report-table-panel">
+    <h2>Detalhamento por dia</h2>
+    <div class="table-wrap"><table><thead><tr><th>Dia</th><th>Contas conectadas</th><th>Valor por conta</th><th>Subtotal</th><th>Meta</th><th>Bônus</th><th>Total a pagar</th></tr></thead><tbody>
+    {% for row in daily_rows|reverse %}<tr><td>{{ row.date.strftime("%d/%m/%Y") }}</td><td>{{ row.connections }}</td><td>{{ row.rate_summary }}</td><td>{{ format_brl(row.rate_total) }}</td><td>{% if row.target %}{{ row.connections }} / {{ row.target }} · {{ "Atingida" if row.goal_reached else "Não atingida" }}{% else %}Sem meta{% endif %}</td><td>{{ format_brl(row.bonus) }}</td><td><strong>{{ format_brl(row.total) }}</strong></td></tr>{% else %}<tr><td colspan="7">Nenhuma conexão registrada neste período.</td></tr>{% endfor %}
+    </tbody></table></div>
+    <p class="muted">O subtotal soma o valor histórico registrado em cada conexão. O bônus é concedido no máximo uma vez por dia.</p>
+  </section>
+</main>
+<style>
+.report-page{max-width:1200px;margin:1.5rem auto}.report-header{display:flex;align-items:center;justify-content:space-between;gap:1rem}.report-header h1{font-size:2rem}.report-period{display:flex;align-items:flex-end;flex-wrap:wrap;gap:.5rem;margin:1rem 0}.report-period a.active{border-color:var(--cyan);background:rgba(212,175,55,.14)}.report-period form{display:flex;align-items:flex-end;flex-wrap:wrap;gap:.5rem;margin-left:auto}.report-period label{margin:0}.report-period input{min-width:150px}.report-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.65rem;margin:1rem 0}.report-summary .metric{background:var(--panel)}.report-summary strong{font-size:1.35rem}.report-settings{margin:1rem 0}.report-settings form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;align-items:end;gap:.6rem}.report-settings label{margin:0}.report-settings button{margin-bottom:.35rem}.report-table-panel{margin:1rem 0}.report-table-panel th,.report-table-panel td{white-space:nowrap}.report-table-panel th:first-child,.report-table-panel td:first-child{white-space:normal}@media(max-width:750px){.report-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.report-settings form{grid-template-columns:1fr}.report-settings button{margin:0}.report-header{align-items:flex-start;flex-direction:column}.report-period form{margin-left:0}}
+</style>
+{% if is_manager %}
+<script>
+document.getElementById("report-compensation-form")?.addEventListener("submit",async event=>{event.preventDefault();const form=event.currentTarget,status=document.getElementById("report-settings-status"),values=Object.fromEntries(new FormData(form));try{const response=await fetch(`/api/collaborators/${form.dataset.collaboratorId}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({rate_per_account:values.rate_per_account,daily_target:values.daily_target,daily_bonus:values.daily_bonus})});const payload=await response.json();if(!response.ok)throw new Error(payload.detail||"Não foi possível salvar as regras.");status.textContent="Regras atualizadas. Elas valerão para novas conexões.";status.className="success"}catch(error){status.textContent=error.message;status.className="error"}});
+</script>
+{% endif %}
+{% endblock %}

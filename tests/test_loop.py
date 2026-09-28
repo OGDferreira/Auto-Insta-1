@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import re
 from types import SimpleNamespace
@@ -153,6 +153,201 @@ async def test_loop_restarts_playlist_and_includes_added_accounts(monkeypatch):
         assert re.search(r'name="account_ids" value="1" checked', editor.group(1))
         assert re.search(r'name="account_ids" value="3"\s*>', editor.group(1))
         assert 'class="loop-board-title"' in html
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_thirty_video_loop_keeps_interval_restarts_and_surfaces_account_status(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    scheduled = []
+    monkeypatch.setattr(routes, "schedule_post", lambda post_id, when: scheduled.append((post_id, when)))
+    monkeypatch.setattr(jobs, "schedule_post", lambda post_id, when: scheduled.append((post_id, when)))
+    monkeypatch.setattr(jobs, "SessionLocal", session_factory)
+
+    async with session_factory() as db:
+        owner = User(email="thirty-loop@example.com", username="thirty-loop", password_hash="hash")
+        db.add(owner)
+        await db.flush()
+        account = InstagramAccount(
+            owner_id=owner.id,
+            instagram_user_id="ig-thirty-loop",
+            username="thirty_loop",
+            access_token_encrypted="encrypted",
+            connection_status="connected",
+        )
+        db.add(account)
+        await db.flush()
+
+        media_urls = [f"https://example.com/video-{index}.mp4" for index in range(30)]
+        await routes.create_bulk_posts(
+            account_ids=[account.id],
+            media_urls=media_urls,
+            media_types=["VIDEO"] * 30,
+            storage_paths=[],
+            drive_media_urls=[],
+            drive_account_emails=[],
+            drive_credentials_encrypted=[],
+            captions=[],
+            caption_mode="global",
+            caption="Loop de 30 vídeos",
+            scheduled_for="",
+            interval_minutes=7,
+            batch_name="Loop de 30 vídeos",
+            is_loop=True,
+            user=owner,
+            db=db,
+        )
+
+        batch = await db.scalar(select(PostingBatch).where(PostingBatch.is_loop.is_(True)))
+        initial_posts = (await db.scalars(
+            select(ScheduledPost)
+            .where(ScheduledPost.batch_id == batch.id)
+            .order_by(ScheduledPost.loop_index)
+        )).all()
+        assert len(initial_posts) == 30
+        assert [post.loop_index for post in initial_posts] == list(range(30))
+        scheduled_times = [
+            post.scheduled_for.replace(tzinfo=timezone.utc)
+            if post.scheduled_for.tzinfo is None else post.scheduled_for
+            for post in initial_posts
+        ]
+        assert all(
+            later - earlier == timedelta(minutes=7)
+            for earlier, later in zip(scheduled_times, scheduled_times[1:])
+        )
+        assert len(scheduled) == 30
+
+        for post in initial_posts[:-1]:
+            post.status = "published"
+        initial_posts[-1].status = "failed"
+        initial_posts[-1].error_message = "Desafio de publicação"
+        await db.commit()
+        await jobs._advance_loop_after_post(initial_posts[-1].id)
+
+        restarted_post = await db.scalar(
+            select(ScheduledPost)
+            .where(ScheduledPost.batch_id == batch.id)
+            .order_by(ScheduledPost.id.desc())
+        )
+        assert restarted_post is not None
+        assert restarted_post.loop_index == 0
+        assert restarted_post.media_url == media_urls[0]
+        assert restarted_post.scheduled_for >= datetime.now(timezone.utc).replace(tzinfo=None)
+
+        request = Request({
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/dashboard",
+            "raw_path": b"/dashboard",
+            "query_string": b"",
+            "headers": [],
+            "server": ("testserver", 80),
+            "client": ("testclient", 50000),
+            "session": {},
+        })
+        response = await routes.dashboard(request, user=owner, db=db)
+        html = response.body.decode()
+        assert "loop-account-health warning" in html
+        assert 'class="loop-account-counter published" title="Publicadas" aria-label="29 publicadas">29' in html
+        assert 'class="loop-account-counter failed" title="Falhas" aria-label="1 falhas">1' in html
+        assert 'class="loop-account-counter queued" title="Na fila ou processando" aria-label="1 na fila ou processando">1' in html
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_hub_shows_connection_and_publication_status_in_account_creation_order():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with session_factory() as db:
+        owner = User(email="hub-status@example.com", username="hub-status", password_hash="hash")
+        db.add(owner)
+        await db.flush()
+        now = datetime.now(timezone.utc)
+        older_account = InstagramAccount(
+            owner_id=owner.id,
+            instagram_user_id="ig-hub-older",
+            username="hub_older",
+            access_token_encrypted="encrypted",
+            connection_status="connected",
+            created_at=now - timedelta(days=1),
+        )
+        newer_account = InstagramAccount(
+            owner_id=owner.id,
+            instagram_user_id="ig-hub-newer",
+            username="hub_newer",
+            access_token_encrypted="encrypted",
+            connection_status="disconnected",
+            status_reason="Autorização expirada",
+            created_at=now,
+        )
+        db.add_all([older_account, newer_account])
+        await db.flush()
+        db.add_all([
+            ScheduledPost(
+                owner_id=owner.id,
+                account_id=older_account.id,
+                media_url="https://example.com/published.mp4",
+                media_type="REELS",
+                status="published",
+                scheduled_for=now,
+            ),
+            ScheduledPost(
+                owner_id=owner.id,
+                account_id=older_account.id,
+                media_url="https://example.com/failed.mp4",
+                media_type="REELS",
+                status="failed",
+                error_message="Desafio de publicação",
+                scheduled_for=now,
+            ),
+            ScheduledPost(
+                owner_id=owner.id,
+                account_id=newer_account.id,
+                media_url="https://example.com/blocked.mp4",
+                media_type="REELS",
+                status="blocked",
+                error_message="Token expirado",
+                scheduled_for=now,
+            ),
+        ])
+        await db.commit()
+
+        request = Request({
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/hub",
+            "raw_path": b"/hub",
+            "query_string": b"",
+            "headers": [],
+            "server": ("testserver", 80),
+            "client": ("testclient", 50000),
+            "session": {},
+        })
+        response = await routes.hub(request, user=owner, db=db)
+        html = response.body.decode()
+
+        assert html.index(f'data-account-id="{older_account.id}"') < html.index(
+            f'data-account-id="{newer_account.id}"'
+        )
+        assert f"status-connected publication-warning" in html
+        assert f"status-disconnected publication-error" in html
+        assert "1 publicadas" in html
+        assert "1 falhas" in html
+        assert "Autorização expirada" in html
 
     await engine.dispose()
 

@@ -1,6 +1,6 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -18,6 +18,9 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(20), default="admin", index=True)
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    collaborator_rate_per_account: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    collaborator_daily_target: Mapped[int] = mapped_column(Integer, default=0)
+    collaborator_daily_bonus: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     instagram_accounts: Mapped[list["InstagramAccount"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
@@ -73,6 +76,42 @@ class InstagramAccount(Base):
     automation_rules: Mapped[list["AutomationRule"]] = relationship(
         back_populates="account", cascade="all, delete-orphan"
     )
+
+
+class CollaboratorConnection(Base):
+    __tablename__ = "collaborator_connections"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "instagram_user_id", name="uq_collaborator_connection_owner_instagram"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    collaborator_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    instagram_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("instagram_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    instagram_user_id: Mapped[str] = mapped_column(String(120))
+    connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    rate_per_account: Mapped[float] = mapped_column(Numeric(10, 2))
+    daily_target: Mapped[int] = mapped_column(Integer)
+    daily_bonus: Mapped[float] = mapped_column(Numeric(10, 2))
+
+
+class CollaboratorDailyBonus(Base):
+    __tablename__ = "collaborator_daily_bonuses"
+    __table_args__ = (
+        UniqueConstraint("collaborator_id", "local_date", name="uq_collaborator_daily_bonus"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    collaborator_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    local_date: Mapped[date] = mapped_column(Date, index=True)
+    target: Mapped[int] = mapped_column(Integer)
+    amount: Mapped[float] = mapped_column(Numeric(10, 2))
+    awarded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class AutomationRule(Base):

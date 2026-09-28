@@ -54,6 +54,15 @@ async def init_db() -> None:
                 await connection.exec_driver_sql(
                     "ALTER TABLE users ADD COLUMN parent_id INTEGER"
                 )
+            for name, definition in {
+                "collaborator_rate_per_account": "NUMERIC(10, 2) NOT NULL DEFAULT 0",
+                "collaborator_daily_target": "INTEGER NOT NULL DEFAULT 0",
+                "collaborator_daily_bonus": "NUMERIC(10, 2) NOT NULL DEFAULT 0",
+            }.items():
+                if name not in existing_user_columns:
+                    await connection.exec_driver_sql(
+                        f"ALTER TABLE users ADD COLUMN {name} {definition}"
+                    )
             await connection.exec_driver_sql(
                 "UPDATE users SET username = substr(email, 1, instr(email, '@') - 1) "
                 "WHERE username = ''"
@@ -153,6 +162,11 @@ async def init_db() -> None:
                     )
         else:
             migrations = {
+                "users": {
+                    "collaborator_rate_per_account": "NUMERIC(10, 2) NOT NULL DEFAULT 0",
+                    "collaborator_daily_target": "INTEGER NOT NULL DEFAULT 0",
+                    "collaborator_daily_bonus": "NUMERIC(10, 2) NOT NULL DEFAULT 0",
+                },
                 "direct_contacts": {
                     "owner_id": "INTEGER NOT NULL",
                     "account_id": "INTEGER NOT NULL",

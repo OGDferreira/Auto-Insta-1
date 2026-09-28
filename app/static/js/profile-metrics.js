@@ -5,6 +5,7 @@ const statusMessage = document.getElementById("profile-metrics-status");
 const feedCount = document.getElementById("profile-feed-count");
 const selectedName = document.getElementById("selected-profile-name");
 const refreshButton = document.getElementById("profile-metrics-refresh");
+const engagementSort = document.getElementById("profile-engagement-sort");
 const profileCache = new Map();
 let selectedAccountId = null;
 let requestVersion = 0;
@@ -53,7 +54,17 @@ function renderMedia(items) {
     return;
   }
   feedCount.textContent = `${items.length.toLocaleString("pt-BR")} mídias`;
-  profileFeed.innerHTML = items.map(item => {
+  const sortedItems = items.map((item, index) => ({ item, index })).sort((left, right) => {
+    const leftValue = Number(left.item.engagement);
+    const rightValue = Number(right.item.engagement);
+    const leftMissing = left.item.engagement === null || left.item.engagement === undefined || !Number.isFinite(leftValue);
+    const rightMissing = right.item.engagement === null || right.item.engagement === undefined || !Number.isFinite(rightValue);
+    if (leftMissing !== rightMissing) return leftMissing ? 1 : -1;
+    if (leftMissing) return left.index - right.index;
+    const difference = engagementSort?.value === "asc" ? leftValue - rightValue : rightValue - leftValue;
+    return difference || left.index - right.index;
+  }).map(entry => entry.item);
+  profileFeed.innerHTML = sortedItems.map(item => {
     const video = String(item.media_type || "").toUpperCase().includes("VIDEO");
     const source = escapeHtml(item.thumbnail_url || item.media_url || "");
     const mediaMarkup = video && !item.thumbnail_url
@@ -73,6 +84,7 @@ function renderMedia(items) {
           <span class="profile-feed-count" title="Visualizações"><i data-lucide="eye"></i>${formatCount(item.views)}</span>
           <span class="profile-feed-count" title="Curtidas"><i data-lucide="heart"></i>${formatCount(item.likes)}</span>
           <span class="profile-feed-count" title="Comentários"><i data-lucide="message-circle"></i>${formatCount(item.comments)}</span>
+          <span class="profile-feed-count" title="Engajamento"><i data-lucide="chart-no-axes-column-increasing"></i>${formatCount(item.engagement)}</span>
         </div>
         <time class="profile-feed-date">${escapeHtml(date)}</time>
         ${item.caption ? `<span class="profile-feed-caption" title="${escapeHtml(item.caption)}">${escapeHtml(item.caption)}</span>` : ""}
@@ -118,6 +130,7 @@ async function loadSelectedProfile(accountId) {
       showMessage("Não foi possível consultar o Instagram para este perfil.", true);
       return;
     }
+    profileCache.set(`${accountId}:media`, payload.media || []);
     renderMedia(payload.media || []);
   } catch (error) {
     if (version !== requestVersion) return;
@@ -146,6 +159,13 @@ async function loadProfiles() {
     statusMessage.classList.add("error");
   }
 }
+
+engagementSort?.addEventListener("change", () => {
+  if (selectedAccountId) {
+    const cachedMedia = profileCache.get(`${selectedAccountId}:media`);
+    if (cachedMedia) renderMedia(cachedMedia);
+  }
+});
 
 profileButtons.forEach(button => {
   button.addEventListener("click", () => loadSelectedProfile(button.dataset.metricsAccount));

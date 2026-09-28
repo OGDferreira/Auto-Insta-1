@@ -1,4 +1,16 @@
 {% extends "base.html" %}{% block title %}Entrar · Auto-Insta{% endblock %}
-{% block content %}<div class="card auth-card"><h1>Entrar</h1>{% if error %}<p class="error">{{ error }}</p>{% endif %}
-<form method="post"><label>Nome de Usuário<input name="identifier" type="text" value="{{ identifier or '' }}" autocomplete="username" autocapitalize="none" spellcheck="false" required></label><label>Senha<input name="password" type="password" autocomplete="current-password" required></label><button type="submit"><i data-lucide="log-in"></i> Entrar</button></form>
-<p class="muted">Ainda não tem conta? <a href="/register">Registre-se</a></p></div>{% endblock %}
+{% block content %}
+<main class="card auth-card">
+  <div class="auth-heading"><span class="auth-heading-icon"><i data-lucide="sparkles"></i></span><div class="eyebrow">Seu próximo post começa aqui</div></div>
+  <h1>Bom ter você de volta.</h1>
+  <p class="auth-intro"><strong>Menos correria, mais presença.</strong> Agende publicações, organize suas contas e acompanhe tudo em um só lugar — enquanto você cuida do que vem depois.</p>
+  <div class="auth-perks" aria-label="Recursos do Auto-Insta">
+    <span class="auth-perk"><i data-lucide="calendar-check-2"></i>Agende</span>
+    <span class="auth-perk"><i data-lucide="repeat-2"></i>Automatize</span>
+    <span class="auth-perk"><i data-lucide="chart-no-axes-combined"></i>Acompanhe</span>
+  </div>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post"><label>Nome de Usuário<input name="identifier" type="text" value="{{ identifier or '' }}" autocomplete="username" autocapitalize="none" spellcheck="false" required></label><label>Senha<input name="password" type="password" autocomplete="current-password" required></label><button type="submit"><i data-lucide="log-in"></i> Entrar e colocar em movimento</button></form>
+  <p class="muted">Ainda não tem conta? <a href="/register">Comece por aqui</a></p>
+</main>
+{% endblock %}

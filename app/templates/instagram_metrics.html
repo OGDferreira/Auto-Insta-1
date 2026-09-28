@@ -10,12 +10,12 @@
   .metrics-header-actions button,.metrics-header-actions a{width:auto;padding:.48rem .65rem;font-size:.76rem}
   .profile-metrics-layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:.8rem;align-items:start}
   .profile-list{display:grid;gap:.4rem;max-height:calc(100vh - 105px);overflow:auto;padding-right:.15rem}
-  .profile-list-empty{padding:.9rem;border:1px solid var(--line);border-radius:7px;background:rgba(17,24,39,.72);color:var(--muted);font-size:.78rem}
-  .profile-option{display:flex;align-items:center;gap:.5rem;width:100%;min-height:48px;padding:.38rem .48rem;text-align:left;border:1px solid var(--line);border-radius:7px;background:#0d1723;color:var(--text);box-shadow:none;cursor:pointer}
-  .profile-option:hover{transform:none;border-color:#526579;background:#111f2d;box-shadow:none}
-  .profile-option[aria-pressed="true"]{border-color:var(--cyan);background:#251115;box-shadow:0 0 0 1px rgba(213,43,65,.16)}
-  .profile-option img,.profile-option-initial{width:28px;height:28px;flex:none;border-radius:50%;object-fit:cover;background:#1b3441}
-  .profile-option-initial{display:grid;place-items:center;color:#c7f5f6;font-weight:700;font-size:.72rem}
+  .profile-list-empty{padding:.9rem;border:1px solid var(--line);border-radius:7px;background:rgba(31,42,36,.72);color:var(--muted);font-size:.78rem}
+  .profile-option{display:flex;align-items:center;gap:.5rem;width:100%;min-height:48px;padding:.38rem .48rem;text-align:left;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--text);box-shadow:none;cursor:pointer}
+  .profile-option:hover{transform:none;border-color:var(--cyan);background:rgba(62,90,76,.45);box-shadow:none}
+  .profile-option[aria-pressed="true"]{border-color:var(--cyan);background:rgba(212,175,55,.12);box-shadow:0 0 0 1px rgba(212,175,55,.16)}
+  .profile-option img,.profile-option-initial{width:28px;height:28px;flex:none;border-radius:50%;object-fit:cover;background:var(--line)}
+  .profile-option-initial{display:grid;place-items:center;color:var(--text);font-weight:700;font-size:.72rem}
   .profile-option-copy{display:block;min-width:0;flex:1}
   .profile-option-name,.profile-option-followers{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .profile-option-name{font-size:.7rem;font-weight:700}
@@ -23,43 +23,45 @@
   .profile-metrics-content{min-width:0}
   .selected-profile-bar{display:flex;align-items:center;justify-content:space-between;gap:.8rem;min-height:38px;padding:.4rem .6rem;border:1px solid var(--line);border-radius:7px;background:#0d1723}
   .selected-profile-title{display:flex;align-items:center;gap:.45rem;min-width:0;font-size:.76rem;font-weight:700}
-  .selected-profile-title i{color:#f4c95d}
+  .selected-profile-title i{color:var(--cyan)}
   .selected-profile-title span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .metrics-status{margin:0;color:var(--muted);font-size:.66rem;text-align:right}
-  .metrics-status.error{color:#fb7185}
+  .metrics-status.error{color:var(--danger)}
   .profile-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.45rem;margin:.5rem 0 .7rem}
   .profile-stat{min-height:54px;padding:.5rem .58rem;border:1px solid var(--line);border-radius:7px;background:#0d1723}
   .profile-stat-label{display:flex;align-items:center;gap:.34rem;color:var(--muted);font-size:.63rem}
-  .profile-stat-label i{width:12px;height:12px;color:#8296a8}
+  .profile-stat-label i{width:12px;height:12px;color:var(--cyan)}
   .profile-stat strong{display:block;margin-top:.3rem;font:700 .95rem "Space Grotesk",sans-serif;color:var(--text)}
   .profile-feed-heading{display:flex;align-items:center;justify-content:space-between;margin:.55rem 0 .4rem}
+  .profile-engagement-sort{display:flex;align-items:center;gap:.4rem;margin:0;color:var(--muted);font-size:.7rem}
+  .profile-engagement-sort select{width:auto;min-width:150px;margin:0;padding:.4rem .5rem;font-size:.72rem}
   .profile-feed-heading h2{margin:0;font:600 .79rem "DM Sans",sans-serif;letter-spacing:0}
   .profile-feed{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
-  .profile-feed-card{min-width:0;overflow:hidden;border:1px solid var(--line);border-radius:7px;background:#0d1723}
-  .profile-feed-media{position:relative;aspect-ratio:1;background:#0a1118;overflow:hidden}
+  .profile-feed-card{min-width:0;overflow:hidden;border:1px solid var(--line);border-radius:7px;background:var(--panel)}
+  .profile-feed-media{position:relative;aspect-ratio:1;background:#0A0A0C;overflow:hidden}
   .profile-feed-media img,.profile-feed-media video{display:block;width:100%;height:100%;object-fit:cover}
-  .profile-feed-type{position:absolute;right:.35rem;top:.35rem;display:grid;place-items:center;width:18px;height:18px;border:1px solid rgba(255,255,255,.22);border-radius:5px;background:rgba(5,12,18,.72);color:#e7eef2}
+  .profile-feed-type{position:absolute;right:.35rem;top:.35rem;display:grid;place-items:center;width:18px;height:18px;border:1px solid rgba(255,255,255,.22);border-radius:5px;background:rgba(10,10,12,.82);color:var(--text)}
   .profile-feed-type i{width:11px;height:11px}
   .profile-feed-details{padding:.32rem .42rem .4rem}
-  .profile-feed-counts{display:flex;align-items:center;gap:.5rem;color:#97a7b5;font-size:.61rem}
+  .profile-feed-counts{display:flex;align-items:center;gap:.5rem;color:var(--muted);font-size:.61rem}
   .profile-feed-count{display:inline-flex;align-items:center;gap:.18rem;white-space:nowrap}
   .profile-feed-count i{width:11px;height:11px}
-  .profile-feed-date{display:block;margin-top:.3rem;color:#718293;font-size:.56rem}
-  .profile-feed-caption{display:block;margin-top:.25rem;overflow:hidden;color:#9eabb7;font-size:.62rem;text-overflow:ellipsis;white-space:nowrap}
-  .profile-feed-message{grid-column:1/-1;display:grid;place-items:center;min-height:110px;padding:1rem;border:1px dashed #304251;border-radius:7px;color:var(--muted);font-size:.76rem;text-align:center}
+  .profile-feed-date{display:block;margin-top:.3rem;color:var(--muted);font-size:.56rem}
+  .profile-feed-caption{display:block;margin-top:.25rem;overflow:hidden;color:var(--muted);font-size:.62rem;text-overflow:ellipsis;white-space:nowrap}
+  .profile-feed-message{grid-column:1/-1;display:grid;place-items:center;min-height:110px;padding:1rem;border:1px dashed var(--line);border-radius:7px;color:var(--muted);font-size:.76rem;text-align:center}
   .profile-feed-message[hidden]{display:none}
   @media(max-width:760px){.profile-metrics-layout{grid-template-columns:1fr}.profile-list{display:flex;max-height:none;overflow-x:auto;overflow-y:hidden;padding-bottom:.2rem}.profile-option{width:165px;min-width:165px}.profile-feed{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media(max-width:480px){.profile-metrics{margin-top:.2rem}.metrics-header{align-items:flex-start}.metrics-header h1{font-size:1.18rem}.metrics-header-actions{gap:.3rem}.metrics-header-actions button,.metrics-header-actions a{padding:.42rem .5rem}.profile-stat-grid{gap:.35rem}.profile-stat{padding:.45rem}.profile-stat-label{font-size:.59rem}.profile-stat strong{font-size:.86rem}}
-  .profile-list-empty,.profile-option,.selected-profile-bar,.profile-stat,.profile-feed-card{background:#23272E}
-  .profile-option:hover{border-color:#8E96A1;background:#4B515A}
-  .profile-option[aria-pressed="true"]{background:#4B515A;box-shadow:0 0 0 1px rgba(142,150,161,.16)}
-  .profile-option img,.profile-option-initial{background:#4B515A}.profile-option-initial{color:#D7DCE2}
-  .selected-profile-title i,.profile-stat-label i{color:#8E96A1}
-  .metrics-status.error{color:#8E96A1}
-  .profile-feed-media{background:#0D0F12}
-  .profile-feed-type{background:rgba(35,39,46,.85);color:#D7DCE2}
-  .profile-feed-counts,.profile-feed-date,.profile-feed-caption{color:#8E96A1}
-  .profile-feed-message{border-color:#4B515A}
+  .profile-list-empty,.profile-option,.selected-profile-bar,.profile-stat,.profile-feed-card{background:var(--panel)}
+  .profile-option:hover{border-color:var(--cyan);background:rgba(62,90,76,.45)}
+  .profile-option[aria-pressed="true"]{background:rgba(212,175,55,.12);box-shadow:0 0 0 1px rgba(212,175,55,.16)}
+  .profile-option img,.profile-option-initial{background:var(--line)}.profile-option-initial{color:var(--text)}
+  .selected-profile-title i,.profile-stat-label i{color:var(--cyan)}
+  .metrics-status.error{color:var(--danger)}
+  .profile-feed-media{background:#0A0A0C}
+  .profile-feed-type{background:rgba(31,42,36,.85);color:var(--text)}
+  .profile-feed-counts,.profile-feed-date,.profile-feed-caption{color:var(--muted)}
+  .profile-feed-message{border-color:var(--line)}
 </style>
 <main class="profile-metrics">
   <header class="metrics-header">
@@ -82,7 +84,7 @@
         <article class="profile-stat"><span class="profile-stat-label"><i data-lucide="images"></i> Posts</span><strong data-profile-stat="media_count">—</strong></article>
         <article class="profile-stat"><span class="profile-stat-label"><i data-lucide="user-round-plus"></i> Seguindo</span><strong data-profile-stat="following">—</strong></article>
       </div>
-      <div class="profile-feed-heading"><h2>Mídias recentes</h2><span class="section-note" id="profile-feed-count"></span></div>
+      <div class="profile-feed-heading"><h2>Mídias recentes</h2><label class="profile-engagement-sort">Ordenar engajamento<select id="profile-engagement-sort" aria-label="Ordenar mídias por engajamento"><option value="desc">Maior para menor</option><option value="asc">Menor para maior</option></select></label><span class="section-note" id="profile-feed-count"></span></div>
       <div class="profile-feed" id="profile-feed" aria-live="polite"><div class="profile-feed-message">Selecione um perfil para carregar as métricas.</div></div>
     </section>
   </div>
