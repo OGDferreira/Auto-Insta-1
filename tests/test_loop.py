@@ -129,6 +129,8 @@ async def test_loop_restarts_playlist_and_includes_added_accounts(monkeypatch):
             instagram_user_id="ig-loop-3",
             username="loop_three",
             access_token_encrypted="encrypted",
+            connection_status="error",
+            status_reason="Instagram checkpoint required",
         )
         db.add(third_account)
         await db.commit()
@@ -160,6 +162,9 @@ async def test_loop_restarts_playlist_and_includes_added_accounts(monkeypatch):
         assert "Ver publicações e horários</button>" not in html
         assert 'aria-label="Ver publicações e horários"' in html
         assert 'data-lucide="eye"' in html
+        assert 'status-error publication-error challenge-required' in html
+        assert '#dashboard-account-list { display:grid; grid-template-columns:minmax(0,1fr)' in html
+        assert '#dashboard-account-list .account-row.challenge-required { border-color:var(--danger)' in html
 
     await engine.dispose()
 
