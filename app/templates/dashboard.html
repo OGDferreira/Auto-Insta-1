@@ -163,12 +163,13 @@
   .loop-card-meta { display:flex; flex-wrap:wrap; gap:.55rem; margin-top:.3rem; color:var(--muted); font-size:.75rem; }
   .loop-active-badge { padding:.15rem .4rem; border-radius:4px; background:rgba(26,60,125,.14); color:var(--cyan); font-size:.7rem; }
   .loop-account-chips { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.6rem; }
-  .loop-account-chip { padding:.18rem .38rem; border-radius:4px; color:var(--text); background:#101217; font-size:.72rem; }
+  .loop-account-chip { padding:.18rem .38rem; border:1px solid rgba(117,165,255,.2); border-radius:5px; color:var(--text); background:rgba(5,24,60,.55); font-size:.72rem; }
   .loop-account-health { display:flex; align-items:center; gap:.45rem; border:1px solid var(--line); }
   .loop-account-health.error { border-color:var(--danger); color:var(--danger); background:rgba(239,68,68,.08); }
   .loop-account-health.warning { border-color:var(--warning); color:var(--warning); background:rgba(250,204,21,.07); }
+  .loop-card .loop-account-health.warning { border-color:rgba(117,165,255,.3)!important; color:#b7cfff!important; background:rgba(5,24,60,.48)!important; }
   .loop-account-health.success { border-color:var(--success); color:var(--success); background:rgba(34,197,94,.07); }
-  .loop-account-health.idle { border-color:var(--line); color:var(--muted); }
+  .loop-account-health.idle { border-color:rgba(117,165,255,.28); color:#b7cfff; background:rgba(5,24,60,.48); }
   .loop-account-counters { display:inline-flex; align-items:center; gap:.3rem; margin-left:.15rem; }
   .loop-account-counter { display:inline-flex; align-items:center; gap:.12rem; font-size:.65rem; font-weight:700; }
   .loop-account-counter::before { width:7px; height:7px; content:""; border-radius:50%; background:currentColor; }
@@ -274,12 +275,51 @@
     .workspace-tab i { width:20px; height:20px; margin:0; }
     .workspace-tab { font-size:0; }
     .workspace-tab.active { color:var(--cyan); background:rgba(26,60,125,.16); }
-    .global-search{display:flex;align-items:center;gap:.55rem;max-width:680px;margin:0 auto 1.1rem;padding:.55rem .75rem;border:1px solid var(--line);border-radius:12px;background:rgba(19,13,15,.85);color:var(--muted)}
-    .global-search input{min-width:0;margin:0;padding:.35rem;background:transparent;border:0;box-shadow:none}
-    .global-search input:focus{box-shadow:none}
-    .global-search kbd{padding:.15rem .35rem;border:1px solid var(--line);border-radius:5px;font-size:.7rem;white-space:nowrap}
     .metric[tabindex="0"]{cursor:pointer}.metric[tabindex="0"]:focus{outline:2px solid var(--cyan);outline-offset:2px}
   }
+</style>
+<style>
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .dashboard-period-bar{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin:0 0 1rem;padding:.8rem 1rem;border:1px solid var(--line);border-radius:13px;background:rgba(10,18,36,.56)}
+  .dashboard-period-label{display:flex;align-items:center;gap:.55rem;color:#7894c7;font:500 .72rem "Space Grotesk",sans-serif;letter-spacing:.12em}
+  .dashboard-period-label i{width:17px;height:17px;color:var(--cyan)}
+  .dashboard-period-controls{display:flex;align-items:center;justify-content:flex-end;gap:.65rem}
+  .dashboard-period-controls .period-filter{margin:0}
+  .dashboard-period-controls select{width:auto;min-width:126px;margin:0;padding:.55rem .7rem}
+  .dashboard-period-controls button{width:auto;white-space:nowrap}
+  .dashboard-overview-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:stretch;gap:1rem}
+  .dashboard-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:.8rem}
+  .dashboard-metric{display:flex;min-width:0;min-height:116px;flex-direction:column;align-items:flex-start;justify-content:flex-start;padding:1rem 1.05rem;border-color:rgba(117,165,255,.18);border-radius:13px;background:linear-gradient(145deg,rgba(10,14,24,.98),rgba(8,8,10,.98));box-shadow:0 8px 26px rgba(0,0,0,.2)}
+  .dashboard-metric:hover{transform:translateY(-2px);border-color:rgba(117,165,255,.58);box-shadow:0 14px 32px rgba(0,0,0,.3),0 0 18px rgba(26,60,125,.14)}
+  .dashboard-metric-heading{display:flex;align-items:center;gap:.65rem;min-width:0}
+  .dashboard-metric-heading small{overflow:hidden;color:#d1d7e2;font-size:.8rem;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+  .dashboard-metric-icon{display:grid;place-items:center;width:36px;height:36px;flex:none;border:1px solid rgba(117,165,255,.17);border-radius:10px;background:rgba(26,60,125,.14);color:#5b91ff}
+  .dashboard-metric-icon i{width:18px;height:18px}
+  .dashboard-metric>strong{display:block;margin:.75rem 0 0;color:#f5f7fc;font:700 clamp(1.45rem,2.25vw,2rem) "Space Grotesk",sans-serif;line-height:1.1;overflow-wrap:anywhere}
+  .dashboard-metric .metric-detail{margin-top:.3rem;font-size:.7rem;line-height:1.35}
+  .dashboard-insights-column{display:grid;grid-template-rows:minmax(0,1fr) auto;gap:.8rem;min-width:0}
+  .dashboard-performance-panel{display:flex;min-height:385px;flex-direction:column;margin:0;padding:1.1rem 1.2rem;border-color:rgba(117,165,255,.18);background:linear-gradient(145deg,rgba(10,14,24,.98),rgba(8,8,10,.98))}
+  .dashboard-performance-panel .panel-header{align-items:center}
+  .dashboard-performance-title{display:flex;align-items:center;gap:.65rem}
+  .dashboard-performance-title h3{margin:0;font-size:1rem}
+  .dashboard-performance-period{display:block;margin-top:.12rem;color:#8993a7;font:.58rem "Space Grotesk",sans-serif;letter-spacing:.12em}
+  .dashboard-chart-legend{display:flex;align-items:center;gap:.4rem;color:var(--muted);font-size:.68rem}
+  .dashboard-chart-legend i{width:8px;height:8px;border-radius:50%;background:#5b91ff;box-shadow:0 0 9px rgba(91,145,255,.6)}
+  .dashboard-volume-chart{position:relative;flex:1;min-height:280px;margin-top:.7rem}
+  .dashboard-volume-chart canvas{width:100%!important;height:100%!important}
+  .dashboard-support-grid{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:.8rem;min-width:0}
+  .dashboard-support-grid>.panel{min-width:0;margin:0;padding:.9rem 1rem;border-color:rgba(117,165,255,.16);background:linear-gradient(145deg,rgba(10,14,24,.98),rgba(8,8,10,.98))}
+  .dashboard-support-grid .panel-header{margin-bottom:.3rem}
+  .dashboard-support-grid .panel-header h3{font-size:.82rem}
+  .dashboard-support-grid .eyebrow{font-size:.58rem}
+  .dashboard-status-chart{position:relative;height:150px}
+  .dashboard-status-chart canvas{width:100%!important;height:100%!important}
+  .dashboard-funnel-panel .status-line{gap:.5rem;padding:.68rem 0;font-size:.72rem}
+  .dashboard-funnel-panel .status-line strong{white-space:nowrap}
+  @media(max-width:1100px){.dashboard-overview-layout{grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr)}.dashboard-metrics-grid{gap:.65rem}.dashboard-metric{min-height:108px;padding:.85rem}.dashboard-support-grid{grid-template-columns:1fr}.dashboard-status-chart{height:125px}}
+  @media(max-width:850px){.dashboard-overview-layout{grid-template-columns:1fr}.dashboard-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-insights-column{grid-template-rows:auto auto}.dashboard-performance-panel{min-height:340px}.dashboard-support-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:600px){.dashboard-period-bar{align-items:flex-start;flex-direction:column;padding:.75rem}.dashboard-period-controls{width:100%;flex-wrap:wrap;justify-content:flex-start}.dashboard-period-controls .period-filter{flex:1 1 120px}.dashboard-period-controls select{width:100%}.dashboard-period-controls button{flex:1 1 100%;width:100%}.dashboard-period-controls .section-note{flex:1 1 auto}.dashboard-metrics-grid{gap:.55rem}.dashboard-metric{min-height:104px;padding:.7rem}.dashboard-metric-heading{gap:.45rem}.dashboard-metric-heading small{font-size:.69rem}.dashboard-metric-icon{width:30px;height:30px;border-radius:8px}.dashboard-metric-icon i{width:15px;height:15px}.dashboard-metric>strong{margin-top:.62rem;font-size:1.38rem}.dashboard-metric .metric-detail{font-size:.64rem}.dashboard-performance-panel{min-height:300px;padding:.85rem}.dashboard-volume-chart{min-height:220px}.dashboard-support-grid{grid-template-columns:1fr}.dashboard-status-chart{height:155px}}
+  @media(max-width:360px){.dashboard-metrics-grid{grid-template-columns:1fr}.dashboard-metric{min-height:92px}.dashboard-period-controls{gap:.45rem}}
 </style>
 <nav class="workspace-tabs" aria-label="Navegação do workspace">
   <a class="workspace-tab active" href="#overview" data-view="overview"><span>01</span><i data-lucide="layout-dashboard"></i> Dashboard</a>
@@ -291,29 +331,40 @@
   <a class="workspace-tab" href="#accounts" data-view="accounts" aria-label="Hub de contas" title="Hub de contas"><span>07</span><i data-lucide="users-round"></i> Hub de contas</a>
   <a class="workspace-tab" href="#system" data-view="system" aria-label="Logs e sistema" title="Logs e sistema"><span>08</span><i data-lucide="terminal"></i> Logs & Sistema</a>
 </nav>
-<div class="global-search" role="search">
-  <i data-lucide="search"></i>
-  <input id="global-search-input" type="search" autocomplete="off" placeholder="Buscar conta, lote, publicação ou legenda... (Ctrl+K)" aria-label="Busca global">
-  <kbd>Ctrl K</kbd>
-  <span id="global-search-count" class="muted" aria-live="polite"></span>
-</div>
 <main class="workspace-views">
   <section id="overview" class="workspace-view active" data-panel="overview">
-    <div class="section-heading"><div><h2>Dashboard</h2></div><div style="display:flex;align-items:center;gap:.65rem;flex-wrap:wrap;justify-content:flex-end"><label class="period-filter">Período<select id="dashboard-period" aria-label="Período do dashboard"><option value="1" {% if period_days == 1 %}selected{% endif %}>Hoje</option><option value="7" {% if period_days == 7 %}selected{% endif %}>7 dias</option><option value="30" {% if period_days == 30 %}selected{% endif %}>30 dias</option><option value="90" {% if period_days == 90 %}selected{% endif %}>90 dias</option></select></label><span class="section-note" id="views-updated-at">Atualizado agora</span><button class="button secondary" type="button" id="refresh-dashboard-views"><i data-lucide="refresh-cw"></i> Atualizar visualizações</button></div></div>
-    <div class="metric-grid">
-      <div class="metric"><small>Total de visualizações</small><strong data-metric="total_views">{{ metrics.total_views }}</strong><span class="metric-detail">todas as contas conectadas</span></div>
-      <div class="metric"><small>Contas ativas</small><strong>{{ metrics.active_accounts }}</strong><span class="metric-detail">conectadas ao workspace</span></div>
-      <div class="metric"><small>Posts hoje</small><strong>{{ metrics.today_posts }}</strong><span class="metric-detail">publicações criadas</span></div>
-      <div class="metric"><small>Na fila</small><strong data-metric="pending">{{ metrics.pending }}</strong><span class="metric-detail">aguardando publicação</span></div>
-      <div class="metric"><small>Publicados</small><strong data-metric="published">{{ metrics.published }}</strong><span class="metric-detail">concluídos com sucesso</span></div>
-      <div class="metric"><small>Falhas</small><strong data-metric="failed">{{ metrics.failed }}</strong><span class="metric-detail">posts com erro</span></div>
-      <div class="metric"><small>Contas com erro</small><strong data-metric="error_accounts">{{ metrics.error_accounts }}</strong><span class="metric-detail">contas que precisam de atenção</span></div>
-      <div class="metric metric-sharkbot"><small>Leads Sharkbot</small><strong data-sharkbot-metric="lead_initiated">{{ metrics.funnel.lead_initiated }}</strong><span class="metric-detail">eventos recebidos</span></div>
-      <div class="metric metric-sharkbot"><small>Pix gerados</small><strong data-sharkbot-metric="pix_generated">{{ metrics.funnel.pix_generated }}</strong><span class="metric-detail">pagamentos criados</span></div>
-      <div class="metric metric-sharkbot"><small>Pix pagos</small><strong data-sharkbot-metric="pix_paid">{{ metrics.funnel.pix_paid }}</strong><span class="metric-detail">pagamentos aprovados</span></div>
+    <header class="dashboard-period-bar">
+      <div class="dashboard-period-label"><i data-lucide="calendar-days"></i><span>PERÍODO</span></div>
+      <div class="dashboard-period-controls">
+        <label class="period-filter"><span class="sr-only">Período</span><select id="dashboard-period" aria-label="Período do dashboard"><option value="1" {% if period_days == 1 %}selected{% endif %}>Hoje</option><option value="7" {% if period_days == 7 %}selected{% endif %}>7 dias</option><option value="30" {% if period_days == 30 %}selected{% endif %}>30 dias</option><option value="90" {% if period_days == 90 %}selected{% endif %}>90 dias</option></select></label>
+        <span class="section-note" id="views-updated-at">Atualizado agora</span>
+        <button class="button secondary" type="button" id="refresh-dashboard-views"><i data-lucide="refresh-cw"></i><span>Atualizar visualizações</span></button>
+      </div>
+    </header>
+    <div class="dashboard-overview-layout">
+      <div class="metric-grid dashboard-metrics-grid">
+        <article class="metric dashboard-metric"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="eye"></i></span><small>Total de visualizações</small></div><strong data-metric="total_views">{{ metrics.total_views }}</strong><span class="metric-detail">todas as contas conectadas</span></article>
+        <article class="metric dashboard-metric"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="users-round"></i></span><small>Contas ativas</small></div><strong>{{ metrics.active_accounts }}</strong><span class="metric-detail">conectadas ao workspace</span></article>
+        <article class="metric dashboard-metric"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="images"></i></span><small>Posts hoje</small></div><strong>{{ metrics.today_posts }}</strong><span class="metric-detail">publicações criadas</span></article>
+        <article class="metric dashboard-metric"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="layers-3"></i></span><small>Na fila</small></div><strong data-metric="pending">{{ metrics.pending }}</strong><span class="metric-detail">aguardando publicação</span></article>
+        <article class="metric dashboard-metric"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="circle-check"></i></span><small>Publicados</small></div><strong data-metric="published">{{ metrics.published }}</strong><span class="metric-detail">concluídos com sucesso</span></article>
+        <article class="metric dashboard-metric"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="circle-alert"></i></span><small>Falhas</small></div><strong data-metric="failed">{{ metrics.failed }}</strong><span class="metric-detail">posts com erro</span></article>
+        <article class="metric dashboard-metric"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="triangle-alert"></i></span><small>Contas com erro</small></div><strong data-metric="error_accounts">{{ metrics.error_accounts }}</strong><span class="metric-detail">contas que precisam de atenção</span></article>
+        <article class="metric dashboard-metric metric-sharkbot"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="user-round-plus"></i></span><small>Leads Sharkbot</small></div><strong data-sharkbot-metric="lead_initiated">{{ metrics.funnel.lead_initiated }}</strong><span class="metric-detail">eventos recebidos</span></article>
+        <article class="metric dashboard-metric metric-sharkbot"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="qr-code"></i></span><small>Pix gerados</small></div><strong data-sharkbot-metric="pix_generated">{{ metrics.funnel.pix_generated }}</strong><span class="metric-detail">pagamentos criados</span></article>
+        <article class="metric dashboard-metric metric-sharkbot"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="badge-check"></i></span><small>Pix pagos</small></div><strong data-sharkbot-metric="pix_paid">{{ metrics.funnel.pix_paid }}</strong><span class="metric-detail">pagamentos aprovados</span></article>
+      </div>
+      <div class="dashboard-insights-column">
+        <section class="panel dashboard-performance-panel">
+          <div class="panel-header"><div class="dashboard-performance-title"><span class="dashboard-metric-icon"><i data-lucide="activity"></i></span><div><h3>Seu desempenho</h3><span class="dashboard-performance-period">ÚLTIMOS 7 DIAS</span></div></div><span class="dashboard-chart-legend"><i></i> Publicações</span></div>
+          <div class="dashboard-volume-chart"><canvas id="volume-chart" height="180"></canvas></div>
+        </section>
+        <div class="dashboard-support-grid">
+          <section class="panel dashboard-status-panel"><div class="panel-header"><div><div class="eyebrow">Publicações</div><h3>Status das publicações</h3></div></div><div class="dashboard-status-chart"><canvas id="status-chart" height="180"></canvas></div></section>
+          <section class="panel dashboard-funnel-panel"><div class="panel-header"><div><div class="eyebrow">Funil global</div><h3>Conversão do tráfego</h3></div></div><div class="status-line"><span>Visualizações → Leads</span><strong>{{ "%.2f"|format(metrics.funnel_rates.views_to_leads) }}%</strong></div><div class="status-line"><span>Leads → Pix gerados</span><strong>{{ "%.2f"|format(metrics.funnel_rates.leads_to_pix) }}%</strong></div><div class="status-line"><span>Pix gerados → pagos</span><strong>{{ "%.2f"|format(metrics.funnel_rates.pix_to_paid) }}%</strong></div></section>
+        </div>
+      </div>
     </div>
-    <div class="panel" style="margin-top:1rem"><div class="panel-header"><div><div class="eyebrow">Funil global</div><h3>Conversão do tráfego</h3></div></div><div class="status-line"><span>Visualizações → Leads</span><strong>{{ "%.2f"|format(metrics.funnel_rates.views_to_leads) }}%</strong></div><div class="status-line"><span>Leads → Pix gerados</span><strong>{{ "%.2f"|format(metrics.funnel_rates.leads_to_pix) }}%</strong></div><div class="status-line"><span>Pix gerados → pagos</span><strong>{{ "%.2f"|format(metrics.funnel_rates.pix_to_paid) }}%</strong></div></div>
-    <div class="overview-grid"><div class="panel"><div class="panel-header"><h3>Status das publicações</h3></div><canvas id="status-chart" height="180"></canvas></div><div class="panel"><div class="panel-header"><h3>Últimos 7 dias</h3></div><canvas id="volume-chart" height="180"></canvas></div></div>
   </section>
 
   <section id="queue" class="workspace-view" data-panel="queue">
@@ -605,7 +656,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 const chartStatus={{ chart_status|tojson }},volumeDays={{ volume_days|tojson }},funnelMetrics={{ metrics.funnel|tojson }},pixStatus={{ metrics.pix_status|tojson }};
-if(window.Chart){new Chart(document.getElementById("status-chart"),{type:"doughnut",data:{labels:["Publicadas","Agendadas","Falhas"],datasets:[{data:[chartStatus.published,chartStatus.scheduled,chartStatus.failed],backgroundColor:["#22C55E","#1A3C7D","#EF4444"],borderWidth:0}]},options:{maintainAspectRatio:false,cutout:"72%",plugins:{legend:{labels:{color:"#F2F6F3",boxWidth:10}}}}});new Chart(document.getElementById("volume-chart"),{type:"line",data:{labels:volumeDays.map(item=>item.label),datasets:[{label:"Publicações",data:volumeDays.map(item=>item.published),borderColor:"#1A3C7D",backgroundColor:"rgba(26,60,125,.15)",fill:true,tension:.35},{label:"Interações",data:volumeDays.map(item=>item.interactions),borderColor:"#06296B",tension:.35}]},options:{scales:{x:{ticks:{color:"#A9B7AE"}},y:{beginAtZero:true,ticks:{color:"#A9B7AE"}}},plugins:{legend:{labels:{color:"#F2F6F3"}}}}})}
+if(window.Chart){new Chart(document.getElementById("status-chart"),{type:"doughnut",data:{labels:["Publicadas","Agendadas","Falhas"],datasets:[{data:[chartStatus.published,chartStatus.scheduled,chartStatus.failed],backgroundColor:["#5B91FF","#06296B","#EF4444"],borderWidth:0}]},options:{maintainAspectRatio:false,cutout:"72%",plugins:{legend:{labels:{color:"#F2F6F3",boxWidth:10}}}}});new Chart(document.getElementById("volume-chart"),{type:"line",data:{labels:volumeDays.map(item=>item.label),datasets:[{label:"Publicações",data:volumeDays.map(item=>item.published),borderColor:"#5B91FF",backgroundColor:"rgba(91,145,255,.15)",fill:true,tension:.35},{label:"Interações",data:volumeDays.map(item=>item.interactions),borderColor:"#1A3C7D",tension:.35}]},options:{maintainAspectRatio:false,scales:{x:{ticks:{color:"#A9B7AE"},grid:{color:"rgba(255,255,255,.04)"}},y:{beginAtZero:true,ticks:{color:"#A9B7AE"},grid:{color:"rgba(255,255,255,.06)"}}},plugins:{legend:{display:false}}}})}
 const files=document.getElementById("bulk-files"),list=document.getElementById("media-items"),time=document.getElementById("bulk-time"),form=document.getElementById("bulk-form"),captionFields=document.getElementById("caption-fields"),globalCaption=document.getElementById("global-caption-field"),driveButton=document.getElementById("drive-import"),loopEnabled=document.getElementById("loop-enabled"),scheduleField=document.getElementById("schedule-field"),scheduleNote=document.getElementById("schedule-note");
 const pad=value=>String(value).padStart(2,"0");
 const escapeHtml=value=>String(value).replace(/[&<>\"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[char]));

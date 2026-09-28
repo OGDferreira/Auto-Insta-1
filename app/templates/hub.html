@@ -17,6 +17,28 @@
 .account-row.status-pending,.account-row.publication-warning{border-left-color:var(--warning)!important}
 .hub-summary strong{color:var(--cyan)}
 </style>
+<style>
+.hub-page .account-grid{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:.5rem;border:0;border-radius:0;overflow:visible}
+.hub-page .account-row{display:grid!important;grid-template-columns:auto 42px minmax(0,1fr) auto;width:100%;min-height:0;gap:.8rem;padding:.8rem .9rem;border:1px solid var(--line);border-left:3px solid var(--line);border-radius:12px;background:linear-gradient(145deg,rgba(5,24,60,.48),rgba(16,18,23,.98));box-shadow:0 8px 24px rgba(0,0,0,.2);overflow:visible}
+.hub-page .account-row:hover{transform:translateY(-2px);border-color:rgba(117,165,255,.55);box-shadow:0 12px 28px rgba(0,0,0,.28),0 0 18px rgba(26,60,125,.14)}
+.hub-page .account-row.selected{background:linear-gradient(145deg,rgba(26,60,125,.24),rgba(16,18,23,.98));outline:1px solid rgba(117,165,255,.38)}
+.hub-page .account-row.status-connected{border-left-color:var(--success)}
+.hub-page .account-row.status-disconnected,.hub-page .account-row.status-suspended,.hub-page .account-row.status-error,.hub-page .account-row.publication-error{border-left-color:var(--danger)!important}
+.hub-page .account-row.status-pending,.hub-page .account-row.publication-warning{border-left-color:var(--warning)!important}
+.hub-page .account-row.publication-warning{border-left-color:var(--cyan)!important}
+.hub-page .account-main{gap:.22rem}
+.hub-page .account-name{font-size:.88rem}
+.hub-page .account-views{font-size:.75rem}
+.hub-page .account-publication-status{gap:.4rem .75rem;line-height:1.5}
+.hub-page .account-actions{align-items:center;gap:.4rem}
+.hub-page .account-actions button,.hub-page .account-actions a{width:34px;height:34px;padding:.45rem}
+.hub-page .account-alerts{display:grid;gap:.3rem;margin-top:.25rem}
+.hub-page .account-alert{display:flex;align-items:flex-start;gap:.35rem;color:#ffd580;font-size:.72rem;line-height:1.45}
+.hub-page .account-alert.error{color:#ff929c}
+.hub-page .account-alert i{width:14px;height:14px;flex:none;margin-top:.05rem}
+.hub-page .hub-controls,.hub-page .hub-bulk-toolbar{border-color:rgba(117,165,255,.18)}
+@media(max-width:650px){.hub-page .account-row{grid-template-columns:auto 36px minmax(0,1fr);gap:.55rem;padding:.65rem}.hub-page .account-row img,.hub-page .account-initial{flex-basis:36px;width:36px;height:36px}.hub-page .account-actions{grid-column:3;justify-content:flex-start}.hub-page .account-status-reason,.hub-page .account-status-checked{max-width:none}.hub-page .account-publication-status{gap:.25rem .55rem}}
+</style>
 <main class="hub-page">
   <section class="hero"><div class="eyebrow">Acesso autorizado</div><h1>Hub de Contas</h1><p>Conecte, importe e gerencie as contas deste workspace.</p></section>
   {% if user.role == "collaborator" and collaborator_today %}<section class="panel collaborator-today"><div><div class="eyebrow">Seu desempenho hoje</div><h2>{{ collaborator_today.connections }} conta(s) conectada(s)</h2><p>Valor previsto para hoje: <strong>{{ format_brl(collaborator_today.total) }}</strong></p><p>{% if collaborator_today.target %}Meta: {{ collaborator_today.connections }} / {{ collaborator_today.target }} conta(s) · {% if collaborator_today.goal_reached %}meta atingida{% else %}faltam {{ [collaborator_today.target - collaborator_today.connections, 0]|max }}{% endif %}{% else %}Sem meta diária configurada{% endif %}</p><a class="button secondary" href="/collaborators/{{ user.id }}/report">Ver meu relatório</a></div></section>{% endif %}

@@ -72,7 +72,6 @@
     .metric{background:rgba(16,18,23,.82)}
     .panel-feature{background:linear-gradient(135deg,rgba(6,41,107,.9),rgba(10,10,12,.98))}
     .thumb{background:var(--panel)}
-    .global-search{background:rgba(16,18,23,.88)}
     @media(max-width:650px){.toast-region{right:1rem;bottom:5.5rem}.brand{font-size:1.05rem}}
   </style>
   <style>
@@ -99,12 +98,99 @@
     button:active:not(:disabled),.button:active{transform:translateY(0) scale(.985)}
     button:disabled{cursor:not-allowed;opacity:.6}
     :focus-visible{outline:2px solid var(--cyan);outline-offset:3px}
+    .notification-menu{position:relative}
+    .notification-trigger{position:relative;width:38px;height:38px;padding:0}
+    .notification-count{position:absolute;top:-5px;right:-5px;display:grid;place-items:center;min-width:17px;height:17px;padding:0 .2rem;border:1px solid var(--bg);border-radius:99px;background:var(--danger);color:#fff;font-size:.62rem;font-weight:700}
+    .notification-count[hidden]{display:none}
+    .notification-panel{position:absolute;top:calc(100% + .65rem);right:0;z-index:45;width:min(390px,calc(100vw - 2rem));max-height:min(70vh,520px);overflow:auto;padding:.75rem;border:1px solid var(--line);border-radius:14px;background:rgba(16,18,23,.98);box-shadow:0 20px 60px rgba(0,0,0,.48)}
+    .notification-panel[hidden]{display:none}
+    .notification-panel h2{margin:.15rem .25rem .65rem;font-size:.95rem}
+    .notification-list{display:grid;gap:.45rem}
+    .notification-item{display:grid;grid-template-columns:24px minmax(0,1fr);gap:.5rem;padding:.65rem;border:1px solid rgba(117,165,255,.22);border-radius:9px;background:rgba(5,24,60,.34);color:var(--text);text-decoration:none}
+    .notification-item:hover{border-color:var(--cyan);background:rgba(26,60,125,.18)}
+    .notification-item.warning>i{color:var(--warning)}
+    .notification-item.error{border-color:rgba(239,68,68,.3);background:rgba(127,29,29,.12)}
+    .notification-item.error>i{color:#ff737f}
+    .notification-item strong,.notification-item small{display:block}
+    .notification-item small{margin-top:.2rem;color:var(--muted);font-size:.72rem;line-height:1.45;overflow-wrap:anywhere}
+    .notification-empty{margin:.3rem;color:var(--muted);font-size:.8rem}
+    .account-alert-badge{display:flex;align-items:flex-start;gap:.4rem;margin:.25rem 0;padding:.35rem .5rem;border:1px solid rgba(245,158,11,.32);border-radius:7px;background:rgba(120,53,15,.16);color:#ffd580;font-size:.72rem;line-height:1.4;white-space:normal}
+    .account-alert-badge.error{border-color:rgba(239,68,68,.36);background:rgba(127,29,29,.16);color:#ff929c}
+    .account-alert-badge i{width:14px;height:14px;flex:none}
+    .account-row.has-account-alert{border-color:rgba(245,158,11,.5)}
+    .account-row.has-account-alert.error{border-color:rgba(239,68,68,.62)!important}
+    .loop-account-health.warning{border-color:rgba(117,165,255,.3)!important;color:#b7cfff!important;background:rgba(5,24,60,.48)!important}
+    html{max-width:100%;overflow-x:hidden;scroll-behavior:smooth}
+    body{width:100%;min-width:320px;max-width:100%;overflow-x:hidden}
+    img,video,canvas,svg{max-width:100%}
+    input,select,textarea{min-width:0;max-width:100%}
+    .workspace-views,main,section,.panel,.card{min-width:0}
+    .table-wrap{max-width:100%;overscroll-behavior-x:contain}
+    .workspace-tabs{max-width:100%;overscroll-behavior-x:contain;scrollbar-width:thin}
+    .top-actions{gap:.5rem}
+    @media(max-width:900px){
+      body{padding-inline:1rem}
+      .grid{gap:.75rem}
+      .overview-grid,.queue-layout,.automation-grid{grid-template-columns:minmax(0,1fr)}
+      .account-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .workspace-tabs{gap:.15rem}
+      .workspace-tab{padding:.7rem .55rem;font-size:.82rem}
+      .profile-modal,.modal-backdrop,.retry-modal{padding:1rem}
+      .profile-dialog,.modal,.retry-dialog{max-width:100%}
+    }
+    @media(max-width:650px){
+      body{padding:0 .8rem calc(5.8rem + env(safe-area-inset-bottom))}
+      nav{min-height:46px}
+      .brand{font-size:1.08rem}
+      .workspace-tabs{position:fixed;z-index:40;right:0;bottom:0;left:0;display:flex;justify-content:flex-start;gap:.15rem;margin:0;padding:.35rem .35rem calc(.35rem + env(safe-area-inset-bottom));overflow-x:auto;border:1px solid rgba(117,165,255,.2);border-radius:14px 14px 0 0;background:rgba(9,12,19,.97);box-shadow:0 -10px 30px rgba(0,0,0,.35);backdrop-filter:blur(18px)}
+      .workspace-tab{display:flex;flex:0 0 72px;flex-direction:column;justify-content:center;gap:.18rem;min-height:3.1rem;padding:.3rem .15rem;border:0;border-radius:8px;font-size:.58rem;line-height:1.1;text-align:center;white-space:normal}
+      .workspace-tab span{display:none}
+      .workspace-tab i{width:17px;height:17px;margin:0}
+      .workspace-tab.active{background:rgba(26,60,125,.2);color:var(--cyan)}
+      .section-heading,.panel-header{align-items:flex-start;flex-wrap:wrap}
+      .section-heading{gap:.65rem;margin-bottom:.85rem}
+      .section-heading h2{font-size:1.15rem}
+      .section-note{font-size:.72rem}
+      .card,.panel{padding:.9rem;border-radius:13px}
+      .metric-grid,.account-grid,.automation-list,.feed-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .metric{min-width:0;padding:.75rem}
+      .metric strong{font-size:1.35rem;overflow-wrap:anywhere}
+      .queue-toolbar,.loop-board-header,.calendar-toolbar,.metrics-header{align-items:flex-start;flex-wrap:wrap}
+      .queue-toolbar-actions,.calendar-controls{width:100%;flex-wrap:wrap}
+      .queue-toolbar-actions>*{min-width:0}
+      .batch-accordion,.batch-summary,.loop-card-summary{min-width:0}
+      .batch-actions,.loop-card-actions{flex-wrap:wrap}
+      .accounts-heading-title{min-width:0}
+      .profile-metrics-layout{grid-template-columns:minmax(0,1fr)}
+      .profile-list{max-width:100%}
+      .profile-feed{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .profile-stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+      .table-wrap table{min-width:580px}
+      .profile-dialog{width:100%;max-height:calc(100dvh - 1.5rem);padding:1rem}
+      .modal,.retry-dialog{width:100%;max-height:calc(100dvh - 1.5rem);overflow:auto;padding:.9rem}
+      .notification-panel{position:fixed;top:3.7rem;right:.6rem;max-height:calc(100dvh - 5.2rem)}
+      .toast-region{right:.6rem;bottom:calc(5rem + env(safe-area-inset-bottom));width:min(360px,calc(100vw - 1.2rem))}
+      button,.button{min-height:2.55rem}
+    }
+    @media(max-width:400px){
+      body{padding-inline:.6rem}
+      .metric-grid,.account-grid,.automation-list{grid-template-columns:minmax(0,1fr)}
+      .queue-grid{grid-template-columns:minmax(0,1fr)}
+      .feed-grid,.profile-feed{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .profile-stat-grid{grid-template-columns:1fr}
+      .profile-stat{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+      .profile-stat strong{margin:0}
+      .workspace-tab{flex-basis:66px}
+      .metrics-header-actions{width:100%;flex-wrap:wrap}
+      .metrics-header-actions>*{flex:1}
+    }
     @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
   </style>
   <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
-<nav><a class="brand" href="/"><img class="brand-mark" src="/static/favicon.svg" alt=""> Auto<span>·</span>Insta</a>{% if request.session.get("user_id") %}<div class="top-actions"><button id="profile-trigger" class="profile-trigger secondary" type="button" aria-label="Abrir perfil"><i data-lucide="user-round"></i></button></div>{% endif %}</nav>
+<nav><a class="brand" href="/"><img class="brand-mark" src="/static/favicon.svg" alt=""> Auto<span>·</span>Insta</a>{% if request.session.get("user_id") %}<div class="top-actions"><div class="notification-menu"><button id="notification-trigger" class="notification-trigger secondary" type="button" aria-label="Abrir notificações" aria-expanded="false" aria-controls="notification-panel"><i data-lucide="bell"></i><span id="notification-count" class="notification-count" hidden></span></button><section id="notification-panel" class="notification-panel" aria-label="Notificações de contas" hidden><h2>Alertas de contas</h2><div id="notification-list" class="notification-list" aria-live="polite"><p class="notification-empty">Carregando alertas...</p></div></section></div><button id="profile-trigger" class="profile-trigger secondary" type="button" aria-label="Abrir perfil"><i data-lucide="user-round"></i></button></div>{% endif %}</nav>
 {% block content %}{% endblock %}
 <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
 {% if request.session.get("user_id") %}
@@ -213,6 +299,114 @@ document.getElementById("enable-notifications")?.addEventListener("click",()=>re
     document.querySelectorAll("form").forEach((form) => {
       form.addEventListener("submit", () => showToast("Processando sua solicitação...", "info"));
     });
+  })();
+</script>
+<script>
+  (() => {
+    const trigger = document.getElementById("notification-trigger");
+    const panel = document.getElementById("notification-panel");
+    const list = document.getElementById("notification-list");
+    const count = document.getElementById("notification-count");
+    if (!trigger || !panel || !list || !count) return;
+
+    let knownAlertIds = null;
+    let requestInFlight = false;
+    const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
+    })[character]);
+
+    function renderAlerts(alerts) {
+      count.textContent = alerts.length > 9 ? "9+" : String(alerts.length);
+      count.hidden = alerts.length === 0;
+      trigger.setAttribute("aria-label", alerts.length
+        ? `Abrir notificações, ${alerts.length} alerta(s) de conta`
+        : "Abrir notificações");
+      if (!alerts.length) {
+        list.innerHTML = '<p class="notification-empty">Nenhum problema de conta no momento.</p>';
+      } else {
+        list.innerHTML = alerts.map(alert => `
+          <a class="notification-item ${escapeHtml(alert.severity)}" href="${escapeHtml(alert.href)}">
+            <i data-lucide="${alert.type === "stale" ? "clock-3" : alert.severity === "error" ? "circle-alert" : "triangle-alert"}"></i>
+            <span><strong>@${escapeHtml(alert.username)} · ${escapeHtml(alert.title)}</strong><small>${escapeHtml(alert.reason)}</small></span>
+          </a>`).join("");
+        if (window.lucide) window.lucide.createIcons();
+      }
+      const rows = [...document.querySelectorAll("[data-account-id]")];
+      rows.forEach(row => {
+        row.classList.remove("has-account-alert", "error");
+        row.querySelectorAll(".account-alert-badge").forEach(badge => badge.remove());
+      });
+      alerts.forEach(alert => {
+        const row = rows.find(item => item.dataset.accountId === String(alert.account_id));
+        const content = row?.querySelector(".account-main") || row?.querySelector("strong");
+        if (!row || !content) return;
+        row.id = `account-${alert.account_id}`;
+        row.classList.add("has-account-alert");
+        if (alert.severity === "error") row.classList.add("error");
+        const badge = document.createElement("span");
+        badge.className = `account-alert-badge ${alert.severity}`;
+        const icon = document.createElement("i");
+        icon.dataset.lucide = alert.type === "stale" ? "clock-3" : "circle-alert";
+        const detail = document.createElement("span");
+        detail.textContent = `${alert.title}: ${alert.reason}`;
+        badge.append(icon, detail);
+        content.appendChild(badge);
+      });
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function showNewAlert(alert) {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      const notification = new Notification(`@${alert.username} · ${alert.title}`, {
+        body: alert.reason,
+        icon: "/static/favicon.svg",
+        tag: alert.id,
+      });
+      notification.addEventListener("click", () => {
+        window.focus();
+        window.location.href = alert.href;
+      });
+    }
+
+    async function refreshAlerts() {
+      if (requestInFlight || document.visibilityState === "hidden") return;
+      requestInFlight = true;
+      try {
+        const response = await fetch("/api/account-alerts", { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.detail || "Não foi possível carregar os alertas.");
+        const alerts = payload.alerts || [];
+        renderAlerts(alerts);
+        const currentIds = new Set(alerts.map(alert => alert.id));
+        if (knownAlertIds !== null) {
+          alerts.filter(alert => !knownAlertIds.has(alert.id)).forEach(showNewAlert);
+        }
+        knownAlertIds = currentIds;
+        if (panel.hidden) return;
+      } catch (error) {
+        console.error("Falha ao atualizar alertas de contas:", error);
+        if (!list.children.length) {
+          list.textContent = "Não foi possível carregar os alertas. Tente novamente.";
+        }
+      } finally {
+        requestInFlight = false;
+      }
+    }
+
+    trigger.addEventListener("click", () => {
+      panel.hidden = !panel.hidden;
+      trigger.setAttribute("aria-expanded", String(!panel.hidden));
+      if (!panel.hidden) refreshAlerts();
+    });
+    document.addEventListener("click", event => {
+      if (!panel.hidden && !event.target.closest(".notification-menu")) {
+        panel.hidden = true;
+        trigger.setAttribute("aria-expanded", "false");
+      }
+    });
+    document.addEventListener("visibilitychange", refreshAlerts);
+    refreshAlerts();
+    window.setInterval(refreshAlerts, 60_000);
   })();
 </script>
 </body>

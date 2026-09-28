@@ -146,6 +146,152 @@ def _account_publication_stats(
     return stats
 
 
+ACCOUNT_STALE_PUBLICATION_MINUTES = 70
+
+
+async def _account_alerts(
+    db: AsyncSession,
+    owner_id: int,
+    accounts: list[InstagramAccount] | None = None,
+    now: datetime | None = None,
+) -> list[dict[str, str | int]]:
+    if accounts is None:
+        accounts = (await db.scalars(
+            select(InstagramAccount)
+            .where(InstagramAccount.owner_id == owner_id)
+            .order_by(InstagramAccount.username, InstagramAccount.id)
+        )).all()
+    if not accounts:
+        return []
+
+    account_ids = [account.id for account in accounts]
+    last_publications = await db.execute(
+        select(
+            ScheduledPost.account_id,
+            func.max(func.coalesce(ScheduledPost.published_at, ScheduledPost.scheduled_for)),
+        )
+        .where(
+            ScheduledPost.owner_id == owner_id,
+            ScheduledPost.account_id.in_(account_ids),
+            ScheduledPost.status == "published",
+        )
+        .group_by(ScheduledPost.account_id)
+    )
+    published_at_by_account = dict(last_publications.all())
+    latest_failure_query = (
+        select(
+            ScheduledPost.id.label("id"),
+            ScheduledPost.account_id.label("account_id"),
+            ScheduledPost.status.label("status"),
+            ScheduledPost.error_message.label("error_message"),
+            ScheduledPost.error_at.label("error_at"),
+            ScheduledPost.scheduled_for.label("scheduled_for"),
+            func.row_number().over(
+                partition_by=ScheduledPost.account_id,
+                order_by=(
+                    func.coalesce(ScheduledPost.error_at, ScheduledPost.scheduled_for).desc(),
+                    ScheduledPost.id.desc(),
+                ),
+            ).label("position"),
+        )
+        .where(
+            ScheduledPost.owner_id == owner_id,
+            ScheduledPost.account_id.in_(account_ids),
+            ScheduledPost.status.in_(("failed", "blocked")),
+        )
+        .subquery()
+    )
+    latest_failure_rows = (await db.execute(
+        select(latest_failure_query).where(latest_failure_query.c.position == 1)
+    )).all()
+    latest_failure_by_account = {
+        row.account_id: row for row in latest_failure_rows
+    }
+
+    current_time = now or datetime.now(timezone.utc)
+    stale_threshold = timedelta(minutes=ACCOUNT_STALE_PUBLICATION_MINUTES)
+    alerts: list[dict[str, str | int]] = []
+    for account in accounts:
+        last_published_at = published_at_by_account.get(account.id)
+        if last_published_at is not None and last_published_at.tzinfo is None:
+            last_published_at = last_published_at.replace(tzinfo=timezone.utc)
+
+        connection_status = (
+            "connected" if account.connection_status == "active" else account.connection_status
+        )
+        connection_problem = (
+            connection_status != "connected"
+            or not account.access_token_encrypted
+            or bool(
+                account.token_expires_at
+                and (
+                    account.token_expires_at.replace(tzinfo=timezone.utc)
+                    if account.token_expires_at.tzinfo is None
+                    else account.token_expires_at
+                ) <= current_time
+            )
+        )
+        if connection_problem:
+            reason = account.status_reason or (
+                "Token não autorizado." if not account.access_token_encrypted
+                else "Token expirado." if account.token_expires_at and (
+                    account.token_expires_at.replace(tzinfo=timezone.utc)
+                    if account.token_expires_at.tzinfo is None
+                    else account.token_expires_at
+                ) <= current_time
+                else f"Estado da conexão: {connection_status}."
+            )
+            alerts.append({
+                "id": f"account-{account.id}-connection",
+                "account_id": account.id,
+                "username": account.username,
+                "type": "connection",
+                "severity": "error",
+                "title": "Problema na conexão",
+                "reason": reason,
+                "href": f"/hub#account-{account.id}",
+            })
+            continue
+
+        latest_failure = latest_failure_by_account.get(account.id)
+        if latest_failure is not None:
+            failure_at = latest_failure.error_at or latest_failure.scheduled_for
+            if failure_at.tzinfo is None:
+                failure_at = failure_at.replace(tzinfo=timezone.utc)
+            if last_published_at is None or failure_at > last_published_at:
+                alerts.append({
+                    "id": f"account-{account.id}-publication-{latest_failure.id}",
+                    "account_id": account.id,
+                    "username": account.username,
+                    "type": "publication",
+                    "severity": "warning" if latest_failure.status == "failed" else "error",
+                    "title": "Falha ao publicar",
+                    "reason": latest_failure.error_message or "A última tentativa de publicação falhou.",
+                    "href": f"/hub#account-{account.id}",
+                })
+                continue
+
+        last_activity = last_published_at or account.created_at
+        if last_activity is not None and last_activity.tzinfo is None:
+            last_activity = last_activity.replace(tzinfo=timezone.utc)
+        if last_activity is not None and current_time - last_activity > stale_threshold:
+            minutes_since_post = int((current_time - last_activity).total_seconds() // 60)
+            alerts.append({
+                "id": f"account-{account.id}-stale",
+                "account_id": account.id,
+                "username": account.username,
+                "type": "stale",
+                "severity": "warning",
+                "title": "Sem publicações recentes",
+                "reason": (
+                    f"Esta conta está há {minutes_since_post} minutos sem uma nova publicação "
+                    f"(limite: {ACCOUNT_STALE_PUBLICATION_MINUTES} minutos)."
+                ),
+                "href": f"/hub#account-{account.id}",
+            })
+    return alerts
+
+
 def _metric_views_by_account(
     metric_rows: list[InstagramMetric],
     account_ids: list[int],
@@ -1349,6 +1495,15 @@ async def hub(request: Request, user: User = Depends(current_user), db: AsyncSes
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response
+
+
+@router.get("/api/account-alerts")
+async def list_account_alerts(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    alerts = await _account_alerts(db, workspace_owner_id(user))
+    return {"alerts": alerts, "count": len(alerts)}
 
 
 @router.post("/metrics/refresh")

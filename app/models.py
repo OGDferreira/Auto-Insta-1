@@ -174,6 +174,7 @@ class ScheduledPost(Base):
     caption: Mapped[str] = mapped_column(Text, default="")
     scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     status: Mapped[str] = mapped_column(String(20), default="scheduled")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

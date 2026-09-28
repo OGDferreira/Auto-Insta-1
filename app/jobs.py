@@ -694,6 +694,7 @@ async def _publish(post_id: int) -> None:
                     raise RuntimeError(_api_error(published))
                     
             post.status = "published"
+            post.published_at = datetime.now(timezone.utc)
             post.error_message = None
             post.error_at = None
         except Exception as exc:

@@ -129,6 +129,7 @@ async def init_db() -> None:
                 "batch_id": "INTEGER",
                 "loop_index": "INTEGER",
                 "error_at": "DATETIME",
+                "published_at": "DATETIME",
             }
             for name, definition in new_columns.items():
                 if name not in existing:
@@ -200,6 +201,7 @@ async def init_db() -> None:
                     "batch_id": "INTEGER",
                     "loop_index": "INTEGER",
                     "error_at": "TIMESTAMP WITH TIME ZONE",
+                    "published_at": "TIMESTAMP WITH TIME ZONE",
                 },
                 "posting_batches": {
                     "is_loop": "BOOLEAN NOT NULL DEFAULT FALSE",
