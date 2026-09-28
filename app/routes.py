@@ -1112,17 +1112,17 @@ async def dashboard(
     unbatched_account_groups = build_account_groups(unbatched_posts)
     today = datetime.now(timezone.utc).date()
     today_posts = [post for post in posts if post.created_at and post.created_at.date() == today]
-    if period_days not in {1, 7, 30, 90}:
+    if period_days not in {0, 1, 7, 30, 90}:
         period_days = 7
-    metric_start = datetime.now(timezone.utc) - timedelta(days=period_days - 1)
-    metric_rows = (
-        await db.scalars(
-            select(InstagramMetric).where(
-                InstagramMetric.account_id.in_([a.id for a in accounts]),
-                InstagramMetric.metric_date >= metric_start,
-            )
+    metric_query = select(InstagramMetric).where(
+        InstagramMetric.account_id.in_([a.id for a in accounts])
+    )
+    if period_days:
+        metric_query = metric_query.where(
+            InstagramMetric.metric_date
+            >= datetime.now(timezone.utc) - timedelta(days=period_days - 1)
         )
-    ).all() if accounts else []
+    metric_rows = (await db.scalars(metric_query)).all() if accounts else []
     events = (
         await db.scalars(
             select(BotEvent).where(
@@ -1166,7 +1166,8 @@ async def dashboard(
         "failed": sum(post.status == "failed" for post in posts),
     }
     volume_days = []
-    for offset in range(period_days - 1, -1, -1):
+    chart_period_days = period_days or 7
+    for offset in range(chart_period_days - 1, -1, -1):
         day = datetime.now(timezone.utc).date() - timedelta(days=offset)
         volume_days.append({
             "label": day.strftime("%d/%m"),
@@ -1754,7 +1755,7 @@ async def api_status(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if period_days not in {1, 7, 30, 90}:
+    if period_days not in {0, 1, 7, 30, 90}:
         period_days = 7
     posts = (
         await db.scalars(
@@ -1775,14 +1776,15 @@ async def api_status(
             or_(BotEvent.account_id.in_(account_ids), BotEvent.account_id.is_(None))
         )
     bot_events = (await db.scalars(bot_query)).all()
-    metric_rows = (
-        await db.scalars(
-            select(InstagramMetric).where(
-                InstagramMetric.account_id.in_(account_ids),
-                InstagramMetric.metric_date >= datetime.now(timezone.utc) - timedelta(days=period_days - 1),
-            )
+    metric_query = select(InstagramMetric).where(
+        InstagramMetric.account_id.in_(account_ids)
+    )
+    if period_days:
+        metric_query = metric_query.where(
+            InstagramMetric.metric_date
+            >= datetime.now(timezone.utc) - timedelta(days=period_days - 1)
         )
-    ).all() if account_ids else []
+    metric_rows = (await db.scalars(metric_query)).all() if account_ids else []
     account_views = _metric_views_by_account(metric_rows, account_ids)
     total_views = sum(account_views.values())
     bot_counts = {

@@ -153,6 +153,13 @@ async def test_loop_restarts_playlist_and_includes_added_accounts(monkeypatch):
         assert re.search(r'name="account_ids" value="1" checked', editor.group(1))
         assert re.search(r'name="account_ids" value="3"\s*>', editor.group(1))
         assert 'class="loop-board-title"' in html
+        assert 'data-dashboard-period="0"' in html
+        assert 'data-dashboard-period="1"' in html
+        assert 'data-dashboard-period="7"' in html
+        assert 'data-dashboard-period="30"' in html
+        assert "Ver publicações e horários</button>" not in html
+        assert 'aria-label="Ver publicações e horários"' in html
+        assert 'data-lucide="eye"' in html
 
     await engine.dispose()
 

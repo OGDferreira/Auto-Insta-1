@@ -137,10 +137,10 @@
   .loop-board-title { display:flex; align-items:center; gap:.55rem; margin:0; font:700 1.15rem "Space Grotesk",sans-serif; }
   .loop-board-title i { color:var(--cyan); }
   .loop-new-button { width:auto; padding:.5rem .8rem; }
-  .loop-tabs { display:flex; gap:.5rem; margin:.35rem 0 .8rem; border-bottom:1px solid var(--line); }
-  .loop-tab { width:auto; padding:.55rem .8rem; color:var(--muted); background:transparent; border-radius:0; box-shadow:none; border-bottom:2px solid transparent; }
-  .loop-tab:hover,.loop-tab.active { color:var(--text); border-color:var(--cyan); background:transparent; box-shadow:none; transform:none; }
-  .loop-tab[aria-selected="true"] { color:var(--cyan); border-color:var(--cyan); }
+  .loop-tabs { display:flex; gap:.5rem; margin:.35rem 0 .8rem; }
+  .loop-tab { width:auto; padding:.55rem .8rem; color:var(--muted); background:rgba(16,18,23,.55); border:1px solid var(--line); border-radius:10px; box-shadow:none; }
+  .loop-tab:hover,.loop-tab.active { color:var(--text); border-color:var(--cyan); background:rgba(26,60,125,.12); box-shadow:none; transform:none; }
+  .loop-tab[aria-selected="true"] { color:var(--cyan); border-color:var(--cyan); background:rgba(26,60,125,.16); }
   .loop-view-panel[hidden],.loop-details[hidden],.loop-error-panel[hidden] { display:none!important; }
   .loop-details { margin:.2rem .9rem .9rem; padding:.85rem; border-top:1px solid var(--line); background:rgba(10,10,12,.42); }
   .loop-details-heading,.loop-schedule-row,.loop-error-heading { display:flex; align-items:center; justify-content:space-between; gap:.7rem; }
@@ -284,8 +284,10 @@
   .dashboard-period-label{display:flex;align-items:center;gap:.55rem;color:#7894c7;font:500 .72rem "Space Grotesk",sans-serif;letter-spacing:.12em}
   .dashboard-period-label i{width:17px;height:17px;color:var(--cyan)}
   .dashboard-period-controls{display:flex;align-items:center;justify-content:flex-end;gap:.65rem}
-  .dashboard-period-controls .period-filter{margin:0}
-  .dashboard-period-controls select{width:auto;min-width:126px;margin:0;padding:.55rem .7rem}
+  .dashboard-period-options{display:grid;grid-template-columns:repeat(4,minmax(72px,1fr));gap:.25rem;padding:.22rem;border:1px solid rgba(117,165,255,.16);border-radius:11px;background:rgba(5,8,14,.74)}
+  .dashboard-period-option{min-height:2.35rem;padding:.45rem .75rem;border:1px solid transparent;border-radius:8px;background:transparent;color:#9ba6b8;box-shadow:none;font-size:.75rem;font-weight:600;white-space:nowrap}
+  .dashboard-period-option:hover,.dashboard-period-option[aria-pressed="true"]{border-color:rgba(117,165,255,.16);background:rgba(148,163,184,.13);color:#f4f6fb;box-shadow:none;transform:none}
+  .dashboard-period-option:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
   .dashboard-period-controls button{width:auto;white-space:nowrap}
   .dashboard-overview-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:stretch;gap:1rem}
   .dashboard-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:.8rem}
@@ -318,7 +320,7 @@
   .dashboard-funnel-panel .status-line strong{white-space:nowrap}
   @media(max-width:1100px){.dashboard-overview-layout{grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr)}.dashboard-metrics-grid{gap:.65rem}.dashboard-metric{min-height:108px;padding:.85rem}.dashboard-support-grid{grid-template-columns:1fr}.dashboard-status-chart{height:125px}}
   @media(max-width:850px){.dashboard-overview-layout{grid-template-columns:1fr}.dashboard-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-insights-column{grid-template-rows:auto auto}.dashboard-performance-panel{min-height:340px}.dashboard-support-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  @media(max-width:600px){.dashboard-period-bar{align-items:flex-start;flex-direction:column;padding:.75rem}.dashboard-period-controls{width:100%;flex-wrap:wrap;justify-content:flex-start}.dashboard-period-controls .period-filter{flex:1 1 120px}.dashboard-period-controls select{width:100%}.dashboard-period-controls button{flex:1 1 100%;width:100%}.dashboard-period-controls .section-note{flex:1 1 auto}.dashboard-metrics-grid{gap:.55rem}.dashboard-metric{min-height:104px;padding:.7rem}.dashboard-metric-heading{gap:.45rem}.dashboard-metric-heading small{font-size:.69rem}.dashboard-metric-icon{width:30px;height:30px;border-radius:8px}.dashboard-metric-icon i{width:15px;height:15px}.dashboard-metric>strong{margin-top:.62rem;font-size:1.38rem}.dashboard-metric .metric-detail{font-size:.64rem}.dashboard-performance-panel{min-height:300px;padding:.85rem}.dashboard-volume-chart{min-height:220px}.dashboard-support-grid{grid-template-columns:1fr}.dashboard-status-chart{height:155px}}
+  @media(max-width:600px){.dashboard-period-bar{align-items:flex-start;flex-direction:column;padding:.75rem}.dashboard-period-controls{width:100%;flex-wrap:wrap;justify-content:flex-start}.dashboard-period-options{width:100%;grid-template-columns:repeat(4,minmax(0,1fr))}.dashboard-period-option{padding:.4rem .2rem;font-size:.68rem}.dashboard-period-controls button:not(.dashboard-period-option){flex:1 1 100%;width:100%}.dashboard-period-controls .section-note{flex:1 1 auto}.dashboard-metrics-grid{gap:.55rem}.dashboard-metric{min-height:104px;padding:.7rem}.dashboard-metric-heading{gap:.45rem}.dashboard-metric-heading small{font-size:.69rem}.dashboard-metric-icon{width:30px;height:30px;border-radius:8px}.dashboard-metric-icon i{width:15px;height:15px}.dashboard-metric>strong{margin-top:.62rem;font-size:1.38rem}.dashboard-metric .metric-detail{font-size:.64rem}.dashboard-performance-panel{min-height:300px;padding:.85rem}.dashboard-volume-chart{min-height:220px}.dashboard-support-grid{grid-template-columns:1fr}.dashboard-status-chart{height:155px}}
   @media(max-width:360px){.dashboard-metrics-grid{grid-template-columns:1fr}.dashboard-metric{min-height:92px}.dashboard-period-controls{gap:.45rem}}
 </style>
 <nav class="workspace-tabs" aria-label="Navegação do workspace">
@@ -336,7 +338,12 @@
     <header class="dashboard-period-bar">
       <div class="dashboard-period-label"><i data-lucide="calendar-days"></i><span>PERÍODO</span></div>
       <div class="dashboard-period-controls">
-        <label class="period-filter"><span class="sr-only">Período</span><select id="dashboard-period" aria-label="Período do dashboard"><option value="1" {% if period_days == 1 %}selected{% endif %}>Hoje</option><option value="7" {% if period_days == 7 %}selected{% endif %}>7 dias</option><option value="30" {% if period_days == 30 %}selected{% endif %}>30 dias</option><option value="90" {% if period_days == 90 %}selected{% endif %}>90 dias</option></select></label>
+        <div class="dashboard-period-options" role="group" aria-label="Filtrar métricas por período">
+          <button class="dashboard-period-option" type="button" data-dashboard-period="1" aria-pressed="{{ 'true' if period_days == 1 else 'false' }}">Hoje</button>
+          <button class="dashboard-period-option" type="button" data-dashboard-period="7" aria-pressed="{{ 'true' if period_days == 7 else 'false' }}">7 dias</button>
+          <button class="dashboard-period-option" type="button" data-dashboard-period="30" aria-pressed="{{ 'true' if period_days == 30 else 'false' }}">30 dias</button>
+          <button class="dashboard-period-option" type="button" data-dashboard-period="0" aria-pressed="{{ 'true' if period_days == 0 else 'false' }}">Total</button>
+        </div>
         <span class="section-note" id="views-updated-at">Atualizado agora</span>
         <button class="button secondary" type="button" id="refresh-dashboard-views"><i data-lucide="refresh-cw"></i><span>Atualizar visualizações</span></button>
       </div>
@@ -395,7 +402,7 @@
               <p class="loop-totals"><strong>{{ published_count }} publicados</strong> · {{ pending_count }} na fila · {{ processing_count }} processando · {{ loop_error_count }} com erro</p>
             </div>
             <div class="loop-card-actions">
-              <button type="button" class="secondary loop-details-toggle" data-loop-details-toggle="{{ batch.id }}" aria-expanded="false" aria-controls="loop-details-{{ batch.id }}"><i data-lucide="calendar-clock"></i> Ver publicações e horários</button>
+              <button type="button" class="secondary loop-details-toggle" data-loop-details-toggle="{{ batch.id }}" aria-label="Ver publicações e horários" title="Ver publicações e horários" aria-expanded="false" aria-controls="loop-details-{{ batch.id }}"><i data-lucide="eye"></i></button>
               <button type="button" class="secondary" data-loop-edit="{{ batch.id }}" title="Editar Loop" aria-label="Editar Loop {{ batch.name }}"><i data-lucide="pencil"></i></button>
               {% if batch.status == "paused" %}<form method="post" action="/batches/{{ batch.id }}/resume"><button type="submit" class="secondary" title="Retomar Loop" aria-label="Retomar Loop"><i data-lucide="play"></i></button></form>{% else %}<form method="post" action="/batches/{{ batch.id }}/pause"><button type="submit" class="secondary" title="Pausar Loop" aria-label="Pausar Loop"><i data-lucide="pause"></i></button></form>{% endif %}
               <form method="post" action="/batches/{{ batch.id }}/delete" data-delete-batch><button type="submit" class="secondary" title="Excluir Loop" aria-label="Excluir Loop"><i data-lucide="trash-2"></i></button></form>
@@ -672,7 +679,31 @@ function cleanDashboardUrl(){const url=new URL(window.location.href);const rawHa
 function selectDashboardView(view,updateUrl=true){const normalized=(view||"overview").split("#")[0]||"overview";const target=document.querySelector(`[data-view="${normalized}"]`)||document.querySelector('[data-view="overview"]');if(!target)return;if(updateUrl)history.replaceState(null,"",`${window.location.pathname.replace(/\/$/,"")}${window.location.search}#${normalized}`);document.querySelectorAll(".workspace-tab").forEach(item=>item.classList.toggle("active",item===target));document.querySelectorAll(".workspace-view").forEach(panel=>panel.classList.toggle("active",panel.dataset.panel===normalized));window.scrollTo({top:0,behavior:"smooth"})}
 document.querySelectorAll("[data-view]").forEach(link=>link.addEventListener("click",event=>{event.preventDefault();selectDashboardView(link.dataset.view)}));
 const initialView=cleanDashboardUrl()||"overview";selectDashboardView(initialView,false);
-document.getElementById("dashboard-period")?.addEventListener("change",async event=>{const period=event.target.value;const url=new URL(window.location.href);url.searchParams.set("period_days",period);url.hash="overview";history.replaceState(null,"",url.toString());try{const response=await fetch(`/api/status?period_days=${period}&at=${Date.now()}`,{cache:"no-store",headers:{"Accept":"application/json","Cache-Control":"no-cache"}});if(!response.ok)throw new Error("Falha ao atualizar o período");const data=await response.json();Object.entries(data.metrics||{}).forEach(([key,value])=>{const element=document.querySelector(`[data-metric="${key}"]`);if(element)element.textContent=value});const updated=document.getElementById("views-updated-at");if(updated)updated.textContent=period==="1"?"Atualizado: hoje":"Atualizado agora"}catch(error){showToast("Não foi possível aplicar o filtro sem recarregar a página.","error")}});
+const dashboardPeriodButtons=[...document.querySelectorAll("[data-dashboard-period]")];
+let activeDashboardPeriod=String({{ period_days|tojson }});
+let dashboardPeriodRequest=0;
+async function applyDashboardPeriod(period){
+  const request=++dashboardPeriodRequest;
+  activeDashboardPeriod=period;
+  dashboardPeriodButtons.forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.dashboardPeriod===period)));
+  const url=new URL(window.location.href);
+  url.searchParams.set("period_days",period);
+  url.hash="overview";
+  history.replaceState(null,"",url.toString());
+  try{
+    const response=await fetch(`/api/status?period_days=${encodeURIComponent(period)}&at=${Date.now()}`,{cache:"no-store",headers:{"Accept":"application/json","Cache-Control":"no-cache"}});
+    if(!response.ok)throw new Error("Falha ao atualizar o período");
+    const data=await response.json();
+    if(request!==dashboardPeriodRequest)return;
+    Object.entries(data.metrics||{}).forEach(([key,value])=>{const element=document.querySelector(`[data-metric="${key}"]`);if(element)element.textContent=value});
+    const updated=document.getElementById("views-updated-at");
+    if(updated)updated.textContent=period==="1"?"Atualizado: hoje":"Atualizado agora";
+  }catch(error){
+    if(request!==dashboardPeriodRequest)return;
+    showToast("Não foi possível aplicar o filtro sem recarregar a página.","error");
+  }
+}
+dashboardPeriodButtons.forEach(button=>button.addEventListener("click",()=>applyDashboardPeriod(button.dataset.dashboardPeriod)));
 let media=[];
 if(list&&window.Sortable)new Sortable(list,{animation:150,onEnd:event=>{const [item]=media.splice(event.oldIndex,1);media.splice(event.newIndex,0,item);render()}});
 if(files){files.addEventListener("change",async()=>{for(const file of files.files){if(media.length>=30){alert("Cada lote pode conter no máximo 30 publicações.");break}const data=new FormData();data.append("media",file,file.name);const response=await fetch("/media/upload",{method:"POST",body:data});if(!response.ok){let message="Falha ao enviar "+file.name;try{const error=await response.json();message=error.detail||message}catch{}alert(message);continue}const result=await response.json();media.push({file,preview:URL.createObjectURL(file),url:result.url,storagePath:result.storage_path,type:result.media_type,caption:""})}files.value="";render()})}
@@ -770,7 +801,61 @@ async function loadAutomations(){if(!automationList)return;const response=await 
 automationForm?.addEventListener("submit",async event=>{event.preventDefault();const payload={account_id:Number(document.getElementById("automation-account").value)||null,rule_type:document.getElementById("automation-type").value,message_text:document.getElementById("automation-message").value,...automationMedia,is_active:true};const response=await fetch("/api/automations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const result=await response.json();if(!response.ok){showToast(result.detail||"Não foi possível salvar a automação.","error");return}showToast("Automação salva.","success");automationForm.reset();automationMedia={media_url:null,drive_media_url:null,drive_account_email:null,drive_credentials_encrypted:null};automationMediaStatus.hidden=true;loadAutomations()});
 document.getElementById("automation-refresh")?.addEventListener("click",loadAutomations);if(automationList)loadAutomations();
 const metaTestButton=document.getElementById("meta-test-button"),metaTestResult=document.getElementById("meta-test-result");if(metaTestButton&&metaTestResult){metaTestButton.addEventListener("click",async()=>{metaTestButton.disabled=true;metaTestButton.textContent="Testando Meta...";metaTestResult.hidden=false;metaTestResult.textContent="Consultando perfil e Insights...";try{const response=await fetch("/api/meta/test",{method:"POST",headers:{"Accept":"application/json"}});const payload=await response.json();if(!response.ok)throw new Error(payload.detail||"Falha no diagnóstico");metaTestResult.textContent=JSON.stringify(payload,null,2);showToast(payload.message||"Diagnóstico concluído.","success")}catch(error){metaTestResult.textContent=error.message;showToast(error.message,"error")}finally{metaTestButton.disabled=false;metaTestButton.innerHTML='<i data-lucide="activity"></i> Executar teste';if(window.lucide)lucide.createIcons()}})}
-let previousSharkbot=null,refreshInFlight=false,refreshTimer=null;async function refreshDashboard(){if(refreshInFlight||document.visibilityState!=="visible")return;refreshInFlight=true;const controller=new AbortController();const timeout=window.setTimeout(()=>controller.abort(),8000);try{const response=await fetch(`/api/status?at=${Date.now()}`,{cache:"no-store",signal:controller.signal,headers:{"Accept":"application/json","Cache-Control":"no-cache"}});if(!response.ok)return;const data=await response.json();Object.entries(data.metrics||{}).forEach(([key,value])=>{const element=document.querySelector(`[data-metric="${key}"]`);if(element)element.textContent=value});Object.entries(data.account_statuses||{}).forEach(([accountId,accountStatus])=>{const status=typeof accountStatus==="string"?accountStatus:accountStatus.status;const row=document.querySelector(`#dashboard-account-list [data-account-id="${accountId}"]`);if(!row)return;["connected","disconnected","suspended","error","pending"].forEach(name=>row.classList.remove(`status-${name}`));row.classList.add(`status-${status==="active"?"connected":status}`);row.title=(typeof accountStatus==="object"&&accountStatus.reason)||"Conta conectada e funcional.";const reason=row.querySelector("[data-account-reason]");if(reason)reason.textContent=(typeof accountStatus==="object"&&accountStatus.reason)||"Online e autorizada";const checked=row.querySelector("[data-account-checked]");if(checked)checked.textContent=(typeof accountStatus==="object"&&accountStatus.checked_at)?`Verificada em ${new Date(accountStatus.checked_at).toLocaleString()}`:"Ainda não verificada"});const sharkbot=data.sharkbot||{};Object.entries(sharkbot).forEach(([key,value])=>{const element=document.querySelector(`[data-sharkbot-metric="${key}"]`);if(element)element.textContent=value});if(previousSharkbot&&sharkbot.pix_paid>previousSharkbot.pix_paid){const sale=data.latest_sale;const amount=Number(sale?.value||0);const formattedAmount=amount>0?` Venda recebida: R$ ${amount.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}.`:" Venda recebida.";notifyUser(`Venda aprovada pelo Sharkbot.${formattedAmount}`,"success");}previousSharkbot=sharkbot;(data.posts||[]).forEach(post=>{const card=document.querySelector(`[data-post-id="${post.id}"]`);if(card){card.dataset.status=post.status;const status=card.querySelector("[data-post-status]");if(status){status.textContent=post.status;status.className=`status-badge ${post.status}`}}});if(document.visibilityState==="visible"){const logResponse=await fetch("/api/logs",{cache:"no-store",signal:controller.signal,headers:{"Accept":"application/json","Cache-Control":"no-cache"}});if(logResponse.ok){const logs=await logResponse.json();const target=document.getElementById("system-logs");if(target)target.textContent=(logs.logs||[]).map(item=>`[${new Date(item.timestamp).toLocaleTimeString()}] ${item.level} ${item.logger}: ${item.message}`).join("\n")||"Nenhum registro disponível."}}}catch(error){if(error.name!=="AbortError")console.debug("Atualização do dashboard indisponível",error)}finally{window.clearTimeout(timeout);refreshInFlight=false}}
+let previousSharkbot=null,refreshInFlight=false,refreshTimer=null;
+async function refreshDashboard(){
+  if(refreshInFlight||document.visibilityState!=="visible")return;
+  refreshInFlight=true;
+  const controller=new AbortController();
+  const timeout=window.setTimeout(()=>controller.abort(),8000);
+  try{
+    const response=await fetch(`/api/status?period_days=${encodeURIComponent(activeDashboardPeriod)}&at=${Date.now()}`,{cache:"no-store",signal:controller.signal,headers:{"Accept":"application/json","Cache-Control":"no-cache"}});
+    if(!response.ok)return;
+    const data=await response.json();
+    Object.entries(data.metrics||{}).forEach(([key,value])=>{const element=document.querySelector(`[data-metric="${key}"]`);if(element)element.textContent=value});
+    Object.entries(data.account_statuses||{}).forEach(([accountId,accountStatus])=>{
+      const status=typeof accountStatus==="string"?accountStatus:accountStatus.status;
+      const row=document.querySelector(`#dashboard-account-list [data-account-id="${accountId}"]`);
+      if(!row)return;
+      ["connected","disconnected","suspended","error","pending"].forEach(name=>row.classList.remove(`status-${name}`));
+      row.classList.add(`status-${status==="active"?"connected":status}`);
+      row.title=(typeof accountStatus==="object"&&accountStatus.reason)||"Conta conectada e funcional.";
+      const reason=row.querySelector("[data-account-reason]");
+      if(reason)reason.textContent=(typeof accountStatus==="object"&&accountStatus.reason)||"Online e autorizada";
+      const checked=row.querySelector("[data-account-checked]");
+      if(checked)checked.textContent=(typeof accountStatus==="object"&&accountStatus.checked_at)?`Verificada em ${new Date(accountStatus.checked_at).toLocaleString()}`:"Ainda não verificada";
+    });
+    const sharkbot=data.sharkbot||{};
+    Object.entries(sharkbot).forEach(([key,value])=>{const element=document.querySelector(`[data-sharkbot-metric="${key}"]`);if(element)element.textContent=value});
+    if(previousSharkbot&&sharkbot.pix_paid>previousSharkbot.pix_paid){
+      const sale=data.latest_sale;
+      const amount=Number(sale?.value||0);
+      const formattedAmount=amount>0?` Venda recebida: R$ ${amount.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}.`:" Venda recebida.";
+      notifyUser(`Venda aprovada pelo Sharkbot.${formattedAmount}`,"success");
+    }
+    previousSharkbot=sharkbot;
+    (data.posts||[]).forEach(post=>{
+      const card=document.querySelector(`[data-post-id="${post.id}"]`);
+      if(card){
+        card.dataset.status=post.status;
+        const status=card.querySelector("[data-post-status]");
+        if(status){status.textContent=post.status;status.className=`status-badge ${post.status}`}
+      }
+    });
+    if(document.visibilityState==="visible"){
+      const logResponse=await fetch("/api/logs",{cache:"no-store",signal:controller.signal,headers:{"Accept":"application/json","Cache-Control":"no-cache"}});
+      if(logResponse.ok){
+        const logs=await logResponse.json();
+        const target=document.getElementById("system-logs");
+        if(target)target.textContent=(logs.logs||[]).map(item=>`[${new Date(item.timestamp).toLocaleTimeString()}] ${item.level} ${item.logger}: ${item.message}`).join("\n")||"Nenhum registro disponível.";
+      }
+    }
+  }catch(error){
+    if(error.name!=="AbortError")console.debug("Atualização do dashboard indisponível",error);
+  }finally{
+    window.clearTimeout(timeout);
+    refreshInFlight=false;
+  }
+}
 const refreshDashboardViews = document.getElementById("refresh-dashboard-views");
 if (refreshDashboardViews) {
   refreshDashboardViews.addEventListener("click", async () => {

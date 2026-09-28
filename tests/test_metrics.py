@@ -1,3 +1,6 @@
+import json
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from starlette.requests import Request
@@ -6,7 +9,7 @@ import pytest
 
 from app import routes
 from app.db import Base
-from app.models import InstagramAccount, User
+from app.models import InstagramAccount, InstagramMetric, User
 
 
 class FakeResponse:
@@ -144,5 +147,49 @@ async def test_analytics_can_load_profile_counters_without_fetching_media(monkey
         assert payload["media"] == []
         assert len(client.calls) == 1
         assert "follows_count" in client.calls[0][1]["fields"]
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_dashboard_total_period_includes_all_historical_metric_snapshots():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with session_factory() as db:
+        owner = User(email="period@example.com", username="period_owner", password_hash="hash")
+        db.add(owner)
+        await db.flush()
+        account = InstagramAccount(
+            owner_id=owner.id,
+            instagram_user_id="ig-period",
+            username="period_profile",
+        )
+        db.add(account)
+        await db.flush()
+        now = datetime.now(timezone.utc)
+        db.add_all([
+            InstagramMetric(
+                account_id=account.id,
+                metric_date=now - timedelta(days=100),
+                impressions=100,
+            ),
+            InstagramMetric(
+                account_id=account.id,
+                metric_date=now - timedelta(days=1),
+                impressions=10,
+            ),
+        ])
+        await db.commit()
+
+        total_response = await routes.api_status(period_days=0, user=owner, db=db)
+        recent_response = await routes.api_status(period_days=7, user=owner, db=db)
+        total_metrics = json.loads(total_response.body)["metrics"]
+        recent_metrics = json.loads(recent_response.body)["metrics"]
+
+        assert total_metrics["total_views"] == 110
+        assert recent_metrics["total_views"] == 10
 
     await engine.dispose()

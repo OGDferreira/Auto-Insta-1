@@ -26,7 +26,10 @@ export function initLoopManager() {
       const expanded = button.getAttribute("aria-expanded") !== "true";
       details.hidden = !expanded;
       button.setAttribute("aria-expanded", String(expanded));
-      button.innerHTML = `<i data-lucide="${expanded ? "calendar-off" : "calendar-clock"}"></i> ${expanded ? "Ocultar publicações e horários" : "Ver publicações e horários"}`;
+      const label = expanded ? "Ocultar publicações e horários" : "Ver publicações e horários";
+      button.setAttribute("aria-label", label);
+      button.title = label;
+      button.innerHTML = `<i data-lucide="${expanded ? "eye-off" : "eye"}"></i>`;
       if (window.lucide) window.lucide.createIcons();
     });
   });
