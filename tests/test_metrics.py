@@ -144,3 +144,38 @@ async def test_analytics_can_load_profile_counters_without_fetching_media(monkey
         assert "follows_count" in client.calls[0][1]["fields"]
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [0, 123, None, "unavailable"])
+async def test_account_engagement_is_available_without_loading_media(monkeypatch, value):
+    class EngagementClient(FakeAnalyticsClient):
+        async def get(self, url, params):
+            response = await super().get(url, params)
+            if params.get("metric") == "total_interactions":
+                assert params["metric_type"] == "total_value"
+                assert params["period"] == "day"
+                assert params["until"] - params["since"] == 30 * 86400
+                if value == "unavailable":
+                    raise routes.httpx.ConnectError("offline")
+                return FakeResponse({"data": [{"name": "total_interactions", "total_value": {"value": value}}]})
+            return response
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    client = EngagementClient()
+    monkeypatch.setattr(routes.httpx, "AsyncClient", lambda **kwargs: client)
+    monkeypatch.setattr(routes, "decrypt_token", lambda token: "test-token")
+    async with factory() as db:
+        owner = User(username="ranking_owner", password_hash="hash")
+        other = User(username="ranking_other", password_hash="hash")
+        db.add_all([owner, other])
+        await db.flush()
+        db.add_all([InstagramAccount(owner_id=owner.id, username="own", instagram_user_id="own", access_token_encrypted="token"), InstagramAccount(owner_id=other.id, username="other", instagram_user_id="other", access_token_encrypted="token")])
+        await db.commit()
+        result = await routes.analytics(account_ids=[], period_days=30, include_media=False, include_account_engagement=True, user=owner, db=db)
+        assert len(result["accounts"]) == 1
+        assert result["accounts"][0]["engagement"] == (None if value == "unavailable" else value)
+        assert result["media"] == [] and len(client.calls) == 2
+    await engine.dispose()

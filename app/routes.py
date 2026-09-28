@@ -170,7 +170,7 @@ async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> 
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
     user = await db.get(User, int(user_id))
-    if not user:
+    if not user or user.role == "collaborator_deleted":
         request.session.clear()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
     if user.role == "collaborator" and request.url.path not in {
@@ -872,7 +872,7 @@ async def login(
 ):
     normalized = (identifier or email or "").strip()
     user = await db.scalar(select(User).where(User.username == normalized))
-    if not user or not verify_password(password, user.password_hash):
+    if not user or user.role == "collaborator_deleted" or not verify_password(password, user.password_hash):
         return templates.TemplateResponse(
             "login.html", {"request": request, "identifier": identifier, "error": "Credenciais inválidas"}, status_code=401
         )
@@ -1465,7 +1465,7 @@ async def list_collaborators(
 ):
     collaborators = (await db.scalars(
         select(User)
-        .where(User.role == "collaborator", User.parent_id == user.id)
+        .where(User.role.in_(("collaborator", "collaborator_deleted")), User.parent_id == user.id)
         .order_by(User.created_at, User.id)
     )).all()
     return {
@@ -1478,9 +1478,34 @@ async def list_collaborators(
                 "daily_bonus": float(collaborator.collaborator_daily_bonus or 0),
                 "report_url": f"/collaborators/{collaborator.id}/report",
             }
-            for collaborator in collaborators
-        ]
+            for collaborator in collaborators if collaborator.role == "collaborator"
+        ],
+        "archived_collaborators": [
+            {"id": collaborator.id, "username": collaborator.username,
+             "report_url": f"/collaborators/{collaborator.id}/report"}
+            for collaborator in collaborators if collaborator.role == "collaborator_deleted"
+        ],
     }
+
+
+@router.delete("/api/collaborators/{collaborator_id}")
+async def delete_collaborator(
+    collaborator_id: int,
+    user: User = Depends(admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Logical deletion preserves earned payments and attribution. Every request
+    # resolves the user from the database, revoking existing sessions immediately.
+    collaborator = await db.scalar(select(User).where(
+        User.id == collaborator_id,
+        User.role == "collaborator",
+        User.parent_id == user.id,
+    ))
+    if collaborator is None:
+        raise HTTPException(status_code=404, detail="Colaborador não encontrado")
+    collaborator.role = "collaborator_deleted"
+    await db.commit()
+    return {"id": collaborator.id, "deleted": True}
 
 
 @router.put("/api/collaborators/{collaborator_id}")
@@ -1534,7 +1559,7 @@ async def collaborator_report(
     else:
         collaborator = await db.scalar(select(User).where(
             User.id == collaborator_id,
-            User.role == "collaborator",
+            User.role.in_(("collaborator", "collaborator_deleted")),
             User.parent_id == user.id,
         ))
         if collaborator is None:
@@ -2287,6 +2312,7 @@ async def analytics(
     account_ids: list[int] = Query(default=[]),
     period_days: int = 30,
     include_media: bool = True,
+    include_account_engagement: bool = False,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -2302,6 +2328,8 @@ async def analytics(
     accounts = (await db.scalars(query.order_by(InstagramAccount.username))).all()
     settings = get_settings()
     start_date = (datetime.now(timezone.utc) - timedelta(days=period_days - 1)).date()
+    engagement_until = int(datetime.now(timezone.utc).timestamp())
+    engagement_since = engagement_until - period_days * 86400
     account_rows = []
     media_rows = []
     errors = []
@@ -2332,6 +2360,27 @@ async def analytics(
                     for item in insights.json().get("data", []):
                         values = item.get("values", [])
                         insight_values[item.get("name")] = sum(int(value.get("value", 0) or 0) for value in values)
+                engagement = None
+                if include_account_engagement:
+                    try:
+                        engagement_response = await client.get(
+                            f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
+                            params={
+                                "metric": "total_interactions", "metric_type": "total_value",
+                                "period": "day", "since": engagement_since,
+                                "until": engagement_until,
+                                "access_token": token,
+                            },
+                        )
+                        if not engagement_response.is_error:
+                            for metric in engagement_response.json().get("data", []):
+                                if metric.get("name") == "total_interactions":
+                                    value = (metric.get("total_value") or {}).get("value")
+                                    if isinstance(value, (int, float)) and value >= 0:
+                                        engagement = value
+                    except (httpx.HTTPError, ValueError, TypeError):
+                        # Unavailable insights must not be confused with zero.
+                        pass
                 account_rows.append({
                     "account_id": account.id,
                     "account": account.username,
@@ -2339,6 +2388,7 @@ async def analytics(
                     "following": profile_data.get("follows_count", 0),
                     "media_count": profile_data.get("media_count", 0),
                     "growth": 0,
+                    "engagement": engagement,
                     "reach": insight_values.get("reach", 0),
                     "impressions": insight_values.get("impressions", 0),
                     "profile_views": insight_values.get("profile_views", 0),
@@ -3471,3 +3521,4 @@ async def remove_batch_account(
         await db.delete(batch)
     await db.commit()
     return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
+

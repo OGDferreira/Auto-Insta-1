@@ -1,3 +1,5 @@
+import { sortAccounts } from "./account-ranking.js";
+
 const profileButtons = [...document.querySelectorAll("[data-metrics-account]")];
 const profileList = document.getElementById("metrics-profile-list");
 const profileFeed = document.getElementById("profile-feed");
@@ -6,6 +8,9 @@ const feedCount = document.getElementById("profile-feed-count");
 const selectedName = document.getElementById("selected-profile-name");
 const refreshButton = document.getElementById("profile-metrics-refresh");
 const engagementSort = document.getElementById("profile-engagement-sort");
+const accountsSort = document.getElementById("accounts-engagement-sort");
+const rankingStatus = document.getElementById("accounts-ranking-status");
+const accountEngagement = new Map();
 const profileCache = new Map();
 let selectedAccountId = null;
 let requestVersion = 0;
@@ -47,6 +52,23 @@ function updateProfileRows(accounts) {
     if (followerNode) followerNode.textContent = `${formatCount(account.followers)} seguidores`;
   });
 }
+
+function renderAccountOrder() {
+  if (!profileList) return;
+  const rows = profileButtons.map(button => ({
+    account_id: button.dataset.metricsAccount,
+    account: button.dataset.username,
+    engagement: accountEngagement.get(button.dataset.metricsAccount),
+    button,
+  }));
+  sortAccounts(rows, accountsSort?.value || "desc").forEach(row => {
+    profileList.appendChild(row.button);
+    const metric = row.button.querySelector("[data-account-engagement]");
+    if (metric) metric.textContent = `${formatCount(row.engagement)} interações · 30 dias`;
+  });
+}
+
+accountsSort?.addEventListener("change", renderAccountOrder);
 
 function renderMedia(items) {
   if (!items.length) {
@@ -143,10 +165,16 @@ async function loadSelectedProfile(accountId) {
 async function loadProfiles() {
   if (!profileButtons.length) return;
   statusMessage.textContent = "Atualizando perfis...";
+  if (rankingStatus) rankingStatus.textContent = "Atualizando engajamento das contas...";
   statusMessage.classList.remove("error");
   try {
-    const payload = await fetchAnalytics("period_days=30&include_media=false");
+    const payload = await fetchAnalytics("period_days=30&include_media=false&include_account_engagement=true");
     updateProfileRows(payload.accounts || []);
+    accountEngagement.clear();
+    (payload.accounts || []).forEach(account => accountEngagement.set(String(account.account_id), account.engagement));
+    renderAccountOrder();
+    const missing = profileButtons.filter(button => accountEngagement.get(button.dataset.metricsAccount) == null).length;
+    if (rankingStatus) rankingStatus.textContent = `Interações nos últimos 30 dias${missing ? ` · ${missing} conta(s) sem dados ao final` : ""}`;
     const listErrors = payload.errors || [];
     if (listErrors.length) {
       statusMessage.textContent = `${listErrors.length} perfil(is) não puderam ser atualizados.`;
@@ -155,6 +183,7 @@ async function loadProfiles() {
       statusMessage.textContent = "";
     }
   } catch (error) {
+    if (rankingStatus) rankingStatus.textContent = "Falha ao atualizar a ordenação. Tente Atualizar novamente.";
     statusMessage.textContent = error.message;
     statusMessage.classList.add("error");
   }
@@ -182,5 +211,6 @@ refreshButton?.addEventListener("click", async () => {
 });
 
 if (profileList && profileButtons.length) {
-  loadProfiles().then(() => loadSelectedProfile(profileButtons[0].dataset.metricsAccount));
+  loadProfiles().then(() => loadSelectedProfile(profileList.querySelector("[data-metrics-account]").dataset.metricsAccount));
 }
+

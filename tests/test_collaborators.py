@@ -170,3 +170,53 @@ async def test_collaborator_reports_and_management_are_scoped_to_owner():
         assert allowed_user.id == own_collaborator.id
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_delete_revokes_access_preserves_accounts_payments_and_scopes_owner():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as db:
+        owner = User(username="owner_delete", password_hash="hash")
+        stranger = User(username="stranger_delete", password_hash="hash")
+        db.add_all([owner, stranger])
+        await db.flush()
+        worker = User(username="worker_delete", password_hash=routes.hash_password("test-password"), role="collaborator", parent_id=owner.id)
+        account = InstagramAccount(owner_id=owner.id, instagram_user_id="ig-preserve", username="preserve")
+        db.add_all([worker, account])
+        await db.flush()
+        connection = CollaboratorConnection(owner_id=owner.id, collaborator_id=worker.id, instagram_account_id=account.id, instagram_user_id="ig-preserve", rate_per_account=2, daily_target=1, daily_bonus=5)
+        bonus = CollaboratorDailyBonus(owner_id=owner.id, collaborator_id=worker.id, local_date=date.today(), target=1, amount=5)
+        db.add_all([connection, bonus])
+        await db.commit()
+        with pytest.raises(HTTPException) as error:
+            await routes.delete_collaborator(worker.id, user=stranger, db=db)
+        assert error.value.status_code == 404
+        with pytest.raises(HTTPException):
+            await routes.admin_user(worker)
+        with pytest.raises(HTTPException) as error:
+            await routes.delete_collaborator(owner.id, user=owner, db=db)
+        assert error.value.status_code == 404
+        session_request = request_for_path("/hub", worker.id)
+        assert (await routes.delete_collaborator(worker.id, user=owner, db=db))["deleted"]
+        await db.refresh(account)
+        await db.refresh(connection)
+        await db.refresh(bonus)
+        assert account.owner_id == owner.id
+        assert connection.collaborator_id == worker.id and float(bonus.amount) == 5
+        listed = await routes.list_collaborators(user=owner, db=db)
+        assert listed["collaborators"] == []
+        assert listed["archived_collaborators"][0]["id"] == worker.id
+        report = await routes.collaborator_report(request_for_path("/report"), worker.id, user=owner, db=db)
+        assert report.status_code == 200
+        with pytest.raises(HTTPException) as error:
+            await routes.current_user(session_request, db=db)
+        assert error.value.status_code == 401 and session_request.session == {}
+        response = await routes.login(request_for_path("/login"), identifier="worker_delete", email=None, password="test-password", db=db)
+        assert response.status_code == 401
+        with pytest.raises(HTTPException) as error:
+            await routes.delete_collaborator(worker.id, user=owner, db=db)
+        assert error.value.status_code == 404
+    await engine.dispose()
