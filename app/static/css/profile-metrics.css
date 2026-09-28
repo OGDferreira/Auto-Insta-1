@@ -8,8 +8,8 @@
 .profile-list{display:grid;gap:.4rem;max-height:calc(100vh - 180px);overflow:auto;padding-right:.15rem}
 .profile-list-empty{padding:.9rem;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--muted);font-size:.78rem}
 .profile-option{display:flex;align-items:center;gap:.5rem;width:100%;min-height:48px;padding:.38rem .48rem;text-align:left;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--text);box-shadow:none;cursor:pointer}
-.profile-option:hover{transform:none;border-color:var(--cyan);background:rgba(62,90,76,.45);box-shadow:none}
-.profile-option[aria-pressed="true"]{border-color:var(--cyan);background:rgba(212,175,55,.12);box-shadow:0 0 0 1px rgba(212,175,55,.16)}
+.profile-option:hover{transform:none;border-color:var(--cyan);background:rgba(26,60,125,.45);box-shadow:none}
+.profile-option[aria-pressed="true"]{border-color:var(--cyan);background:rgba(130,170,255,.12);box-shadow:0 0 0 1px rgba(130,170,255,.16)}
 .profile-option img,.profile-option-initial{width:28px;height:28px;flex:none;border-radius:50%;object-fit:cover;background:var(--line)}
 .profile-option-initial{display:grid;place-items:center;color:var(--text);font-weight:700;font-size:.72rem}
 .profile-option-copy{display:block;min-width:0;flex:1}

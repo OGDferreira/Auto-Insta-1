@@ -1,0 +1,43 @@
+/* Reference palette: #05183c, #06296b, #1a3c7d, #101217, #0c0d0d. */
+:root{--bg:#0c0d0d;--panel:#101217;--panel-2:#131b2b;--line:#263858;--text:#f0f4ff;--muted:#a7b5cf;--primary:#82aaff;--cyan:#82aaff;--ease:cubic-bezier(.2,.7,.2,1)}
+body{background:#0c0d0d!important;animation:none!important;border-inline:0}
+nav{background:#0c0d0d;border-color:var(--line)}
+a{color:var(--cyan)}
+.brand-mark{box-shadow:0 0 18px #06296b}
+.card,.panel,.metric,.account-card,.queue-card,.loop-card,.profile-stat,.profile-feed-card,.collaborator-manager-card{background:linear-gradient(135deg,#111a2b,#101217 72%);backdrop-filter:none;transition:transform .22s var(--ease),border-color .22s ease,box-shadow .22s ease}
+.panel-feature{background:linear-gradient(125deg,#05183c,#101217 85%)}
+.card:hover,.panel:hover,.metric:hover,.account-card:hover,.queue-card:hover,.account-row:hover,.drive-file:hover,.profile-option:hover{filter:none}
+button,.button{background:linear-gradient(135deg,#1a3c7d,#06296b);color:#f0f4ff;border-color:#4263a0;box-shadow:0 4px 16px #06296b40;transition:transform .2s var(--ease),border-color .2s ease,box-shadow .2s ease,background-color .2s ease}
+button::after,.button::after{display:none}
+button:disabled{opacity:.55;cursor:wait;transform:none;box-shadow:none}
+button:focus-visible,.button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid #a9c4ff;outline-offset:3px}
+input:focus,select:focus,textarea:focus{border-color:var(--cyan);box-shadow:0 0 0 3px #82aaff26}
+.workspace-tab.active{background:#05183c;color:#d6e4ff;border-color:var(--cyan)}
+.danger-button.secondary{margin-top:.6rem;color:#ffaaaa;border-color:#78393f;background:#30191e;box-shadow:none}
+.collaborator-manager-head strong{overflow-wrap:anywhere;min-width:0}
+.collaborator-manager-head a{flex-shrink:0}
+.collaborator-archive{color:var(--muted);font-size:.82rem}
+.collaborator-archive summary{cursor:pointer;padding:.6rem 0}
+.accounts-sort-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;margin-bottom:1rem;padding:.75rem 1rem;border:1px solid var(--line);border-radius:12px;background:#101217}
+.accounts-sort-toolbar label{margin:0;color:var(--text);font-size:.8rem}
+.accounts-sort-toolbar select{width:auto;max-width:100%;margin:0;padding:.55rem .7rem;font-size:.8rem}
+.accounts-sort-toolbar [role=status]{margin-left:auto;font-size:.73rem;color:var(--muted)}
+.profile-option-engagement{display:block;margin-top:.2rem;color:#b9ceff;font-size:.66rem;line-height:1.35;white-space:normal}
+.profile-option[aria-pressed=true]{box-shadow:inset 3px 0 #82aaff,0 0 16px #06296b55!important}
+body .profile-feed-counts,body .profile-feed-caption{color:var(--muted)}
+body .profile-feed-date{color:#9caccc}
+body .profile-feed-message{border-color:var(--line)}
+.global-search{display:flex;align-items:center;gap:.65rem;padding:.65rem .85rem;margin-bottom:1.2rem;border:1px solid var(--line);border-radius:12px;background:#101217;color:var(--muted)}
+.global-search input{min-width:0;margin:0;padding:.25rem;background:transparent;border:0;box-shadow:none}
+.global-search kbd{padding:.15rem .35rem;border:1px solid var(--line);border-radius:5px;font-size:.7rem;white-space:nowrap}
+.global-search:focus-within{border-color:var(--cyan)}
+.brand{text-decoration:none}
+@media(hover:hover) and (pointer:fine){
+  .metric:hover,.account-card:hover,.queue-card:hover,.profile-stat:hover,.profile-feed-card:hover,.collaborator-manager-card:hover{transform:translateY(-3px);box-shadow:0 12px 24px #0005,0 0 16px #06296b66}
+  .profile-option:hover{transform:translateX(2px);border-color:var(--cyan)}
+  button:not(:disabled):hover,.button:hover{transform:translateY(-2px);border-color:var(--cyan);box-shadow:0 8px 20px #06296b66}
+  button:not(:disabled):active,.button:active{transform:translateY(0);box-shadow:none}
+}
+@media(hover:none){.card:hover,.panel:hover,.metric:hover,.account-card:hover,.queue-card:hover,button:hover,.button:hover{transform:none}}
+@media(max-width:600px){.accounts-sort-toolbar{padding:.65rem}.accounts-sort-toolbar [role=status]{width:100%;margin-left:0}.profile-feed-heading{flex-wrap:wrap}.profile-engagement-sort select{min-width:0;max-width:100%}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.card:hover,.panel:hover,.metric:hover,.account-card:hover,.queue-card:hover,.profile-stat:hover,.profile-feed-card:hover,.profile-option:hover,.collaborator-manager-card:hover,button:hover,.button:hover{transform:none!important}}

@@ -9,10 +9,10 @@
 <style>
   body > nav { padding:.4rem 0 .5rem; margin-bottom:.75rem; }
   .queue-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:.75rem; }
-  .queue-card { position:relative; overflow:hidden; padding:0; background:rgba(31,42,36,.76); border:1px solid rgba(62,90,76,.45); border-radius:14px; }
+  .queue-card { position:relative; overflow:hidden; padding:0; background:rgba(16,18,23,.76); border:1px solid rgba(26,60,125,.45); border-radius:14px; }
   .selectable-card { touch-action:none; }
-  .queue-card.selected { border-color:var(--cyan); box-shadow:0 0 0 2px rgba(212,175,55,.24),0 18px 50px rgba(0,0,0,.2); }
-  .queue-media { aspect-ratio:1 / 1; background:#0A0A0C; overflow:hidden; }
+  .queue-card.selected { border-color:var(--cyan); box-shadow:0 0 0 2px rgba(130,170,255,.24),0 18px 50px rgba(0,0,0,.2); }
+  .queue-media { aspect-ratio:1 / 1; background:#0c0d0d; overflow:hidden; }
   .queue-media-content,.queue-media-content img,.queue-media-content video { width:100%; height:100%; display:block; object-fit:cover; }
   .queue-card-body { padding:.85rem; }
   .queue-card-head { display:flex; align-items:center; gap:.5rem; padding-right:2rem; }
@@ -41,7 +41,7 @@
   .queue-toolbar-actions select { width:auto; margin:0; padding:.5rem .65rem; }
   .privacy-blur { filter:blur(10px); transition:filter .2s ease; }
   .account-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:.75rem; }
-  .account-list .account-row { display:flex; min-width:0; align-items:center; gap:.6rem; padding:.8rem; border:1px solid var(--line); border-radius:14px; background:linear-gradient(145deg,rgba(31,42,36,.96),rgba(10,10,12,.96)); }
+  .account-list .account-row { display:flex; min-width:0; align-items:center; gap:.6rem; padding:.8rem; border:1px solid var(--line); border-radius:14px; background:linear-gradient(145deg,rgba(16,18,23,.96),rgba(10,10,12,.96)); }
   .account-list .account-row.status-connected { border-color:var(--success); box-shadow:0 0 18px rgba(34,197,94,.12); }
   .account-list .account-row.status-disconnected,.account-list .account-row.status-suspended,.account-list .account-row.status-error { border-color:var(--danger); box-shadow:0 0 20px rgba(239,68,68,.2); }
   .account-list .account-row.status-pending { border-color:var(--warning); box-shadow:0 0 20px rgba(250,204,21,.12); }
@@ -80,21 +80,21 @@
   .drive-selection-actions button { width:auto; padding:.45rem .65rem; font-size:.78rem; }
   .drive-picker { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:.65rem; overflow:auto; padding:.9rem 0; }
   .drive-file { position:relative; min-height:78px; display:flex; flex-direction:column; align-items:flex-start; gap:.35rem; padding:.75rem; text-align:left; background:var(--panel); border:1px solid var(--line); border-radius:12px; user-select:none; touch-action:none; }
-  .drive-file:hover,.drive-file.selected { border-color:var(--cyan); background:rgba(212,175,55,.12); transform:translateY(-2px); box-shadow:0 10px 28px rgba(0,0,0,.18); }
+  .drive-file:hover,.drive-file.selected { border-color:var(--cyan); background:rgba(130,170,255,.12); transform:translateY(-2px); box-shadow:0 10px 28px rgba(0,0,0,.18); }
   .drive-file-check { position:absolute; top:.55rem; right:.55rem; display:grid; place-items:center; width:22px; height:22px; border:1px solid var(--line); border-radius:6px; color:transparent; }
-  .drive-file.selected .drive-file-check { color:#0A0A0C; background:var(--cyan); border-color:var(--cyan); }
+  .drive-file.selected .drive-file-check { color:#0c0d0d; background:var(--cyan); border-color:var(--cyan); }
   .drive-file-name { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); font-weight:700; }
   .drive-file small { color:var(--muted); }
-  .drive-folder { border-color:rgba(62,90,76,.55); }
-  .drive-folder.selected { border-color:var(--cyan); background:rgba(212,175,55,.12); }
+  .drive-folder { border-color:rgba(26,60,125,.55); }
+  .drive-folder.selected { border-color:var(--cyan); background:rgba(130,170,255,.12); }
   .drive-folder-icon { color:var(--cyan); }
   .drive-folder-open { margin-top:auto; padding:.3rem .5rem; font-size:.7rem; }
   .drive-modal-actions { border-top:1px solid var(--line); padding-top:.9rem; }
   .drive-modal-actions button { width:auto; }
   .queue-card-body { position:relative; }
   .batch-list { display:grid; gap:.65rem; margin-bottom:1rem; }
-  .batch-accordion { border:1px solid var(--line); border-radius:12px; background:rgba(31,42,36,.7); overflow:hidden; }
-  .batch-accordion[open] { border-color:rgba(212,175,55,.45); }
+  .batch-accordion { border:1px solid var(--line); border-radius:12px; background:rgba(16,18,23,.7); overflow:hidden; }
+  .batch-accordion[open] { border-color:rgba(130,170,255,.45); }
   .batch-accordion.paused { border-color:var(--warning); }
   .batch-summary { display:flex; align-items:center; justify-content:space-between; gap:.8rem; padding:.85rem .9rem; cursor:pointer; list-style:none; }
   .batch-summary::-webkit-details-marker { display:none; }
@@ -111,11 +111,11 @@
   .batch-status-count.awaiting { color:var(--warning); border-color:rgba(250,204,21,.35); }
   .batch-status-count.failed { color:var(--danger); border-color:rgba(244,63,94,.35); }
   .batch-status-count.completed { color:var(--success); border-color:rgba(34,197,94,.35); }
-  .batch-status-count.processing { color:var(--cyan); border-color:rgba(212,175,55,.35); }
+  .batch-status-count.processing { color:var(--cyan); border-color:rgba(130,170,255,.35); }
   .batch-content { padding:0 .9rem .9rem; }
   .batch-accounts-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:.55rem; margin:.2rem 0 .8rem; }
   .batch-account-summary { display:flex; flex-direction:column; align-items:flex-start; gap:.3rem; width:100%; padding:.65rem .7rem; text-align:left; background:rgba(10,10,12,.55); border:1px solid var(--line); border-radius:10px; }
-  .batch-account-summary:hover,.batch-account-summary.active { border-color:var(--cyan); background:rgba(212,175,55,.08); transform:none; box-shadow:none; }
+  .batch-account-summary:hover,.batch-account-summary.active { border-color:var(--cyan); background:rgba(130,170,255,.08); transform:none; box-shadow:none; }
   .batch-account-summary strong { overflow:hidden; text-overflow:ellipsis; max-width:100%; }
   .batch-account-statuses { display:flex; flex-wrap:wrap; gap:.25rem; }
   .batch-account-status { color:var(--muted); font-size:.65rem; }
@@ -147,7 +147,7 @@
   .loop-schedule-account { margin-top:.75rem; }
   .loop-schedule-account h4,.loop-error-group h4 { margin:.2rem 0 .4rem; font-size:.78rem; }
   .loop-schedule-list,.loop-error-list { display:grid; gap:.35rem; margin:0; padding:0; list-style:none; }
-  .loop-schedule-row,.loop-error-row { padding:.55rem .65rem; border:1px solid var(--line); border-radius:7px; background:rgba(31,42,36,.65); font-size:.74rem; }
+  .loop-schedule-row,.loop-error-row { padding:.55rem .65rem; border:1px solid var(--line); border-radius:7px; background:rgba(16,18,23,.65); font-size:.74rem; }
   .loop-schedule-row small,.loop-error-row small,.loop-error-row time { display:block; margin-top:.2rem; color:var(--muted); font-size:.68rem; }
   .loop-schedule-state { color:var(--cyan); white-space:nowrap; }
   .loop-error-panel { display:grid; gap:.75rem; }
@@ -157,13 +157,13 @@
   .loop-error-row button,.loop-details-heading button { padding:.38rem .55rem; font-size:.7rem; }
   .loop-details-toggle { width:auto; padding:.42rem .6rem; font-size:.7rem; }
   .loop-empty { margin:.5rem 0; }
-  .loop-card { margin:.75rem 0; border:1px solid var(--line); border-radius:9px; background:rgba(31,42,36,.7); }
+  .loop-card { margin:.75rem 0; border:1px solid var(--line); border-radius:9px; background:rgba(16,18,23,.7); }
   .loop-card-summary { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; padding:.9rem 1rem; }
   .loop-card-title { display:flex; align-items:center; gap:.55rem; min-width:0; font-weight:700; }
   .loop-card-meta { display:flex; flex-wrap:wrap; gap:.55rem; margin-top:.3rem; color:var(--muted); font-size:.75rem; }
-  .loop-active-badge { padding:.15rem .4rem; border-radius:4px; background:rgba(212,175,55,.14); color:var(--cyan); font-size:.7rem; }
+  .loop-active-badge { padding:.15rem .4rem; border-radius:4px; background:rgba(130,170,255,.14); color:var(--cyan); font-size:.7rem; }
   .loop-account-chips { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.6rem; }
-  .loop-account-chip { padding:.18rem .38rem; border-radius:4px; color:var(--text); background:#1F2A24; font-size:.72rem; }
+  .loop-account-chip { padding:.18rem .38rem; border-radius:4px; color:var(--text); background:#101217; font-size:.72rem; }
   .loop-account-health { display:flex; align-items:center; gap:.45rem; border:1px solid var(--line); }
   .loop-account-health.error { border-color:var(--danger); color:var(--danger); background:rgba(239,68,68,.08); }
   .loop-account-health.warning { border-color:var(--warning); color:var(--warning); background:rgba(250,204,21,.07); }
@@ -191,9 +191,9 @@
   .loop-editor-fields { display:grid; grid-template-columns:minmax(150px,1fr) minmax(130px,.55fr); gap:.6rem; }
   .loop-editor-fields label { margin:.3rem 0; font-size:.72rem; }
   .loop-account-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.4rem; margin:.45rem 0 .8rem; }
-  .loop-account-card { display:flex; align-items:center; gap:.45rem; min-width:0; margin:0; padding:.45rem .55rem; border:1px solid var(--line); border-radius:6px; color:var(--text); background:rgba(31,42,36,.64); cursor:pointer; transition:background .15s,border-color .15s; }
+  .loop-account-card { display:flex; align-items:center; gap:.45rem; min-width:0; margin:0; padding:.45rem .55rem; border:1px solid var(--line); border-radius:6px; color:var(--text); background:rgba(16,18,23,.64); cursor:pointer; transition:background .15s,border-color .15s; }
   .loop-account-card:hover { border-color:var(--cyan); }
-  .loop-account-card:has(input:checked) { border-color:var(--cyan); background:rgba(212,175,55,.13); }
+  .loop-account-card:has(input:checked) { border-color:var(--cyan); background:rgba(130,170,255,.13); }
   .loop-account-card input { width:15px; height:15px; flex:none; margin:0; accent-color:var(--cyan); }
   .loop-account-card img { width:20px; height:20px; flex:none; border-radius:50%; object-fit:cover; }
   .loop-account-card span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.72rem; }
@@ -201,7 +201,7 @@
   .loop-media-pool { max-height:190px; overflow:auto; border:1px solid var(--line); border-radius:6px; }
   .loop-media-row { display:flex; align-items:center; gap:.5rem; min-width:0; padding:.4rem .5rem; border-bottom:1px solid rgba(148,163,184,.12); font-size:.69rem; }
   .loop-media-row:last-child { border-bottom:0; }
-  .loop-media-kind { padding:.1rem .28rem; border-radius:3px; color:var(--cyan); background:rgba(212,175,55,.1); font-size:.62rem; }
+  .loop-media-kind { padding:.1rem .28rem; border-radius:3px; color:var(--cyan); background:rgba(130,170,255,.1); font-size:.62rem; }
   .loop-media-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .loop-editor-actions { display:flex; justify-content:flex-end; gap:.5rem; margin-top:.8rem; }
   .loop-editor-actions button { width:auto; }
@@ -216,7 +216,7 @@
   .feed-item input { position:absolute; top:.65rem; left:.65rem; width:18px; height:18px; accent-color:var(--danger); }
   .automation-grid { display:grid; grid-template-columns:minmax(280px,390px) 1fr; gap:1rem; }
   .automation-list { display:grid; gap:.65rem; }
-  .automation-card { padding:.8rem; border:1px solid var(--line); border-radius:12px; background:rgba(31,42,36,.7); }
+  .automation-card { padding:.8rem; border:1px solid var(--line); border-radius:12px; background:rgba(16,18,23,.7); }
   .automation-card header { display:flex; align-items:center; justify-content:space-between; gap:.6rem; }
   .automation-card p { margin:.5rem 0 0; color:var(--muted); white-space:pre-wrap; overflow-wrap:anywhere; }
   .automation-media-preview { display:flex; align-items:center; gap:.5rem; margin-top:.55rem; color:var(--cyan); font-size:.75rem; }
@@ -265,7 +265,7 @@
       position:fixed; z-index:20; left:0; right:0; bottom:0;
       display:flex; justify-content:space-around; gap:0; margin:0;
       padding:.45rem .35rem calc(.45rem + env(safe-area-inset-bottom));
-      border:1px solid rgba(62,90,76,.48); border-radius:16px 16px 0 0;
+      border:1px solid rgba(26,60,125,.48); border-radius:16px 16px 0 0;
       background:rgba(12,8,9,.94); backdrop-filter:blur(24px);
       box-shadow:0 -12px 35px rgba(0,0,0,.3);
     }
@@ -273,7 +273,7 @@
     .workspace-tab span { display:none; }
     .workspace-tab i { width:20px; height:20px; margin:0; }
     .workspace-tab { font-size:0; }
-    .workspace-tab.active { color:var(--cyan); background:rgba(212,175,55,.16); }
+    .workspace-tab.active { color:var(--cyan); background:rgba(130,170,255,.16); }
     .global-search{display:flex;align-items:center;gap:.55rem;max-width:680px;margin:0 auto 1.1rem;padding:.55rem .75rem;border:1px solid var(--line);border-radius:12px;background:rgba(19,13,15,.85);color:var(--muted)}
     .global-search input{min-width:0;margin:0;padding:.35rem;background:transparent;border:0;box-shadow:none}
     .global-search input:focus{box-shadow:none}
@@ -512,9 +512,10 @@
   <section id="analytics" class="workspace-view" data-panel="analytics">
     <main class="profile-metrics">
       <header class="metrics-header"><div><h1>Perfis &amp; Métricas</h1><p>Veja seguidores, publicações e visualizações dos perfis conectados.</p></div><div class="metrics-header-actions"><button type="button" id="profile-metrics-refresh"><i data-lucide="refresh-cw"></i> Atualizar</button></div></header>
+      <div class="accounts-sort-toolbar"><label for="accounts-engagement-sort">Ordenar contas</label><select id="accounts-engagement-sort"><option value="desc">Maior engajamento primeiro</option><option value="asc">Menor engajamento primeiro</option><option value="name">Nome (A–Z)</option></select><span id="accounts-ranking-status" role="status">Interações nos últimos 30 dias · sem dados ao final</span></div>
       <div class="profile-metrics-layout">
         <aside class="profile-list" id="metrics-profile-list" aria-label="Perfis Instagram">
-          {% for account in accounts if account.access_token_encrypted %}<button type="button" class="profile-option" data-metrics-account="{{ account.id }}" data-username="{{ account.username }}" aria-pressed="false">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}<span class="profile-option-initial">{{ account.username[:1]|upper }}</span>{% endif %}<span class="profile-option-copy"><span class="profile-option-name">@{{ account.username }}</span><span class="profile-option-followers" data-account-followers>— seguidores</span></span></button>{% else %}<div class="profile-list-empty">Nenhum perfil autorizado.</div>{% endfor %}
+          {% for account in accounts if account.access_token_encrypted %}<button type="button" class="profile-option" data-metrics-account="{{ account.id }}" data-username="{{ account.username }}" aria-pressed="false">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}<span class="profile-option-initial">{{ account.username[:1]|upper }}</span>{% endif %}<span class="profile-option-copy"><span class="profile-option-name">@{{ account.username }}</span><span class="profile-option-followers" data-account-followers>— seguidores</span><span class="profile-option-engagement" data-account-engagement>— interações · 30 dias</span></span></button>{% else %}<div class="profile-list-empty">Nenhum perfil autorizado.</div>{% endfor %}
         </aside>
         <section class="profile-metrics-content" aria-label="Feed e métricas do perfil selecionado">
           <div class="selected-profile-bar"><div class="selected-profile-title"><i data-lucide="sparkles"></i><span id="selected-profile-name">Selecione um perfil</span></div><p class="metrics-status" id="profile-metrics-status" aria-live="polite"></p></div>
@@ -597,7 +598,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 const chartStatus={{ chart_status|tojson }},volumeDays={{ volume_days|tojson }},funnelMetrics={{ metrics.funnel|tojson }},pixStatus={{ metrics.pix_status|tojson }};
-if(window.Chart){new Chart(document.getElementById("status-chart"),{type:"doughnut",data:{labels:["Publicadas","Agendadas","Falhas"],datasets:[{data:[chartStatus.published,chartStatus.scheduled,chartStatus.failed],backgroundColor:["#22C55E","#D4AF37","#EF4444"],borderWidth:0}]},options:{maintainAspectRatio:false,cutout:"72%",plugins:{legend:{labels:{color:"#F2F6F3",boxWidth:10}}}}});new Chart(document.getElementById("volume-chart"),{type:"line",data:{labels:volumeDays.map(item=>item.label),datasets:[{label:"Publicações",data:volumeDays.map(item=>item.published),borderColor:"#D4AF37",backgroundColor:"rgba(212,175,55,.15)",fill:true,tension:.35},{label:"Interações",data:volumeDays.map(item=>item.interactions),borderColor:"#3E5A4C",tension:.35}]},options:{scales:{x:{ticks:{color:"#A9B7AE"}},y:{beginAtZero:true,ticks:{color:"#A9B7AE"}}},plugins:{legend:{labels:{color:"#F2F6F3"}}}}})}
+if(window.Chart){new Chart(document.getElementById("status-chart"),{type:"doughnut",data:{labels:["Publicadas","Agendadas","Falhas"],datasets:[{data:[chartStatus.published,chartStatus.scheduled,chartStatus.failed],backgroundColor:["#22C55E","#82aaff","#EF4444"],borderWidth:0}]},options:{maintainAspectRatio:false,cutout:"72%",plugins:{legend:{labels:{color:"#f0f4ff",boxWidth:10}}}}});new Chart(document.getElementById("volume-chart"),{type:"line",data:{labels:volumeDays.map(item=>item.label),datasets:[{label:"Publicações",data:volumeDays.map(item=>item.published),borderColor:"#82aaff",backgroundColor:"rgba(130,170,255,.15)",fill:true,tension:.35},{label:"Interações",data:volumeDays.map(item=>item.interactions),borderColor:"#1a3c7d",tension:.35}]},options:{scales:{x:{ticks:{color:"#a7b5cf"}},y:{beginAtZero:true,ticks:{color:"#a7b5cf"}}},plugins:{legend:{labels:{color:"#f0f4ff"}}}}})}
 const files=document.getElementById("bulk-files"),list=document.getElementById("media-items"),time=document.getElementById("bulk-time"),form=document.getElementById("bulk-form"),captionFields=document.getElementById("caption-fields"),globalCaption=document.getElementById("global-caption-field"),driveButton=document.getElementById("drive-import"),loopEnabled=document.getElementById("loop-enabled"),scheduleField=document.getElementById("schedule-field"),scheduleNote=document.getElementById("schedule-note");
 const pad=value=>String(value).padStart(2,"0");
 const escapeHtml=value=>String(value).replace(/[&<>\"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[char]));
@@ -752,3 +753,4 @@ if(form){form.addEventListener("submit",event=>{const looping=Boolean(loopEnable
   import "/static/js/direct-campaign.js";
 </script>
 {% endblock %}
+

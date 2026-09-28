@@ -10,10 +10,10 @@
   .metrics-header-actions button,.metrics-header-actions a{width:auto;padding:.48rem .65rem;font-size:.76rem}
   .profile-metrics-layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:.8rem;align-items:start}
   .profile-list{display:grid;gap:.4rem;max-height:calc(100vh - 105px);overflow:auto;padding-right:.15rem}
-  .profile-list-empty{padding:.9rem;border:1px solid var(--line);border-radius:7px;background:rgba(31,42,36,.72);color:var(--muted);font-size:.78rem}
+  .profile-list-empty{padding:.9rem;border:1px solid var(--line);border-radius:7px;background:rgba(16,18,23,.72);color:var(--muted);font-size:.78rem}
   .profile-option{display:flex;align-items:center;gap:.5rem;width:100%;min-height:48px;padding:.38rem .48rem;text-align:left;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--text);box-shadow:none;cursor:pointer}
-  .profile-option:hover{transform:none;border-color:var(--cyan);background:rgba(62,90,76,.45);box-shadow:none}
-  .profile-option[aria-pressed="true"]{border-color:var(--cyan);background:rgba(212,175,55,.12);box-shadow:0 0 0 1px rgba(212,175,55,.16)}
+  .profile-option:hover{transform:none;border-color:var(--cyan);background:rgba(26,60,125,.45);box-shadow:none}
+  .profile-option[aria-pressed="true"]{border-color:var(--cyan);background:rgba(130,170,255,.12);box-shadow:0 0 0 1px rgba(130,170,255,.16)}
   .profile-option img,.profile-option-initial{width:28px;height:28px;flex:none;border-radius:50%;object-fit:cover;background:var(--line)}
   .profile-option-initial{display:grid;place-items:center;color:var(--text);font-weight:700;font-size:.72rem}
   .profile-option-copy{display:block;min-width:0;flex:1}
@@ -38,7 +38,7 @@
   .profile-feed-heading h2{margin:0;font:600 .79rem "DM Sans",sans-serif;letter-spacing:0}
   .profile-feed{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
   .profile-feed-card{min-width:0;overflow:hidden;border:1px solid var(--line);border-radius:7px;background:var(--panel)}
-  .profile-feed-media{position:relative;aspect-ratio:1;background:#0A0A0C;overflow:hidden}
+  .profile-feed-media{position:relative;aspect-ratio:1;background:#0c0d0d;overflow:hidden}
   .profile-feed-media img,.profile-feed-media video{display:block;width:100%;height:100%;object-fit:cover}
   .profile-feed-type{position:absolute;right:.35rem;top:.35rem;display:grid;place-items:center;width:18px;height:18px;border:1px solid rgba(255,255,255,.22);border-radius:5px;background:rgba(10,10,12,.82);color:var(--text)}
   .profile-feed-type i{width:11px;height:11px}
@@ -53,13 +53,13 @@
   @media(max-width:760px){.profile-metrics-layout{grid-template-columns:1fr}.profile-list{display:flex;max-height:none;overflow-x:auto;overflow-y:hidden;padding-bottom:.2rem}.profile-option{width:165px;min-width:165px}.profile-feed{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media(max-width:480px){.profile-metrics{margin-top:.2rem}.metrics-header{align-items:flex-start}.metrics-header h1{font-size:1.18rem}.metrics-header-actions{gap:.3rem}.metrics-header-actions button,.metrics-header-actions a{padding:.42rem .5rem}.profile-stat-grid{gap:.35rem}.profile-stat{padding:.45rem}.profile-stat-label{font-size:.59rem}.profile-stat strong{font-size:.86rem}}
   .profile-list-empty,.profile-option,.selected-profile-bar,.profile-stat,.profile-feed-card{background:var(--panel)}
-  .profile-option:hover{border-color:var(--cyan);background:rgba(62,90,76,.45)}
-  .profile-option[aria-pressed="true"]{background:rgba(212,175,55,.12);box-shadow:0 0 0 1px rgba(212,175,55,.16)}
+  .profile-option:hover{border-color:var(--cyan);background:rgba(26,60,125,.45)}
+  .profile-option[aria-pressed="true"]{background:rgba(130,170,255,.12);box-shadow:0 0 0 1px rgba(130,170,255,.16)}
   .profile-option img,.profile-option-initial{background:var(--line)}.profile-option-initial{color:var(--text)}
   .selected-profile-title i,.profile-stat-label i{color:var(--cyan)}
   .metrics-status.error{color:var(--danger)}
-  .profile-feed-media{background:#0A0A0C}
-  .profile-feed-type{background:rgba(31,42,36,.85);color:var(--text)}
+  .profile-feed-media{background:#0c0d0d}
+  .profile-feed-type{background:rgba(16,18,23,.85);color:var(--text)}
   .profile-feed-counts,.profile-feed-date,.profile-feed-caption{color:var(--muted)}
   .profile-feed-message{border-color:var(--line)}
 </style>
@@ -68,12 +68,13 @@
     <div><h1>Perfis &amp; Métricas</h1><p>Veja seguidores, posts e visualizações direto aqui.</p></div>
     <div class="metrics-header-actions"><a class="button secondary" href="/metrics/sharkbot" title="Abrir eventos do Sharkbot"><i data-lucide="chart-no-axes-combined"></i> Eventos</a><button type="button" id="profile-metrics-refresh"><i data-lucide="refresh-cw"></i> Atualizar</button></div>
   </header>
-  <div class="profile-metrics-layout">
+  <div class="accounts-sort-toolbar"><label for="accounts-engagement-sort">Ordenar contas</label><select id="accounts-engagement-sort"><option value="desc">Maior engajamento primeiro</option><option value="asc">Menor engajamento primeiro</option><option value="name">Nome (A–Z)</option></select><span id="accounts-ranking-status" role="status">Interações nos últimos 30 dias · sem dados ao final</span></div>
+      <div class="profile-metrics-layout">
     <aside class="profile-list" id="metrics-profile-list" aria-label="Perfis Instagram">
       {% for account in accounts %}
       <button type="button" class="profile-option" data-metrics-account="{{ account.id }}" data-username="{{ account.username }}" aria-pressed="false">
         {% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}<span class="profile-option-initial">{{ account.username[:1]|upper }}</span>{% endif %}
-        <span class="profile-option-copy"><span class="profile-option-name">@{{ account.username }}</span><span class="profile-option-followers" data-account-followers>— seguidores</span></span>
+        <span class="profile-option-copy"><span class="profile-option-name">@{{ account.username }}</span><span class="profile-option-followers" data-account-followers>— seguidores</span><span class="profile-option-engagement" data-account-engagement>— interações · 30 dias</span></span>
       </button>
       {% else %}<div class="profile-list-empty">Nenhum perfil conectado.</div>{% endfor %}
     </aside>
@@ -91,3 +92,4 @@
 </main>
 <script type="module" src="/static/js/profile-metrics.js"></script>
 {% endblock %}
+
