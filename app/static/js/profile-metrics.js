@@ -6,9 +6,14 @@ const feedCount = document.getElementById("profile-feed-count");
 const selectedName = document.getElementById("selected-profile-name");
 const refreshButton = document.getElementById("profile-metrics-refresh");
 const engagementSort = document.getElementById("profile-engagement-sort");
+const accountEngagementSort = document.getElementById("profile-account-engagement-sort");
+const accountSortStatus = document.getElementById("profile-account-sort-status");
 const profileCache = new Map();
+const originalProfileOrder = new Map(profileButtons.map((button, index) => [button, index]));
 let selectedAccountId = null;
 let requestVersion = 0;
+let accountSortRequestVersion = 0;
+let accountEngagementScores = null;
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -46,6 +51,107 @@ function updateProfileRows(accounts) {
     const followerNode = button?.querySelector("[data-account-followers]");
     if (followerNode) followerNode.textContent = `${formatCount(account.followers)} seguidores`;
   });
+}
+
+function engagementValue(item) {
+  if (item.engagement !== null && item.engagement !== undefined && item.engagement !== "") {
+    const engagement = Number(item.engagement);
+    if (Number.isFinite(engagement)) return engagement;
+  }
+  const interactions = ["likes", "comments", "shares", "saves"]
+    .map(key => item[key])
+    .filter(value => value !== null && value !== undefined && value !== "")
+    .map(Number)
+    .filter(Number.isFinite);
+  return interactions.length ? interactions.reduce((total, value) => total + value, 0) : null;
+}
+
+function sortProfileButtons(scores) {
+  const direction = accountEngagementSort?.value || "default";
+  const ordered = [...profileButtons].sort((left, right) => {
+    if (direction === "default" || !scores) {
+      return originalProfileOrder.get(left) - originalProfileOrder.get(right);
+    }
+    const leftScore = scores.get(left.dataset.metricsAccount);
+    const rightScore = scores.get(right.dataset.metricsAccount);
+    if (leftScore === undefined || rightScore === undefined) {
+      if (leftScore === rightScore) return originalProfileOrder.get(left) - originalProfileOrder.get(right);
+      return leftScore === undefined ? 1 : -1;
+    }
+    const difference = direction === "asc" ? leftScore - rightScore : rightScore - leftScore;
+    return difference || originalProfileOrder.get(left) - originalProfileOrder.get(right);
+  });
+  profileList?.append(...ordered);
+}
+
+function collectAccountEngagement(payload) {
+  const totals = new Map();
+  (payload.media || []).forEach(item => {
+    const accountId = String(item.account_id ?? "");
+    const value = engagementValue(item);
+    if (!accountId || value === null) return;
+    const current = totals.get(accountId) || { total: 0, count: 0 };
+    current.total += value;
+    current.count += 1;
+    totals.set(accountId, current);
+  });
+  return new Map([...totals].map(([accountId, value]) => [accountId, value.total / value.count]));
+}
+
+function renderAccountEngagement(scores) {
+  profileButtons.forEach(button => {
+    const node = button.querySelector("[data-account-engagement]");
+    if (!node) return;
+    const score = scores.get(button.dataset.metricsAccount);
+    node.hidden = false;
+    node.textContent = score === undefined
+      ? "Engajamento indisponível"
+      : `${formatCount(score)} interações/publicação`;
+  });
+}
+
+async function updateAccountOrder() {
+  const request = ++accountSortRequestVersion;
+  if (!accountEngagementSort || accountEngagementSort.value === "default") {
+    sortProfileButtons(null);
+    if (accountSortStatus) {
+      accountSortStatus.textContent = "Média de interações nas até 25 publicações mais recentes por conta.";
+      accountSortStatus.classList.remove("error");
+    }
+    return;
+  }
+  if (accountEngagementScores === null) {
+    if (accountSortStatus) {
+      accountSortStatus.textContent = "Calculando engajamento das publicações recentes...";
+      accountSortStatus.classList.remove("error");
+    }
+    try {
+      const payload = await fetchAnalytics("period_days=30");
+      if (request !== accountSortRequestVersion) return;
+      updateProfileRows(payload.accounts || []);
+      accountEngagementScores = collectAccountEngagement(payload);
+      renderAccountEngagement(accountEngagementScores);
+      const unavailableCount = profileButtons.filter(button => (
+        !accountEngagementScores.has(button.dataset.metricsAccount)
+      )).length;
+      const errorCount = (payload.errors || []).length;
+      if (accountSortStatus) {
+        accountSortStatus.textContent = errorCount || unavailableCount
+          ? `Dados incompletos: ${unavailableCount} conta(s) sem métricas e ${errorCount} erro(s) na consulta.`
+          : "Média de interações nas até 25 publicações mais recentes por conta.";
+        accountSortStatus.classList.toggle("error", Boolean(errorCount || unavailableCount));
+      }
+    } catch (error) {
+      if (request !== accountSortRequestVersion) return;
+      sortProfileButtons(null);
+      if (accountSortStatus) {
+        accountSortStatus.textContent = `Não foi possível ordenar: ${error.message}`;
+        accountSortStatus.classList.add("error");
+      }
+      return;
+    }
+  }
+  if (request === accountSortRequestVersion) sortProfileButtons(accountEngagementScores);
 }
 
 function renderMedia(items) {
@@ -167,6 +273,8 @@ engagementSort?.addEventListener("change", () => {
   }
 });
 
+accountEngagementSort?.addEventListener("change", updateAccountOrder);
+
 profileButtons.forEach(button => {
   button.addEventListener("click", () => loadSelectedProfile(button.dataset.metricsAccount));
 });
@@ -174,7 +282,9 @@ profileButtons.forEach(button => {
 refreshButton?.addEventListener("click", async () => {
   refreshButton.disabled = true;
   try {
+    accountEngagementScores = null;
     await loadProfiles();
+    if (accountEngagementSort?.value !== "default") await updateAccountOrder();
     if (selectedAccountId) await loadSelectedProfile(selectedAccountId);
   } finally {
     refreshButton.disabled = false;

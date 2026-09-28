@@ -10,25 +10,30 @@
   .metrics-header-actions button,.metrics-header-actions a{width:auto;padding:.48rem .65rem;font-size:.76rem}
   .profile-metrics-layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:.8rem;align-items:start}
   .profile-list{display:grid;gap:.4rem;max-height:calc(100vh - 105px);overflow:auto;padding-right:.15rem}
-  .profile-list-empty{padding:.9rem;border:1px solid var(--line);border-radius:7px;background:rgba(31,42,36,.72);color:var(--muted);font-size:.78rem}
+  .profile-account-sort{display:grid;gap:.25rem;margin:0;color:var(--muted);font-size:.68rem}
+  .profile-account-sort select{width:100%;min-width:0;margin:0;padding:.45rem .5rem;font-size:.7rem}
+  .profile-account-sort-hint{color:var(--muted);font-size:.62rem;line-height:1.4}
+  .profile-list-empty{padding:.9rem;border:1px solid var(--line);border-radius:7px;background:rgba(16,18,23,.72);color:var(--muted);font-size:.78rem}
   .profile-option{display:flex;align-items:center;gap:.5rem;width:100%;min-height:48px;padding:.38rem .48rem;text-align:left;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--text);box-shadow:none;cursor:pointer}
-  .profile-option:hover{transform:none;border-color:var(--cyan);background:rgba(62,90,76,.45);box-shadow:none}
-  .profile-option[aria-pressed="true"]{border-color:var(--cyan);background:rgba(212,175,55,.12);box-shadow:0 0 0 1px rgba(212,175,55,.16)}
+  .profile-option:hover{transform:translateY(-2px);border-color:var(--cyan);background:rgba(6,41,107,.45);box-shadow:0 8px 22px rgba(0,0,0,.24),0 0 16px rgba(26,60,125,.18)}
+  .profile-option[aria-pressed="true"]{border-color:var(--cyan);background:rgba(26,60,125,.12);box-shadow:0 0 0 1px rgba(26,60,125,.16)}
   .profile-option img,.profile-option-initial{width:28px;height:28px;flex:none;border-radius:50%;object-fit:cover;background:var(--line)}
   .profile-option-initial{display:grid;place-items:center;color:var(--text);font-weight:700;font-size:.72rem}
   .profile-option-copy{display:block;min-width:0;flex:1}
   .profile-option-name,.profile-option-followers{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .profile-option-name{font-size:.7rem;font-weight:700}
   .profile-option-followers{margin-top:.12rem;color:var(--muted);font-size:.62rem}
+  .profile-option-engagement{display:block;margin-top:.12rem;color:var(--cyan);font-size:.62rem}
   .profile-metrics-content{min-width:0}
-  .selected-profile-bar{display:flex;align-items:center;justify-content:space-between;gap:.8rem;min-height:38px;padding:.4rem .6rem;border:1px solid var(--line);border-radius:7px;background:#0d1723}
+  .selected-profile-bar{display:flex;align-items:center;justify-content:space-between;gap:.8rem;min-height:38px;padding:.4rem .6rem;border:1px solid var(--line);border-radius:7px;background:#05183C}
   .selected-profile-title{display:flex;align-items:center;gap:.45rem;min-width:0;font-size:.76rem;font-weight:700}
   .selected-profile-title i{color:var(--cyan)}
   .selected-profile-title span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .metrics-status{margin:0;color:var(--muted);font-size:.66rem;text-align:right}
   .metrics-status.error{color:var(--danger)}
   .profile-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.45rem;margin:.5rem 0 .7rem}
-  .profile-stat{min-height:54px;padding:.5rem .58rem;border:1px solid var(--line);border-radius:7px;background:#0d1723}
+  .profile-stat{min-height:54px;padding:.5rem .58rem;border:1px solid var(--line);border-radius:7px;background:#05183C;transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease}
+  .profile-stat:hover{transform:translateY(-2px);border-color:var(--cyan);box-shadow:0 10px 24px rgba(0,0,0,.24),0 0 16px rgba(26,60,125,.14)}
   .profile-stat-label{display:flex;align-items:center;gap:.34rem;color:var(--muted);font-size:.63rem}
   .profile-stat-label i{width:12px;height:12px;color:var(--cyan)}
   .profile-stat strong{display:block;margin-top:.3rem;font:700 .95rem "Space Grotesk",sans-serif;color:var(--text)}
@@ -37,8 +42,9 @@
   .profile-engagement-sort select{width:auto;min-width:150px;margin:0;padding:.4rem .5rem;font-size:.72rem}
   .profile-feed-heading h2{margin:0;font:600 .79rem "DM Sans",sans-serif;letter-spacing:0}
   .profile-feed{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
-  .profile-feed-card{min-width:0;overflow:hidden;border:1px solid var(--line);border-radius:7px;background:var(--panel)}
-  .profile-feed-media{position:relative;aspect-ratio:1;background:#0A0A0C;overflow:hidden}
+  .profile-feed-card{min-width:0;overflow:hidden;border:1px solid var(--line);border-radius:7px;background:var(--panel);transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease}
+  .profile-feed-card:hover{transform:translateY(-3px);border-color:var(--cyan);box-shadow:0 12px 28px rgba(0,0,0,.28),0 0 18px rgba(26,60,125,.16)}
+  .profile-feed-media{position:relative;aspect-ratio:1;background:#0C0D0D;overflow:hidden}
   .profile-feed-media img,.profile-feed-media video{display:block;width:100%;height:100%;object-fit:cover}
   .profile-feed-type{position:absolute;right:.35rem;top:.35rem;display:grid;place-items:center;width:18px;height:18px;border:1px solid rgba(255,255,255,.22);border-radius:5px;background:rgba(10,10,12,.82);color:var(--text)}
   .profile-feed-type i{width:11px;height:11px}
@@ -50,16 +56,16 @@
   .profile-feed-caption{display:block;margin-top:.25rem;overflow:hidden;color:var(--muted);font-size:.62rem;text-overflow:ellipsis;white-space:nowrap}
   .profile-feed-message{grid-column:1/-1;display:grid;place-items:center;min-height:110px;padding:1rem;border:1px dashed var(--line);border-radius:7px;color:var(--muted);font-size:.76rem;text-align:center}
   .profile-feed-message[hidden]{display:none}
-  @media(max-width:760px){.profile-metrics-layout{grid-template-columns:1fr}.profile-list{display:flex;max-height:none;overflow-x:auto;overflow-y:hidden;padding-bottom:.2rem}.profile-option{width:165px;min-width:165px}.profile-feed{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:760px){.profile-metrics-layout{grid-template-columns:1fr}.profile-list{display:flex;max-height:none;overflow-x:auto;overflow-y:hidden;padding-bottom:.2rem}.profile-account-sort,.profile-account-sort-hint{flex:0 0 165px;min-width:165px}.profile-option{width:165px;min-width:165px}.profile-feed{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media(max-width:480px){.profile-metrics{margin-top:.2rem}.metrics-header{align-items:flex-start}.metrics-header h1{font-size:1.18rem}.metrics-header-actions{gap:.3rem}.metrics-header-actions button,.metrics-header-actions a{padding:.42rem .5rem}.profile-stat-grid{gap:.35rem}.profile-stat{padding:.45rem}.profile-stat-label{font-size:.59rem}.profile-stat strong{font-size:.86rem}}
   .profile-list-empty,.profile-option,.selected-profile-bar,.profile-stat,.profile-feed-card{background:var(--panel)}
-  .profile-option:hover{border-color:var(--cyan);background:rgba(62,90,76,.45)}
-  .profile-option[aria-pressed="true"]{background:rgba(212,175,55,.12);box-shadow:0 0 0 1px rgba(212,175,55,.16)}
+  .profile-option:hover{transform:translateY(-2px);border-color:var(--cyan);background:rgba(6,41,107,.45);box-shadow:0 8px 22px rgba(0,0,0,.24),0 0 16px rgba(26,60,125,.18)}
+  .profile-option[aria-pressed="true"]{background:rgba(26,60,125,.12);box-shadow:0 0 0 1px rgba(26,60,125,.16)}
   .profile-option img,.profile-option-initial{background:var(--line)}.profile-option-initial{color:var(--text)}
   .selected-profile-title i,.profile-stat-label i{color:var(--cyan)}
   .metrics-status.error{color:var(--danger)}
-  .profile-feed-media{background:#0A0A0C}
-  .profile-feed-type{background:rgba(31,42,36,.85);color:var(--text)}
+  .profile-feed-media{background:#0C0D0D}
+  .profile-feed-type{background:rgba(16,18,23,.85);color:var(--text)}
   .profile-feed-counts,.profile-feed-date,.profile-feed-caption{color:var(--muted)}
   .profile-feed-message{border-color:var(--line)}
 </style>
@@ -70,10 +76,18 @@
   </header>
   <div class="profile-metrics-layout">
     <aside class="profile-list" id="metrics-profile-list" aria-label="Perfis Instagram">
+      <label class="profile-account-sort">Ordenar contas por engajamento
+        <select id="profile-account-engagement-sort" aria-label="Ordenar contas por engajamento">
+          <option value="default">Ordem original</option>
+          <option value="desc">Maior para menor</option>
+          <option value="asc">Menor para maior</option>
+        </select>
+      </label>
+      <small class="profile-account-sort-hint" id="profile-account-sort-status" aria-live="polite">Média de interações nas até 25 publicações mais recentes por conta.</small>
       {% for account in accounts %}
       <button type="button" class="profile-option" data-metrics-account="{{ account.id }}" data-username="{{ account.username }}" aria-pressed="false">
         {% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}<span class="profile-option-initial">{{ account.username[:1]|upper }}</span>{% endif %}
-        <span class="profile-option-copy"><span class="profile-option-name">@{{ account.username }}</span><span class="profile-option-followers" data-account-followers>— seguidores</span></span>
+        <span class="profile-option-copy"><span class="profile-option-name">@{{ account.username }}</span><span class="profile-option-followers" data-account-followers>— seguidores</span><span class="profile-option-engagement" data-account-engagement hidden></span></span>
       </button>
       {% else %}<div class="profile-list-empty">Nenhum perfil conectado.</div>{% endfor %}
     </aside>

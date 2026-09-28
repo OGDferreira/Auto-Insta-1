@@ -5,20 +5,20 @@
   .metrics-shell{max-width:1160px;margin:1.5rem auto}
   .metrics-topbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1.2rem}
   .metrics-topbar h1{font-size:clamp(1.7rem,4vw,2.5rem);margin:.25rem 0}
-  .bot-chip{display:inline-flex;align-items:center;gap:.45rem;padding:.5rem .8rem;border:1px solid var(--line);border-radius:999px;color:var(--text);background:rgba(212,175,55,.1);font-size:.82rem;font-weight:700}
+  .bot-chip{display:inline-flex;align-items:center;gap:.45rem;padding:.5rem .8rem;border:1px solid var(--line);border-radius:999px;color:var(--text);background:rgba(26,60,125,.1);font-size:.82rem;font-weight:700}
   .bot-dot{width:8px;height:8px;border-radius:50%;background:var(--success);box-shadow:0 0 10px var(--success)}
   .metrics-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}
-  .metric-card{min-height:132px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(145deg,rgba(62,90,76,.24),rgba(31,42,36,.98));padding:1.1rem 1.15rem;position:relative;overflow:hidden}
+  .metric-card{min-height:132px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(145deg,rgba(6,41,107,.24),rgba(16,18,23,.98));padding:1.1rem 1.15rem;position:relative;overflow:hidden}
   .metric-card h3{font:600 .92rem "DM Sans";margin:0;color:var(--text)}.metric-card h3 span{display:block;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.12em;margin-top:.25rem}
   .metric-value{font:700 1.55rem "Space Grotesk";margin-top:1.15rem}.metric-value small{font:500 .72rem "DM Sans";color:var(--muted)}
-  .metric-icon{float:left;width:28px;height:28px;display:grid;place-items:center;margin-right:.6rem;border:1px solid var(--line);border-radius:7px;color:var(--text);background:rgba(212,175,55,.16)}
+  .metric-icon{float:left;width:28px;height:28px;display:grid;place-items:center;margin-right:.6rem;border:1px solid var(--line);border-radius:7px;color:var(--text);background:rgba(26,60,125,.16)}
   .metric-card-wide{grid-column:span 2;grid-row:span 2;min-height:280px}
   .metric-card-activity{grid-column:span 2;min-height:320px}
   .metric-card-chart{grid-column:span 2;min-height:320px}
   .metrics-chart{height:220px;margin-top:1rem}
   .activity-list{display:grid;gap:.5rem;margin-top:1rem;max-height:240px;overflow:auto}
   .activity-item{display:flex;align-items:center;gap:.65rem;padding:.7rem;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
-  .activity-icon{width:28px;height:28px;display:grid;place-items:center;border-radius:7px;background:rgba(212,175,55,.16);color:var(--text)}
+  .activity-icon{width:28px;height:28px;display:grid;place-items:center;border-radius:7px;background:rgba(26,60,125,.16);color:var(--text)}
   .activity-main{flex:1;min-width:0}.activity-main strong,.activity-main small{display:block}.activity-main strong{font-size:.86rem}.activity-main small{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.activity-time{color:var(--muted);font-size:.76rem}
   .metrics-table{margin-top:1rem}
   @media(max-width:850px){.metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.metric-card-wide,.metric-card-activity,.metric-card-chart{grid-column:span 2}}
@@ -26,7 +26,7 @@
 </style>
 <main class="metrics-shell">
   <header class="metrics-topbar">
-    <div><div class="eyebrow">Eventos do webhook</div><h1>Métricas do {{ bot_name }}</h1><p>Dados recebidos exclusivamente do Sharkbot. As visualizações do Instagram ficam nos cards de contas e no dashboard.</p><code style="display:inline-block;padding:.45rem .65rem;border:1px solid var(--line);border-radius:7px;color:var(--text);background:#0A0A0C">{{ sharkbot_webhook_url }}</code></div>
+    <div><div class="eyebrow">Eventos do webhook</div><h1>Métricas do {{ bot_name }}</h1><p>Dados recebidos exclusivamente do Sharkbot. As visualizações do Instagram ficam nos cards de contas e no dashboard.</p><code style="display:inline-block;padding:.45rem .65rem;border:1px solid var(--line);border-radius:7px;color:var(--text);background:#0C0D0D">{{ sharkbot_webhook_url }}</code></div>
     <a class="button secondary" href="/dashboard#metrics">Voltar ao dashboard</a>
   </header>
   <div class="metrics-grid">
@@ -43,8 +43,8 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
 const activity={{ daily_activity|tojson }};
-new Chart(document.getElementById("performance-chart"),{type:"line",data:{labels:activity.map(item=>item.label),datasets:[{label:"Receita",data:activity.map(item=>item.revenue),borderColor:"#D4AF37",backgroundColor:"rgba(212,175,55,.12)",fill:true,tension:.35}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:"#A9B7AE",boxWidth:8}}},scales:{x:{ticks:{color:"#A9B7AE"},grid:{color:"rgba(255,255,255,.04)"}},y:{beginAtZero:true,ticks:{color:"#A9B7AE"},grid:{color:"rgba(255,255,255,.04)"}}}}});
-new Chart(document.getElementById("starts-chart"),{type:"bar",data:{labels:activity.map(item=>item.label),datasets:[{data:activity.map(item=>item.leads),backgroundColor:"#3E5A4C",borderRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:false}}}});
-new Chart(document.getElementById("funnel-chart"),{type:"bar",data:{labels:["Leads","Leads iniciados","Pix gerados","Pix pagos"],datasets:[{data:{{ funnel|tojson }},backgroundColor:["#1F2A24","#3E5A4C","#D4AF37","#22C55E"],borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#A9B7AE"}},y:{beginAtZero:true,ticks:{color:"#A9B7AE"}}}}});
+new Chart(document.getElementById("performance-chart"),{type:"line",data:{labels:activity.map(item=>item.label),datasets:[{label:"Receita",data:activity.map(item=>item.revenue),borderColor:"#1A3C7D",backgroundColor:"rgba(26,60,125,.12)",fill:true,tension:.35}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:"#A9B7AE",boxWidth:8}}},scales:{x:{ticks:{color:"#A9B7AE"},grid:{color:"rgba(255,255,255,.04)"}},y:{beginAtZero:true,ticks:{color:"#A9B7AE"},grid:{color:"rgba(255,255,255,.04)"}}}}});
+new Chart(document.getElementById("starts-chart"),{type:"bar",data:{labels:activity.map(item=>item.label),datasets:[{data:activity.map(item=>item.leads),backgroundColor:"#06296B",borderRadius:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:false}}}});
+new Chart(document.getElementById("funnel-chart"),{type:"bar",data:{labels:["Leads","Leads iniciados","Pix gerados","Pix pagos"],datasets:[{data:{{ funnel|tojson }},backgroundColor:["#101217","#06296B","#1A3C7D","#22C55E"],borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:"#A9B7AE"}},y:{beginAtZero:true,ticks:{color:"#A9B7AE"}}}}});
 </script>
 {% endblock %}

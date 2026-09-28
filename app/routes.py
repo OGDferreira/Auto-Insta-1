@@ -1517,6 +1517,24 @@ async def update_collaborator_compensation(
     }
 
 
+@router.delete("/api/collaborators/{collaborator_id}")
+async def delete_collaborator(
+    collaborator_id: int,
+    user: User = Depends(admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    collaborator = await db.scalar(select(User).where(
+        User.id == collaborator_id,
+        User.role == "collaborator",
+        User.parent_id == user.id,
+    ))
+    if collaborator is None:
+        raise HTTPException(status_code=404, detail="Colaborador não encontrado")
+    await db.delete(collaborator)
+    await db.commit()
+    return {"id": collaborator_id, "deleted": True}
+
+
 @router.get("/collaborators/{collaborator_id}/report", response_class=HTMLResponse)
 async def collaborator_report(
     request: Request,

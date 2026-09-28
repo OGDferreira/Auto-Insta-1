@@ -102,6 +102,8 @@ async def test_instagram_metrics_page_renders_only_owned_connected_profiles():
         assert "private_profile" not in html
         assert 'data-profile-stat="followers"' in html
         assert 'id="profile-feed"' in html
+        assert 'id="profile-account-engagement-sort"' in html
+        assert 'id="profile-account-sort-status"' in html
 
     await engine.dispose()
 

@@ -170,3 +170,42 @@ async def test_collaborator_reports_and_management_are_scoped_to_owner():
         assert allowed_user.id == own_collaborator.id
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_delete_collaborator_is_scoped_to_owner():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with session_factory() as db:
+        owner = User(email="delete-owner@example.com", username="owner", password_hash="hash")
+        other_owner = User(email="other-owner@example.com", username="other", password_hash="hash")
+        db.add_all([owner, other_owner])
+        await db.flush()
+        own_collaborator = User(
+            email=None, username="own-worker", password_hash="hash", role="collaborator",
+            parent_id=owner.id,
+        )
+        foreign_collaborator = User(
+            email=None, username="foreign-worker", password_hash="hash", role="collaborator",
+            parent_id=other_owner.id,
+        )
+        db.add_all([own_collaborator, foreign_collaborator])
+        await db.commit()
+
+        with pytest.raises(HTTPException) as error:
+            await routes.delete_collaborator(
+                foreign_collaborator.id, user=owner, db=db
+            )
+        assert error.value.status_code == 404
+        assert await db.get(User, foreign_collaborator.id) is not None
+
+        result = await routes.delete_collaborator(
+            own_collaborator.id, user=owner, db=db
+        )
+        assert result == {"id": own_collaborator.id, "deleted": True}
+        assert await db.get(User, own_collaborator.id) is None
+
+    await engine.dispose()
