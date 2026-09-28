@@ -1,5 +1,5 @@
-const CACHE_NAME = "auto-insta-shell-v2";
-const APP_SHELL = ["/static/favicon.svg", "/static/manifest.webmanifest"];
+const CACHE_NAME = "auto-insta-shell-v3";
+const APP_SHELL = ["/static/favicon.svg", "/static/favicon.ico", "/static/media_downloader_icon_512.png", "/static/manifest.webmanifest"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
@@ -18,17 +18,19 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET" || new URL(event.request.url).origin !== self.location.origin) return;
   const requestUrl = new URL(event.request.url);
-  if (requestUrl.pathname !== "/static/favicon.svg" && requestUrl.pathname !== "/static/manifest.webmanifest") return;
+  if (!APP_SHELL.includes(requestUrl.pathname)) return;
   event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
 });
 
 self.addEventListener("push", event => {
-  const data = event.data ? event.data.json() : {};
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (_) { data = {body: event.data?.text()}; }
   event.waitUntil(self.registration.showNotification(data.title || "Auto-Insta", {
     body: data.body || "Você recebeu uma atualização.",
-    icon: "/static/favicon.svg",
-    badge: "/static/favicon.svg",
+    icon: "/static/media_downloader_icon_512.png",
+    badge: "/static/favicon.ico",
     data: {url: data.url || "/dashboard"},
+    tag: data.tag || "auto-insta-account-alert",
   }));
 });
 

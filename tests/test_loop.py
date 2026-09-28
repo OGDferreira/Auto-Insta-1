@@ -261,10 +261,14 @@ async def test_thirty_video_loop_keeps_interval_restarts_and_surfaces_account_st
         })
         response = await routes.dashboard(request, user=owner, db=db)
         html = response.body.decode()
-        assert "loop-account-health warning" in html
+        assert "loop-account-health success" in html
         assert 'class="loop-account-counter published" title="Publicadas" aria-label="29 publicadas">29' in html
         assert 'class="loop-account-counter failed" title="Falhas" aria-label="1 falhas">1' in html
         assert 'class="loop-account-counter queued" title="Na fila ou processando" aria-label="1 na fila ou processando">1' in html
+        initial_posts[-2].status = "failed"
+        await db.commit()
+        response = await routes.dashboard(request, user=owner, db=db)
+        assert "loop-account-health error" in response.body.decode()
 
     await engine.dispose()
 
@@ -454,7 +458,7 @@ async def test_loop_failure_is_timestamped_and_does_not_stop_next_cycle(monkeypa
         async def __aexit__(self, *_args):
             return False
 
-    async def reject_account(_client, account, _token, _settings):
+    async def reject_account(_client, account, _token, _settings, _db):
         account.connection_status = "error"
         account.status_reason = "Instagram permission denied"
         return False

@@ -1,5 +1,5 @@
-const CACHE_NAME = "auto-insta-v2";
-const APP_SHELL = ["/dashboard", "/static/manifest.webmanifest", "/static/favicon.svg"];
+const CACHE_NAME = "auto-insta-v3";
+const APP_SHELL = ["/dashboard", "/static/manifest.webmanifest", "/static/favicon.svg", "/static/favicon.ico", "/static/media_downloader_icon_512.png"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
@@ -20,9 +20,10 @@ self.addEventListener("push", event => {
   try { data = event.data ? event.data.json() : {}; } catch (_) { data = {body: event.data?.text()}; }
   event.waitUntil(self.registration.showNotification(data.title || "Auto-Insta", {
     body: data.body || "Você recebeu uma atualização.",
-    icon: "/static/favicon.svg",
-    badge: "/static/favicon.svg",
+    icon: "/static/media_downloader_icon_512.png",
+    badge: "/static/favicon.ico",
     data: {url: data.url || "/dashboard"},
+    tag: data.tag || "auto-insta-account-alert",
   }));
 });
 self.addEventListener("notificationclick", event => {

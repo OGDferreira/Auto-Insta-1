@@ -190,6 +190,7 @@ class NotificationSubscription(Base):
     endpoint: Mapped[str] = mapped_column(Text, unique=True)
     p256dh: Mapped[str] = mapped_column(Text)
     auth: Mapped[str] = mapped_column(Text)
+    pwa_installed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     user: Mapped[User] = relationship(back_populates="notification_subscriptions")
 

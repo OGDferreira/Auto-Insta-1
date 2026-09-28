@@ -30,6 +30,7 @@ from .db import get_db
 from .jobs import (
     PENDING_STATUSES,
     _refresh_account_status,
+    _notify_account_connection_error,
     _advance_loop_after_post,
     collect_instagram_insights,
     schedule_post,
@@ -146,9 +147,6 @@ def _account_publication_stats(
     return stats
 
 
-ACCOUNT_STALE_PUBLICATION_MINUTES = 70
-
-
 async def _account_alerts(
     db: AsyncSession,
     owner_id: int,
@@ -163,132 +161,50 @@ async def _account_alerts(
         )).all()
     if not accounts:
         return []
-
-    account_ids = [account.id for account in accounts]
-    last_publications = await db.execute(
-        select(
-            ScheduledPost.account_id,
-            func.max(func.coalesce(ScheduledPost.published_at, ScheduledPost.scheduled_for)),
-        )
-        .where(
-            ScheduledPost.owner_id == owner_id,
-            ScheduledPost.account_id.in_(account_ids),
-            ScheduledPost.status == "published",
-        )
-        .group_by(ScheduledPost.account_id)
-    )
-    published_at_by_account = dict(last_publications.all())
-    latest_failure_query = (
-        select(
-            ScheduledPost.id.label("id"),
-            ScheduledPost.account_id.label("account_id"),
-            ScheduledPost.status.label("status"),
-            ScheduledPost.error_message.label("error_message"),
-            ScheduledPost.error_at.label("error_at"),
-            ScheduledPost.scheduled_for.label("scheduled_for"),
-            func.row_number().over(
-                partition_by=ScheduledPost.account_id,
-                order_by=(
-                    func.coalesce(ScheduledPost.error_at, ScheduledPost.scheduled_for).desc(),
-                    ScheduledPost.id.desc(),
-                ),
-            ).label("position"),
-        )
-        .where(
-            ScheduledPost.owner_id == owner_id,
-            ScheduledPost.account_id.in_(account_ids),
-            ScheduledPost.status.in_(("failed", "blocked")),
-        )
-        .subquery()
-    )
-    latest_failure_rows = (await db.execute(
-        select(latest_failure_query).where(latest_failure_query.c.position == 1)
-    )).all()
-    latest_failure_by_account = {
-        row.account_id: row for row in latest_failure_rows
-    }
-
     current_time = now or datetime.now(timezone.utc)
-    stale_threshold = timedelta(minutes=ACCOUNT_STALE_PUBLICATION_MINUTES)
     alerts: list[dict[str, str | int]] = []
     for account in accounts:
-        last_published_at = published_at_by_account.get(account.id)
-        if last_published_at is not None and last_published_at.tzinfo is None:
-            last_published_at = last_published_at.replace(tzinfo=timezone.utc)
-
         connection_status = (
             "connected" if account.connection_status == "active" else account.connection_status
         )
-        connection_problem = (
-            connection_status != "connected"
-            or not account.access_token_encrypted
-            or bool(
-                account.token_expires_at
-                and (
-                    account.token_expires_at.replace(tzinfo=timezone.utc)
-                    if account.token_expires_at.tzinfo is None
-                    else account.token_expires_at
-                ) <= current_time
-            )
-        )
-        if connection_problem:
-            reason = account.status_reason or (
-                "Token não autorizado." if not account.access_token_encrypted
-                else "Token expirado." if account.token_expires_at and (
-                    account.token_expires_at.replace(tzinfo=timezone.utc)
-                    if account.token_expires_at.tzinfo is None
-                    else account.token_expires_at
-                ) <= current_time
-                else f"Estado da conexão: {connection_status}."
-            )
-            alerts.append({
-                "id": f"account-{account.id}-connection",
-                "account_id": account.id,
-                "username": account.username,
-                "type": "connection",
-                "severity": "error",
-                "title": "Problema na conexão",
-                "reason": reason,
-                "href": f"/hub#account-{account.id}",
-            })
+        if connection_status == "pending":
             continue
-
-        latest_failure = latest_failure_by_account.get(account.id)
-        if latest_failure is not None:
-            failure_at = latest_failure.error_at or latest_failure.scheduled_for
-            if failure_at.tzinfo is None:
-                failure_at = failure_at.replace(tzinfo=timezone.utc)
-            if last_published_at is None or failure_at > last_published_at:
-                alerts.append({
-                    "id": f"account-{account.id}-publication-{latest_failure.id}",
-                    "account_id": account.id,
-                    "username": account.username,
-                    "type": "publication",
-                    "severity": "warning" if latest_failure.status == "failed" else "error",
-                    "title": "Falha ao publicar",
-                    "reason": latest_failure.error_message or "A última tentativa de publicação falhou.",
-                    "href": f"/hub#account-{account.id}",
-                })
-                continue
-
-        last_activity = last_published_at or account.created_at
-        if last_activity is not None and last_activity.tzinfo is None:
-            last_activity = last_activity.replace(tzinfo=timezone.utc)
-        if last_activity is not None and current_time - last_activity > stale_threshold:
-            minutes_since_post = int((current_time - last_activity).total_seconds() // 60)
-            alerts.append({
-                "id": f"account-{account.id}-stale",
-                "account_id": account.id,
-                "username": account.username,
-                "type": "stale",
-                "severity": "warning",
-                "title": "Sem publicações recentes",
-                "reason": (
-                    f"Esta conta está há {minutes_since_post} minutos sem uma nova publicação "
-                    f"(limite: {ACCOUNT_STALE_PUBLICATION_MINUTES} minutos)."
-                ),
-                "href": f"/hub#account-{account.id}",
-            })
+        expires_at = account.token_expires_at
+        if expires_at is not None and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        token_expired = expires_at is not None and expires_at <= current_time
+        status_reason = (account.status_reason or "").lower()
+        token_problem = (
+            not account.access_token_encrypted
+            or token_expired
+            or any(term in status_reason for term in ("token", "oauth", "credential", "access token"))
+        )
+        if connection_status == "connected" and not token_problem:
+            continue
+        if token_problem:
+            title = "Token expirado" if token_expired or any(
+                term in status_reason for term in ("expir", "invalid", "revoked")
+            ) else "Token inválido"
+            reason = "Reconecte a conta para retomar as publicações."
+        elif connection_status == "suspended":
+            title = "Conta restrita"
+            reason = "Verifique as restrições da conta no Instagram."
+        elif connection_status == "disconnected":
+            title = "Conexão perdida"
+            reason = "Reconecte a conta para retomar as publicações."
+        else:
+            title = "Erro na conta"
+            reason = "Verifique a conexão da conta no Hub."
+        alerts.append({
+            "id": f"account-{account.id}-connection",
+            "account_id": account.id,
+            "username": account.username,
+            "type": "connection",
+            "severity": "error",
+            "title": title,
+            "reason": reason,
+            "href": f"/hub#account-{account.id}",
+        })
     return alerts
 
 
@@ -540,10 +456,6 @@ templates.env.globals["local_scheduled_datetime"] = local_scheduled_datetime
 templates.env.globals["format_brl"] = format_brl
 
 
-def _notification_payload(total_views: int, account_count: int) -> str:
-    return f"Auto-Insta: {total_views:,} visualizações em {account_count} conta(s).".replace(",", ".")
-
-
 def _meta_api_error(response: httpx.Response) -> str:
     try:
         payload = response.json()
@@ -569,56 +481,6 @@ async def _media_is_public(media_url: str | None) -> tuple[bool, str | None]:
     except (httpx.HTTPError, ValueError) as exc:
         logger.warning("Mídia indisponível para retry: %s", exc)
         return False, "A mídia não está acessível pela internet."
-
-
-async def _send_web_push_notifications(db: AsyncSession, user_id: int, message: str) -> int:
-    settings = get_settings()
-    if not settings.vapid_private_key or not settings.vapid_subject:
-        return 0
-    from pywebpush import WebPushException, webpush
-
-    subscriptions = (await db.scalars(
-        select(NotificationSubscription).where(NotificationSubscription.user_id == user_id)
-    )).all()
-    sent = 0
-    for subscription in subscriptions:
-        try:
-            await asyncio.to_thread(
-                webpush,
-                subscription_info={
-                    "endpoint": subscription.endpoint,
-                    "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth},
-                },
-                data=json.dumps({"title": "Auto-Insta", "body": message}),
-                vapid_private_key=settings.vapid_private_key,
-                vapid_claims={"sub": settings.vapid_subject},
-            )
-            sent += 1
-        except WebPushException as exc:
-            if getattr(exc, "response", None) is not None and exc.response.status_code in {404, 410}:
-                await db.delete(subscription)
-            else:
-                logger.warning("Falha ao enviar notificação push: %s", exc)
-    await db.commit()
-    return sent
-
-
-async def notify_pix_generated(db: AsyncSession, user_id: int) -> int:
-    return await _send_web_push_notifications(db, user_id, "Novo Pix gerado.")
-
-
-async def notify_pix_paid(db: AsyncSession, user_id: int) -> int:
-    return await _send_web_push_notifications(db, user_id, "Pix pago aprovado.")
-
-
-async def notify_daily_summary(
-    db: AsyncSession,
-    user_id: int,
-    published_count: int,
-    views_count: int,
-) -> int:
-    message = f"{published_count} publicações feitas e {views_count} visualizações geradas hoje."
-    return await _send_web_push_notifications(db, user_id, message)
 
 
 @router.get("/sw.js", include_in_schema=False)
@@ -963,6 +825,13 @@ async def subscribe_notifications(
     db: AsyncSession = Depends(get_db),
 ):
     payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Assinatura de notificação inválida")
+    if payload.get("installed_pwa") is not True or payload.get("mobile_device") is not True:
+        raise HTTPException(
+            status_code=403,
+            detail="Alertas push estão disponíveis apenas no app instalado em celular.",
+        )
     endpoint = str(payload.get("endpoint", "")).strip()
     keys = payload.get("keys") or {}
     if not endpoint or not keys.get("p256dh") or not keys.get("auth"):
@@ -974,33 +843,16 @@ async def subscribe_notifications(
         subscription = NotificationSubscription(
             user_id=user.id, endpoint=endpoint,
             p256dh=str(keys["p256dh"]), auth=str(keys["auth"]),
+            pwa_installed=True,
         )
         db.add(subscription)
     else:
         subscription.user_id = user.id
         subscription.p256dh = str(keys["p256dh"])
         subscription.auth = str(keys["auth"])
+        subscription.pwa_installed = True
     await db.commit()
     return {"subscribed": True}
-
-
-@router.post("/api/notifications/test")
-async def test_notifications(
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    owner_id = workspace_owner_id(user)
-    accounts = (await db.scalars(
-        select(InstagramAccount).where(InstagramAccount.owner_id == owner_id)
-    )).all()
-    account_ids = [account.id for account in accounts]
-    rows = (await db.scalars(
-        select(InstagramMetric).where(InstagramMetric.account_id.in_(account_ids))
-    )).all() if account_ids else []
-    total_views = sum(int(row.impressions or 0) for row in rows)
-    message = _notification_payload(total_views, len(accounts))
-    sent = await _send_web_push_notifications(db, user.id, message)
-    return {"sent": sent, "message": message, "accounts": len(accounts), "views": total_views}
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -2748,7 +2600,7 @@ async def instagram_callback(
         db.add(account)
     await db.flush()
     async with httpx.AsyncClient(timeout=30) as client:
-        await _refresh_account_status(client, account, access_token, get_settings())
+        await _refresh_account_status(client, account, access_token, get_settings(), db)
     duplicate_pending = (
         await db.scalars(
             select(InstagramAccount).where(
@@ -2895,11 +2747,14 @@ async def verify_account(
     try:
         token = decrypt_token(account.access_token_encrypted)
         async with httpx.AsyncClient(timeout=30) as client:
-            await _refresh_account_status(client, account, token, get_settings())
+            await _refresh_account_status(client, account, token, get_settings(), db)
     except Exception as exc:
+        previous_status = account.connection_status
         account.connection_status = "error"
         account.status_reason = f"Falha ao verificar a autorização na Meta: {str(exc)[:400]}"
         account.status_checked_at = datetime.now(timezone.utc)
+        if previous_status not in {"disconnected", "suspended", "error"}:
+            await _notify_account_connection_error(db, account)
         logger.exception("Falha na verificação manual da conta %s", account.instagram_user_id)
     await db.commit()
     if "application/json" in request.headers.get("accept", ""):
@@ -3003,14 +2858,17 @@ async def retry_post(
         raise HTTPException(status_code=404, detail="Conta não encontrada")
     if not account.access_token_encrypted:
         raise HTTPException(status_code=400, detail="A conta ainda não foi autorizada")
+    previous_status = account.connection_status
     try:
         token = decrypt_token(account.access_token_encrypted)
         async with httpx.AsyncClient(timeout=30) as client:
-            authorized = await _refresh_account_status(client, account, token, get_settings())
+            authorized = await _refresh_account_status(client, account, token, get_settings(), db)
     except Exception as exc:
         authorized = False
         account.connection_status = "error"
         account.status_reason = f"Falha ao verificar a autorização na Meta: {str(exc)[:400]}"
+        if previous_status not in {"disconnected", "suspended", "error"}:
+            await _notify_account_connection_error(db, account)
     if not authorized:
         post.status = "blocked"
         post.error_message = account.status_reason or "A conta ainda não está autorizada para publicar."
@@ -3057,11 +2915,14 @@ async def retry_blocked_posts(
                 continue
             try:
                 token = decrypt_token(account.access_token_encrypted)
-                if await _refresh_account_status(client, account, token, get_settings()):
+                if await _refresh_account_status(client, account, token, get_settings(), db):
                     authorized_ids.add(account.id)
             except Exception as exc:
+                previous_status = account.connection_status
                 account.connection_status = "error"
                 account.status_reason = f"Falha ao verificar a autorização na Meta: {str(exc)[:400]}"
+                if previous_status not in {"disconnected", "suspended", "error"}:
+                    await _notify_account_connection_error(db, account)
     posts_query = select(ScheduledPost).where(
         ScheduledPost.owner_id == owner_id,
         ScheduledPost.status.in_({"failed", "blocked"}),
@@ -3118,12 +2979,15 @@ async def retry_failed_posts(
                 continue
             try:
                 token = decrypt_token(account.access_token_encrypted)
-                if await _refresh_account_status(client, account, token, get_settings()):
+                if await _refresh_account_status(client, account, token, get_settings(), db):
                     authorized_ids.add(account.id)
             except Exception as exc:
                 logger.exception("Falha ao verificar autorização para retry da conta %s", account.id)
+                previous_status = account.connection_status
                 account.connection_status = "error"
                 account.status_reason = f"Falha ao verificar a autorização na Meta: {str(exc)[:400]}"
+                if previous_status not in {"disconnected", "suspended", "error"}:
+                    await _notify_account_connection_error(db, account)
 
     posts_query = select(ScheduledPost).where(
         ScheduledPost.owner_id == owner_id,

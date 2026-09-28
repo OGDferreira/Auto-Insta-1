@@ -168,7 +168,7 @@
   .loop-account-health.error { border-color:var(--danger); color:var(--danger); background:rgba(239,68,68,.08); }
   .loop-account-health.warning { border-color:var(--warning); color:var(--warning); background:rgba(250,204,21,.07); }
   .loop-card .loop-account-health.warning { border-color:rgba(117,165,255,.3)!important; color:#b7cfff!important; background:rgba(5,24,60,.48)!important; }
-  .loop-account-health.success { border-color:var(--success); color:var(--success); background:rgba(34,197,94,.07); }
+  .loop-account-health.success { border-color:rgba(104,139,255,.42); color:#b9c8ff; background:rgba(25,42,94,.48); }
   .loop-account-health.idle { border-color:rgba(117,165,255,.28); color:#b7cfff; background:rgba(5,24,60,.48); }
   .loop-account-counters { display:inline-flex; align-items:center; gap:.3rem; margin-left:.15rem; }
   .loop-account-counter { display:inline-flex; align-items:center; gap:.12rem; font-size:.65rem; font-weight:700; }
@@ -289,6 +289,7 @@
   .dashboard-period-option:hover,.dashboard-period-option[aria-pressed="true"]{border-color:rgba(117,165,255,.16);background:rgba(148,163,184,.13);color:#f4f6fb;box-shadow:none;transform:none}
   .dashboard-period-option:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
   .dashboard-period-controls button{width:auto;white-space:nowrap}
+  .dashboard-updated-at{color:#788397;font-size:.62rem;font-weight:500;letter-spacing:.01em;white-space:nowrap}
   .dashboard-overview-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:stretch;gap:1rem}
   .dashboard-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:.8rem}
   .dashboard-metric{display:flex;min-width:0;min-height:116px;flex-direction:column;align-items:flex-start;justify-content:flex-start;padding:1rem 1.05rem;border-color:rgba(117,165,255,.18);border-radius:13px;background:linear-gradient(145deg,rgba(10,14,24,.98),rgba(8,8,10,.98));box-shadow:0 8px 26px rgba(0,0,0,.2)}
@@ -344,8 +345,7 @@
           <button class="dashboard-period-option" type="button" data-dashboard-period="30" aria-pressed="{{ 'true' if period_days == 30 else 'false' }}">30 dias</button>
           <button class="dashboard-period-option" type="button" data-dashboard-period="0" aria-pressed="{{ 'true' if period_days == 0 else 'false' }}">Total</button>
         </div>
-        <span class="section-note" id="views-updated-at">Atualizado agora</span>
-        <button class="button secondary" type="button" id="refresh-dashboard-views"><i data-lucide="refresh-cw"></i><span>Atualizar visualizações</span></button>
+        <span class="dashboard-updated-at" id="views-updated-at" aria-live="polite"></span>
       </div>
     </header>
     <div class="dashboard-overview-layout">
@@ -398,7 +398,7 @@
           <div class="loop-card-summary">
             <div class="loop-card-main"><div class="loop-card-title"><span>{{ batch.name }}</span><span class="loop-active-badge">{{ "pausado" if batch.status == "paused" else "ativo" }}</span></div>
               <div class="loop-card-meta"><span>Intervalo: {{ batch.loop_interval_minutes }} min</span><span>{{ batch_account_ids[batch.id]|length }} conta(s)</span><span>{{ batch_posts|selectattr("loop_index", "defined")|map(attribute="loop_index")|unique|list|length }} mídias</span><span>{{ loop_error_count }} falha(s)</span></div>
-              <div class="loop-account-chips" aria-label="Status das contas no loop">{% for account_group in group.account_groups if account_group.account.id in batch_account_ids[batch.id] %}{% set account_published = account_group.posts|selectattr("status", "equalto", "published")|list|length %}{% set account_failed = account_group.posts|selectattr("status", "in", ["failed", "blocked"])|list|length %}{% set account_pending = (account_group.posts|selectattr("status", "in", ["scheduled", "pending", "aguardando"])|list|length) + (account_group.posts|selectattr("status", "equalto", "processing")|list|length) %}{% set connection_status = account_status_classes.get(account_group.account.id, "error") %}{% set account_outcome = "error" if connection_status in ["disconnected", "suspended", "error"] or (account_failed and not account_published) else "warning" if connection_status != "connected" or account_failed or account_pending else "success" if account_published else "idle" %}<span class="loop-account-chip loop-account-health {{ account_outcome }}" title="{{ account_group.account.status_reason or 'Status e publicações desta conta no loop' }}">@{{ account_group.account.username }}<span class="loop-account-counters"><span class="loop-account-counter published" title="Publicadas" aria-label="{{ account_published }} publicadas">{{ account_published }}</span><span class="loop-account-counter failed" title="Falhas" aria-label="{{ account_failed }} falhas">{{ account_failed }}</span><span class="loop-account-counter queued" title="Na fila ou processando" aria-label="{{ account_pending }} na fila ou processando">{{ account_pending }}</span></span></span>{% endfor %}</div>
+              <div class="loop-account-chips" aria-label="Status das contas no loop">{% for account_group in group.account_groups if account_group.account.id in batch_account_ids[batch.id] %}{% set account_published = account_group.posts|selectattr("status", "equalto", "published")|list|length %}{% set account_failed = account_group.posts|selectattr("status", "in", ["failed", "blocked"])|list|length %}{% set account_pending = (account_group.posts|selectattr("status", "in", ["scheduled", "pending", "aguardando"])|list|length) + (account_group.posts|selectattr("status", "equalto", "processing")|list|length) %}{% set connection_status = account_status_classes.get(account_group.account.id, "error") %}{% set account_outcome = "error" if connection_status in ["disconnected", "suspended", "error"] or account_failed >= 2 else "warning" if connection_status != "connected" or (account_failed == 1 and not account_published) else "success" if account_published else "idle" %}<span class="loop-account-chip loop-account-health {{ account_outcome }}" title="{{ account_group.account.status_reason or ('Falhas: ' ~ account_failed ~ ' · Publicadas: ' ~ account_published) }}"><span>@{{ account_group.account.username }}</span><span class="loop-account-counters"><span class="loop-account-counter published" title="Publicadas" aria-label="{{ account_published }} publicadas">{{ account_published }}</span><span class="loop-account-counter failed" title="Falhas" aria-label="{{ account_failed }} falhas">{{ account_failed }}</span><span class="loop-account-counter queued" title="Na fila ou processando" aria-label="{{ account_pending }} na fila ou processando">{{ account_pending }}</span></span></span>{% endfor %}</div>
               <p class="loop-totals"><strong>{{ published_count }} publicados</strong> · {{ pending_count }} na fila · {{ processing_count }} processando · {{ loop_error_count }} com erro</p>
             </div>
             <div class="loop-card-actions">
@@ -682,6 +682,13 @@ const initialView=cleanDashboardUrl()||"overview";selectDashboardView(initialVie
 const dashboardPeriodButtons=[...document.querySelectorAll("[data-dashboard-period]")];
 let activeDashboardPeriod=String({{ period_days|tojson }});
 let dashboardPeriodRequest=0;
+const dashboardUpdatedAt=document.getElementById("views-updated-at");
+function updateDashboardUpdatedAt(){
+  if(!dashboardUpdatedAt)return;
+  const time=new Intl.DateTimeFormat("pt-BR",{hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date());
+  dashboardUpdatedAt.textContent=`Atualizado ${time}`;
+}
+updateDashboardUpdatedAt();
 async function applyDashboardPeriod(period){
   const request=++dashboardPeriodRequest;
   activeDashboardPeriod=period;
@@ -696,8 +703,7 @@ async function applyDashboardPeriod(period){
     const data=await response.json();
     if(request!==dashboardPeriodRequest)return;
     Object.entries(data.metrics||{}).forEach(([key,value])=>{const element=document.querySelector(`[data-metric="${key}"]`);if(element)element.textContent=value});
-    const updated=document.getElementById("views-updated-at");
-    if(updated)updated.textContent=period==="1"?"Atualizado: hoje":"Atualizado agora";
+    updateDashboardUpdatedAt();
   }catch(error){
     if(request!==dashboardPeriodRequest)return;
     showToast("Não foi possível aplicar o filtro sem recarregar a página.","error");
@@ -801,85 +807,6 @@ async function loadAutomations(){if(!automationList)return;const response=await 
 automationForm?.addEventListener("submit",async event=>{event.preventDefault();const payload={account_id:Number(document.getElementById("automation-account").value)||null,rule_type:document.getElementById("automation-type").value,message_text:document.getElementById("automation-message").value,...automationMedia,is_active:true};const response=await fetch("/api/automations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});const result=await response.json();if(!response.ok){showToast(result.detail||"Não foi possível salvar a automação.","error");return}showToast("Automação salva.","success");automationForm.reset();automationMedia={media_url:null,drive_media_url:null,drive_account_email:null,drive_credentials_encrypted:null};automationMediaStatus.hidden=true;loadAutomations()});
 document.getElementById("automation-refresh")?.addEventListener("click",loadAutomations);if(automationList)loadAutomations();
 const metaTestButton=document.getElementById("meta-test-button"),metaTestResult=document.getElementById("meta-test-result");if(metaTestButton&&metaTestResult){metaTestButton.addEventListener("click",async()=>{metaTestButton.disabled=true;metaTestButton.textContent="Testando Meta...";metaTestResult.hidden=false;metaTestResult.textContent="Consultando perfil e Insights...";try{const response=await fetch("/api/meta/test",{method:"POST",headers:{"Accept":"application/json"}});const payload=await response.json();if(!response.ok)throw new Error(payload.detail||"Falha no diagnóstico");metaTestResult.textContent=JSON.stringify(payload,null,2);showToast(payload.message||"Diagnóstico concluído.","success")}catch(error){metaTestResult.textContent=error.message;showToast(error.message,"error")}finally{metaTestButton.disabled=false;metaTestButton.innerHTML='<i data-lucide="activity"></i> Executar teste';if(window.lucide)lucide.createIcons()}})}
-let previousSharkbot=null,refreshInFlight=false,refreshTimer=null;
-async function refreshDashboard(){
-  if(refreshInFlight||document.visibilityState!=="visible")return;
-  refreshInFlight=true;
-  const controller=new AbortController();
-  const timeout=window.setTimeout(()=>controller.abort(),8000);
-  try{
-    const response=await fetch(`/api/status?period_days=${encodeURIComponent(activeDashboardPeriod)}&at=${Date.now()}`,{cache:"no-store",signal:controller.signal,headers:{"Accept":"application/json","Cache-Control":"no-cache"}});
-    if(!response.ok)return;
-    const data=await response.json();
-    Object.entries(data.metrics||{}).forEach(([key,value])=>{const element=document.querySelector(`[data-metric="${key}"]`);if(element)element.textContent=value});
-    Object.entries(data.account_statuses||{}).forEach(([accountId,accountStatus])=>{
-      const status=typeof accountStatus==="string"?accountStatus:accountStatus.status;
-      const row=document.querySelector(`#dashboard-account-list [data-account-id="${accountId}"]`);
-      if(!row)return;
-      ["connected","disconnected","suspended","error","pending"].forEach(name=>row.classList.remove(`status-${name}`));
-      row.classList.add(`status-${status==="active"?"connected":status}`);
-      row.title=(typeof accountStatus==="object"&&accountStatus.reason)||"Conta conectada e funcional.";
-      const reason=row.querySelector("[data-account-reason]");
-      if(reason)reason.textContent=(typeof accountStatus==="object"&&accountStatus.reason)||"Online e autorizada";
-      const checked=row.querySelector("[data-account-checked]");
-      if(checked)checked.textContent=(typeof accountStatus==="object"&&accountStatus.checked_at)?`Verificada em ${new Date(accountStatus.checked_at).toLocaleString()}`:"Ainda não verificada";
-    });
-    const sharkbot=data.sharkbot||{};
-    Object.entries(sharkbot).forEach(([key,value])=>{const element=document.querySelector(`[data-sharkbot-metric="${key}"]`);if(element)element.textContent=value});
-    if(previousSharkbot&&sharkbot.pix_paid>previousSharkbot.pix_paid){
-      const sale=data.latest_sale;
-      const amount=Number(sale?.value||0);
-      const formattedAmount=amount>0?` Venda recebida: R$ ${amount.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})}.`:" Venda recebida.";
-      notifyUser(`Venda aprovada pelo Sharkbot.${formattedAmount}`,"success");
-    }
-    previousSharkbot=sharkbot;
-    (data.posts||[]).forEach(post=>{
-      const card=document.querySelector(`[data-post-id="${post.id}"]`);
-      if(card){
-        card.dataset.status=post.status;
-        const status=card.querySelector("[data-post-status]");
-        if(status){status.textContent=post.status;status.className=`status-badge ${post.status}`}
-      }
-    });
-    if(document.visibilityState==="visible"){
-      const logResponse=await fetch("/api/logs",{cache:"no-store",signal:controller.signal,headers:{"Accept":"application/json","Cache-Control":"no-cache"}});
-      if(logResponse.ok){
-        const logs=await logResponse.json();
-        const target=document.getElementById("system-logs");
-        if(target)target.textContent=(logs.logs||[]).map(item=>`[${new Date(item.timestamp).toLocaleTimeString()}] ${item.level} ${item.logger}: ${item.message}`).join("\n")||"Nenhum registro disponível.";
-      }
-    }
-  }catch(error){
-    if(error.name!=="AbortError")console.debug("Atualização do dashboard indisponível",error);
-  }finally{
-    window.clearTimeout(timeout);
-    refreshInFlight=false;
-  }
-}
-const refreshDashboardViews = document.getElementById("refresh-dashboard-views");
-if (refreshDashboardViews) {
-  refreshDashboardViews.addEventListener("click", async () => {
-    refreshDashboardViews.disabled = true;
-    refreshDashboardViews.innerHTML = '<i data-lucide="loader-circle"></i> Atualizando...';
-    if (window.lucide) window.lucide.createIcons();
-    try {
-      const response = await fetch(`/metrics/refresh?at=${Date.now()}`, {
-        method: "POST",
-        cache: "no-store",
-        headers: {"Cache-Control": "no-cache", "Accept": "application/json"},
-      });
-      if (!response.ok) throw new Error("Falha ao atualizar");
-      await refreshDashboard();
-      const updated = document.getElementById("views-updated-at");
-      if (updated) updated.textContent = "Atualizado agora";
-    } catch (error) {
-      refreshDashboardViews.disabled = false;
-      refreshDashboardViews.innerHTML = '<i data-lucide="refresh-cw"></i> Tentar novamente';
-      if (window.lucide) window.lucide.createIcons();
-      alert("Não foi possível atualizar as visualizações agora.");
-    }
-  });
-}
 document.querySelectorAll('input[name="caption_mode"]').forEach(input=>input.addEventListener("change",renderCaptionFields));
 if(form){form.addEventListener("submit",event=>{const looping=Boolean(loopEnabled?.checked);if(!media.length){event.preventDefault();alert("Selecione ao menos uma mídia.");return}if(media.length>30){event.preventDefault();alert("Cada lote pode conter no máximo 30 publicações.");return}if(!document.querySelector('input[name="account_ids"]:checked')){event.preventDefault();alert("Selecione ao menos uma conta.");return}if(!looping){const selected=parseLocalDateTime(time.value);if(Number.isNaN(selected.getTime())){event.preventDefault();time.setCustomValidity("Informe um horário válido.");time.reportValidity();return}time.setCustomValidity("")}form.querySelectorAll(".generated-media").forEach(item=>item.remove());media.forEach(item=>{[["media_urls",item.url],["media_types",item.type],["storage_paths",item.storagePath],["drive_media_urls",item.driveMediaUrl],["drive_account_emails",item.driveAccountEmail],["drive_credentials_encrypted",item.driveCredentialsEncrypted]].forEach(([name,value])=>{const input=document.createElement("input");input.type="hidden";input.name=name;input.value=value||"";input.className="generated-media";form.appendChild(input)})});if(document.querySelector('input[name="caption_mode"]:checked').value==="individual")media.forEach(item=>{const input=document.createElement("input");input.type="hidden";input.name="captions";input.value=item.caption||"";input.className="generated-media";form.appendChild(input)});if(!looping){const localInput=document.createElement("input");localInput.type="hidden";localInput.name="scheduled_for";localInput.value=time.value;localInput.className="generated-media";form.appendChild(localInput)}if(time)time.disabled=true})}
 </script>

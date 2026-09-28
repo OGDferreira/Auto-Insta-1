@@ -6,15 +6,15 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0C0D0D",
-  "theme_color": "#0C0D0D",
+  "background_color": "#080D1C",
+  "theme_color": "#080D1C",
   "lang": "pt-BR",
   "icons": [
     {
-      "src": "/static/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "/static/media_downloader_icon_512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }

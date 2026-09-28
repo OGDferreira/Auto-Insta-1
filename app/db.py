@@ -118,6 +118,15 @@ async def init_db() -> None:
                     await connection.exec_driver_sql(
                         f"ALTER TABLE instagram_accounts ADD COLUMN {name} {definition}"
                     )
+            subscription_columns = await connection.exec_driver_sql(
+                "PRAGMA table_info(notification_subscriptions)"
+            )
+            existing_subscription_columns = {row[1] for row in subscription_columns}
+            if "pwa_installed" not in existing_subscription_columns:
+                await connection.exec_driver_sql(
+                    "ALTER TABLE notification_subscriptions "
+                    "ADD COLUMN pwa_installed BOOLEAN NOT NULL DEFAULT 0"
+                )
             columns = await connection.exec_driver_sql("PRAGMA table_info(scheduled_posts)")
             existing = {row[1] for row in columns}
             new_columns = {
@@ -183,6 +192,9 @@ async def init_db() -> None:
                     "status_checked_at": "TIMESTAMP WITH TIME ZONE",
                     "token_expires_at": "TIMESTAMP WITH TIME ZONE",
                     "ice_breakers": "TEXT NOT NULL DEFAULT '[]'",
+                },
+                "notification_subscriptions": {
+                    "pwa_installed": "BOOLEAN NOT NULL DEFAULT FALSE",
                 },
                 "bot_events": {
                     "webhook_id": "VARCHAR(120)",

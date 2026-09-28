@@ -12,10 +12,10 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from pywebpush import WebPushException, webpush
 from supabase import create_client
 from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
 from .db import SessionLocal
@@ -25,7 +25,6 @@ from .models import (
     NotificationSubscription,
     PostingBatch,
     ScheduledPost,
-    User,
 )
 from .security import decrypt_token
 
@@ -61,7 +60,7 @@ def _account_status_from_error(response: httpx.Response) -> tuple[str, str]:
     normalized = message.lower()
     error_code = str(error.get("code") or "")
     if error_code == "190":
-        return "disconnected", message[:500]
+        return "disconnected", f"Token inválido: {message}"[:500]
     if any(term in normalized for term in ("challenge", "checkpoint", "blocked", "restricted", "disabled", "deactivated")):
         return "error", message[:500]
     return "connected", message[:500]
@@ -82,6 +81,7 @@ async def _refresh_account_status(
     account: InstagramAccount,
     token: str,
     settings,
+    db: AsyncSession | None = None,
 ) -> bool:
     response = await client.get(
         f"https://graph.instagram.com/{settings.graph_api_version}/me",
@@ -91,6 +91,7 @@ async def _refresh_account_status(
         },
     )
     if response.is_error:
+        previous_status = account.connection_status
         account.connection_status, account.status_reason = _account_status_from_error(response)
         account.status_checked_at = datetime.now(timezone.utc)
         logger.error(
@@ -99,11 +100,70 @@ async def _refresh_account_status(
             response.status_code,
             account.status_reason,
         )
+        if db is not None and (
+            account.connection_status in {"disconnected", "suspended", "error"}
+            and previous_status not in {"disconnected", "suspended", "error"}
+        ):
+            await _notify_account_connection_error(db, account)
         return False
     account.connection_status = "connected"
     account.status_reason = None
     account.status_checked_at = datetime.now(timezone.utc)
     return True
+
+
+async def _notify_account_connection_error(
+    db: AsyncSession,
+    account: InstagramAccount,
+) -> None:
+    settings = get_settings()
+    if not settings.vapid_private_key or not settings.vapid_subject:
+        return
+    subscriptions = (await db.scalars(
+        select(NotificationSubscription).where(
+            NotificationSubscription.user_id == account.owner_id,
+            NotificationSubscription.pwa_installed.is_(True),
+        )
+    )).all()
+    if not subscriptions:
+        return
+    status_reason = (account.status_reason or "").lower()
+    if "token" in status_reason or "oauth" in status_reason or "credential" in status_reason:
+        title = "Token expirado"
+    elif account.connection_status == "disconnected":
+        title = "Conexão perdida"
+    elif account.connection_status == "suspended":
+        title = "Conta restrita"
+    else:
+        title = "Erro na conta"
+    payload = json.dumps({
+        "title": title,
+        "body": f"@{account.username} · verifique a conta no Hub.",
+        "url": f"/hub#account-{account.id}",
+        "tag": f"account-{account.id}-connection",
+    })
+    for subscription in subscriptions:
+        try:
+            await asyncio.to_thread(
+                webpush,
+                subscription_info={
+                    "endpoint": subscription.endpoint,
+                    "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth},
+                },
+                data=payload,
+                vapid_private_key=settings.vapid_private_key,
+                vapid_claims={"sub": settings.vapid_subject},
+            )
+        except WebPushException as exc:
+            response = getattr(exc, "response", None)
+            if response is not None and response.status_code in {404, 410}:
+                await db.delete(subscription)
+            else:
+                logger.warning(
+                    "Falha ao notificar erro da conta %s no PWA: %s",
+                    account.id,
+                    exc,
+                )
 
 
 def _local_day_start(value) -> datetime:
@@ -210,102 +270,6 @@ def reset_scheduler() -> None:
         coalesce=True,
         max_instances=1,
     )
-    scheduler.add_job(
-        send_daily_summary_notifications,
-        CronTrigger(hour=21, minute=0, timezone=LOCAL_TIMEZONE),
-        id="send-daily-summary-notifications",
-        replace_existing=True,
-        coalesce=True,
-        max_instances=1,
-    )
-
-
-async def send_daily_summary_notifications() -> None:
-    """Send each subscribed user a daily summary of today's activity."""
-    settings = get_settings()
-    if not settings.vapid_private_key or not settings.vapid_subject:
-        logger.warning("Resumo diário não enviado: VAPID não configurado.")
-        return
-    today = datetime.now(LOCAL_TIMEZONE).date()
-    day_start = _local_day_start(today)
-    next_day = day_start + timedelta(days=1)
-    async with SessionLocal() as db:
-        users = (
-            await db.scalars(
-                select(User).where(User.role == "admin")
-            )
-        ).all()
-        for user in users:
-            accounts = (
-                await db.scalars(
-                    select(InstagramAccount).where(InstagramAccount.owner_id == user.id)
-                )
-            ).all()
-            account_ids = [account.id for account in accounts]
-            if not account_ids:
-                continue
-            published_count = await db.scalar(
-                select(func.count(ScheduledPost.id)).where(
-                    ScheduledPost.owner_id == user.id,
-                    ScheduledPost.status == "published",
-                    ScheduledPost.created_at >= day_start,
-                    ScheduledPost.created_at < next_day,
-                )
-            )
-            metric_rows = (
-                await db.scalars(
-                    select(InstagramMetric).where(
-                        InstagramMetric.account_id.in_(account_ids),
-                        InstagramMetric.metric_date >= day_start,
-                        InstagramMetric.metric_date < next_day,
-                    )
-                )
-            ).all()
-            total_views = sum(int(row.impressions or row.reach or 0) for row in metric_rows)
-            message = (
-                f"Resumo do dia\n"
-                f"{published_count or 0} publicações em {len(accounts)} conta(s). "
-                f"{total_views:,} visualizações hoje."
-            ).replace(",", ".")
-            subscriptions = (
-                await db.scalars(
-                    select(NotificationSubscription).where(
-                        NotificationSubscription.user_id == user.id
-                    )
-                )
-            ).all()
-            for subscription in subscriptions:
-                try:
-                    await asyncio.to_thread(
-                        webpush,
-                        subscription_info={
-                            "endpoint": subscription.endpoint,
-                            "keys": {
-                                "p256dh": subscription.p256dh,
-                                "auth": subscription.auth,
-                            },
-                        },
-                        data=json.dumps({
-                            "title": "Auto-Insta",
-                            "body": message,
-                            "url": "/dashboard#overview",
-                        }),
-                        vapid_private_key=settings.vapid_private_key,
-                        vapid_claims={"sub": settings.vapid_subject},
-                    )
-                except WebPushException as exc:
-                    response = getattr(exc, "response", None)
-                    if response is not None and response.status_code in {404, 410}:
-                        await db.delete(subscription)
-                    else:
-                        logger.warning(
-                            "Falha ao enviar resumo diário para usuário %s: %s",
-                            user.id,
-                            exc,
-                        )
-        await db.commit()
-
-
 async def collect_instagram_insights() -> None:
     """Collect daily Instagram impressions and reach for every connected account."""
     settings = get_settings()
@@ -319,7 +283,7 @@ async def collect_instagram_insights() -> None:
                     if account.connection_status == "pending" or not account.access_token_encrypted:
                         continue
                     token = decrypt_token(account.access_token_encrypted)
-                    if not await _refresh_account_status(client, account, token, settings):
+                    if not await _refresh_account_status(client, account, token, settings, db):
                         continue
                     created_at = account.created_at or datetime.now(timezone.utc)
                     connected_date = (
@@ -625,9 +589,10 @@ async def _publish(post_id: int) -> None:
             await _advance_loop_safely(post_id)
             return
         try:
+            previous_connection_status = account.connection_status
             token = decrypt_token(account.access_token_encrypted)
             async with httpx.AsyncClient(timeout=30) as status_client:
-                if not await _refresh_account_status(status_client, account, token, settings):
+                if not await _refresh_account_status(status_client, account, token, settings, db):
                     post.status = "blocked" if account.connection_status == "disconnected" else "failed"
                     post.error_message = account.status_reason or "A conta não está autorizada para publicar."
                     post.error_at = datetime.now(timezone.utc)
@@ -704,6 +669,8 @@ async def _publish(post_id: int) -> None:
                 account.connection_status = "disconnected"
                 account.status_reason = error_message[:500]
                 account.status_checked_at = datetime.now(timezone.utc)
+                if previous_connection_status not in {"disconnected", "suspended", "error"}:
+                    await _notify_account_connection_error(db, account)
             else:
                 post.status = "failed"
             post.error_message = error_message
