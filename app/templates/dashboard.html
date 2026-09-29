@@ -320,7 +320,7 @@
   .dashboard-performance-period{display:block;margin-top:.12rem;color:#8993a7;font:.58rem "Space Grotesk",sans-serif;letter-spacing:.12em}
   .dashboard-chart-legend{display:flex;align-items:center;gap:.4rem;color:var(--muted);font-size:.68rem}
   .dashboard-chart-legend i{width:8px;height:8px;border-radius:50%;background:#5b91ff;box-shadow:0 0 9px rgba(91,145,255,.6)}
-  .dashboard-volume-chart{position:relative;flex:1;min-height:280px;margin-top:.7rem}
+  .dashboard-volume-chart{position:relative;flex:none;width:100%;aspect-ratio:2/1;min-height:0;margin-top:.7rem}
   .dashboard-volume-chart canvas{width:100%!important;height:100%!important}
   .dashboard-support-grid{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:.8rem;min-width:0}
   .dashboard-support-grid>.panel{min-width:0;margin:0;padding:.9rem 1rem;border-color:rgba(117,165,255,.16);background:linear-gradient(145deg,rgba(10,14,24,.98),rgba(8,8,10,.98))}
@@ -333,7 +333,7 @@
   .dashboard-funnel-panel .status-line strong{white-space:nowrap}
   @media(max-width:1100px){.dashboard-overview-layout{grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr)}.dashboard-metrics-grid{gap:.65rem}.dashboard-metric{min-height:108px;padding:.85rem}.dashboard-support-grid{grid-template-columns:1fr}.dashboard-status-chart{height:125px}}
   @media(max-width:850px){.dashboard-overview-layout{grid-template-columns:1fr}.dashboard-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-insights-column{grid-template-rows:auto auto}.dashboard-performance-panel{min-height:340px}.dashboard-support-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  @media(max-width:600px){.dashboard-period-bar{align-items:flex-start;flex-direction:column;padding:.75rem}.dashboard-period-controls{width:100%;flex-wrap:wrap;justify-content:flex-start}.dashboard-period-options{width:100%;grid-template-columns:repeat(3,minmax(0,1fr))}.dashboard-period-option{padding:.4rem .2rem;font-size:.68rem}.dashboard-period-controls button:not(.dashboard-period-option){flex:1 1 100%;width:100%}.dashboard-period-controls .section-note{flex:1 1 auto}.dashboard-metrics-grid{gap:.55rem}.dashboard-metric{min-height:104px;padding:.7rem}.dashboard-metric-heading{gap:.45rem}.dashboard-metric-heading small{font-size:.69rem}.dashboard-metric-icon{width:30px;height:30px;border-radius:8px}.dashboard-metric-icon i{width:15px;height:15px}.dashboard-metric>strong{margin-top:.62rem;font-size:1.38rem}.dashboard-metric .metric-detail{font-size:.64rem}.dashboard-performance-panel{min-height:300px;padding:.85rem}.dashboard-volume-chart{min-height:220px}.dashboard-support-grid{grid-template-columns:1fr}.dashboard-status-chart{height:155px}}
+  @media(max-width:600px){.dashboard-period-bar{align-items:flex-start;flex-direction:column;padding:.75rem}.dashboard-period-controls{width:100%;flex-wrap:wrap;justify-content:flex-start}.dashboard-period-options{width:100%;grid-template-columns:repeat(3,minmax(0,1fr))}.dashboard-period-option{padding:.4rem .2rem;font-size:.68rem}.dashboard-period-controls button:not(.dashboard-period-option){flex:1 1 100%;width:100%}.dashboard-period-controls .section-note{flex:1 1 auto}.dashboard-metrics-grid{gap:.55rem}.dashboard-metric{min-height:104px;padding:.7rem}.dashboard-metric-heading{gap:.45rem}.dashboard-metric-heading small{font-size:.69rem}.dashboard-metric-icon{width:30px;height:30px;border-radius:8px}.dashboard-metric-icon i{width:15px;height:15px}.dashboard-metric>strong{margin-top:.62rem;font-size:1.38rem}.dashboard-metric .metric-detail{font-size:.64rem}.dashboard-performance-panel{min-height:300px;padding:.85rem}.dashboard-support-grid{grid-template-columns:1fr}.dashboard-status-chart{height:155px}}
   @media(max-width:360px){.dashboard-metrics-grid{grid-template-columns:1fr}.dashboard-metric{min-height:92px}.dashboard-period-controls{gap:.45rem}}
 </style>
 <nav class="workspace-tabs" aria-label="Navegação do workspace">
@@ -389,7 +389,7 @@
       </div>
       <div class="dashboard-insights-column">
         <section class="panel dashboard-performance-panel">
-          <div class="panel-header"><div class="dashboard-performance-title"><span class="dashboard-metric-icon"><i data-lucide="activity"></i></span><div><h3>Rendimento Financeiro</h3><span class="dashboard-performance-period">{{ period_label }}</span></div></div><span class="dashboard-chart-legend"><i></i> Rendimento Financeiro</span></div>
+          <div class="panel-header"><div class="dashboard-performance-title"><span class="dashboard-metric-icon"><i data-lucide="activity"></i></span><div><h3>Rendimento Financeiro</h3><span class="dashboard-performance-period">TODO O PERÍODO</span></div></div><span class="dashboard-chart-legend"><i></i> Rendimento Financeiro</span></div>
           <div class="dashboard-volume-chart"><canvas id="volume-chart" height="180"></canvas></div>
         </section>
         <div class="dashboard-support-grid">
@@ -790,10 +790,7 @@ async function applyDashboardPeriod(period,startDate="",endDate=""){
     if(paidPix)paidPix.textContent=data.sharkbot?.pix_paid??0;
     if(generatedPix)generatedPix.textContent=data.sharkbot?.pix_generated??0;
     Object.entries(data.funnel_rates||{}).forEach(([key,value])=>{const element=document.querySelector(`[data-funnel-rate="${key}"]`);if(element)element.textContent=`${Number(value).toFixed(2)}%`});
-    const periodLabel=document.querySelector(".dashboard-performance-period");
-    if(periodLabel)periodLabel.textContent=data.period_label||"";
     if(dashboardStatusChart&&data.chart_status){dashboardStatusChart.data.datasets[0].data=[data.chart_status.published,data.chart_status.scheduled,data.chart_status.failed];dashboardStatusChart.update()}
-    if(dashboardVolumeChart&&Array.isArray(data.volume_days)){dashboardVolumeChart.data.labels=data.volume_days.map(item=>item.label);dashboardVolumeChart.data.datasets[0].data=data.volume_days.map(item=>item.revenue);dashboardVolumeChart.update()}
     updateDashboardUpdatedAt();
   }catch(error){
     if(request!==dashboardPeriodRequest)return;

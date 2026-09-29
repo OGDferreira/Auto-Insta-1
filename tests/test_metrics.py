@@ -205,7 +205,7 @@ async def test_dashboard_total_period_includes_all_historical_metric_snapshots()
 
 
 @pytest.mark.asyncio
-async def test_dashboard_cards_and_paid_chart_follow_selected_period():
+async def test_dashboard_cards_follow_period_but_paid_chart_always_shows_all_time():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -264,6 +264,13 @@ async def test_dashboard_cards_and_paid_chart_follow_selected_period():
                 timestamp=old_timestamp,
                 created_at=yesterday_start + timedelta(hours=3),
             ),
+            BotEvent(
+                account_id=connected_account.id,
+                event_type="pix_paid",
+                value=11,
+                timestamp=old_timestamp,
+                created_at=yesterday_start - timedelta(days=100),
+            ),
         ])
         await db.commit()
 
@@ -276,9 +283,12 @@ async def test_dashboard_cards_and_paid_chart_follow_selected_period():
         assert today_payload["funnel_rates"]["pix_to_paid"] == 50
         assert today_payload["volume_days"][-1]["label"] == today.strftime("%d/%m/%Y")
         assert today_payload["volume_days"][-1]["revenue"] == 25.5
+        assert today_payload["period_label"] == "HOJE"
+        assert sum(day["revenue"] for day in today_payload["volume_days"]) == 51.5
         assert week_payload["metrics"]["net_followers"] == 1200
         assert week_payload["funnel_rates"]["pix_to_paid"] == 100
-        assert sum(day["revenue"] for day in week_payload["volume_days"]) == 40.5
+        assert week_payload["volume_days"] == today_payload["volume_days"]
+        assert sum(day["revenue"] for day in week_payload["volume_days"]) == 51.5
 
     await engine.dispose()
 
@@ -459,7 +469,7 @@ async def test_dashboard_period_filters_metrics_and_sharkbot_by_received_at():
         )
         dashboard_html = dashboard_response.body.decode()
         assert 'data-dashboard-period="2" aria-pressed="true">Ontem</button>' in dashboard_html
-        assert "ONTEM" in dashboard_html
+        assert "TODO O PERÍODO" in dashboard_html
         assert '<strong data-metric="total_views">5</strong>' in dashboard_html
         assert '<strong data-sharkbot-metric="lead_initiated">1</strong>' in dashboard_html
 

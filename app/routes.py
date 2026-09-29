@@ -451,6 +451,22 @@ def _paid_revenue_by_day(events: list[BotEvent]) -> dict[date, float]:
     return {day: round(amount, 2) for day, amount in revenue.items()}
 
 
+def _all_time_revenue_chart(events: list[BotEvent]) -> list[dict[str, object]]:
+    revenue = _paid_revenue_by_day(events)
+    if not revenue:
+        return []
+    first_day = min(revenue)
+    last_day = max(datetime.now(LOCAL_TIMEZONE).date(), max(revenue))
+    return [
+        {
+            "label": day.strftime("%d/%m/%Y"),
+            "revenue": revenue.get(day, 0.0),
+        }
+        for offset in range((last_day - first_day).days + 1)
+        for day in [first_day + timedelta(days=offset)]
+    ]
+
+
 def _decimal_money(value: object, field_name: str) -> Decimal:
     try:
         amount = Decimal(str(value)).quantize(Decimal("0.01"))
@@ -1164,7 +1180,7 @@ async def dashboard(
         return RedirectResponse("/hub", status_code=status.HTTP_303_SEE_OTHER)
     if period_days not in {0, 1, 2, 7, 30, 90}:
         period_days = 7
-    start_at, end_at, chart_start_date, chart_end_date, chart_period_days = (
+    start_at, end_at, _chart_start_date, _chart_end_date, _chart_period_days = (
         _dashboard_period_bounds(period_days, start_date=start_date, end_date=end_date)
     )
     owner_id = workspace_owner_id(user)
@@ -1274,6 +1290,14 @@ async def dashboard(
         event_time = func.coalesce(BotEvent.created_at, BotEvent.timestamp)
         event_query = event_query.where(event_time >= start_at, event_time < end_at)
     events = (await db.scalars(event_query)).all()
+    all_time_event_query = select(BotEvent).where(
+        or_(
+            BotEvent.account_id.in_([account.id for account in accounts]),
+            BotEvent.account_id.is_(None),
+        )
+    ) if accounts else select(BotEvent).where(BotEvent.account_id.is_(None))
+    all_time_event_query = all_time_event_query.where(BotEvent.event_type == "pix_paid")
+    all_time_paid_events = (await db.scalars(all_time_event_query)).all()
     views_by_account = _metric_views_by_account(metric_rows, [account.id for account in accounts])
     total_views = sum(views_by_account.values())
     account_views = views_by_account
@@ -1311,14 +1335,7 @@ async def dashboard(
         "pending": sum(post.status in {"scheduled", "processing", "aguardando", "pending"} for post in period_posts),
         "failed": sum(post.status in {"failed", "blocked"} for post in period_posts),
     }
-    volume_days = []
-    paid_revenue = _paid_revenue_by_day(events)
-    for offset in range(chart_period_days):
-        day = chart_start_date + timedelta(days=offset)
-        volume_days.append({
-            "label": day.strftime("%d/%m/%Y"),
-            "revenue": paid_revenue.get(day, 0.0),
-        })
+    volume_days = _all_time_revenue_chart(all_time_paid_events)
     template_context = {
             "request": request,
             "user": user,
@@ -1924,7 +1941,7 @@ async def api_status(
 ):
     if period_days not in {0, 1, 2, 7, 30, 90}:
         period_days = 7
-    start_at, end_at, chart_start_date, _chart_end_date, chart_period_days = (
+    start_at, end_at, _chart_start_date, _chart_end_date, _chart_period_days = (
         _dashboard_period_bounds(period_days, start_date=start_date, end_date=end_date)
     )
     posts = (
@@ -1949,6 +1966,13 @@ async def api_status(
         event_time = func.coalesce(BotEvent.created_at, BotEvent.timestamp)
         bot_query = bot_query.where(event_time >= start_at, event_time < end_at)
     bot_events = (await db.scalars(bot_query)).all()
+    all_time_bot_query = select(BotEvent).where(BotEvent.account_id.is_(None))
+    if account_ids:
+        all_time_bot_query = select(BotEvent).where(
+            or_(BotEvent.account_id.in_(account_ids), BotEvent.account_id.is_(None))
+        )
+    all_time_bot_query = all_time_bot_query.where(BotEvent.event_type == "pix_paid")
+    all_time_paid_events = (await db.scalars(all_time_bot_query)).all()
     metric_query = select(InstagramMetric).where(
         InstagramMetric.account_id.in_(account_ids)
     )
@@ -1993,14 +2017,7 @@ async def api_status(
             else post.created_at
         )
     ]
-    volume_days = []
-    paid_revenue = _paid_revenue_by_day(bot_events)
-    for offset in range(chart_period_days):
-        day = chart_start_date + timedelta(days=offset)
-        volume_days.append({
-            "label": day.strftime("%d/%m/%Y"),
-            "revenue": paid_revenue.get(day, 0.0),
-        })
+    volume_days = _all_time_revenue_chart(all_time_paid_events)
     funnel_rates = {
         "views_to_leads": round(bot_counts["lead_initiated"] / total_views * 100, 2) if total_views else 0,
         "leads_to_pix": round(bot_counts["pix_generated"] / bot_counts["lead_initiated"] * 100, 2) if bot_counts["lead_initiated"] else 0,
