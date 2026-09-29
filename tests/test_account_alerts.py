@@ -4,12 +4,21 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from starlette.requests import Request
 
 from app import jobs, routes
 from app.db import Base
-from app.models import InstagramAccount, NotificationSubscription, PostingBatch, ScheduledPost, User
+from app.models import (
+    AppNotification,
+    CollaboratorConnectionBatch,
+    InstagramAccount,
+    NotificationSubscription,
+    PostingBatch,
+    ScheduledPost,
+    User,
+)
 
 
 @pytest.mark.asyncio
@@ -235,6 +244,168 @@ async def test_account_error_pushes_only_target_installed_mobile_subscriptions(m
         assert sent_payloads[0]["title"] == "Conexão perdida"
         assert sent_payloads[0]["body"] == "@push_profile · verifique a conta no Hub."
         assert sent_payloads[0]["url"] == f"/hub#account-{account.id}"
+        notification = await db.scalar(
+            select(AppNotification).where(AppNotification.user_id == owner.id)
+        )
+        assert notification.title == "Conexão perdida"
+        assert notification.category == "account_error"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_new_collaborator_connections_are_batched_per_collaborator():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with session_factory() as db:
+        owner = User(email="batch-owner@example.com", username="owner", password_hash="hash")
+        db.add(owner)
+        await db.flush()
+        collaborator = User(
+            email="batch-collaborator@example.com",
+            username="colaborador",
+            password_hash="hash",
+            role="collaborator",
+            parent_id=owner.id,
+        )
+        other_collaborator = User(
+            email="other-collaborator@example.com",
+            username="outro",
+            password_hash="hash",
+            role="collaborator",
+            parent_id=owner.id,
+        )
+        db.add_all([collaborator, other_collaborator])
+        await db.flush()
+        accounts = [
+            InstagramAccount(
+                owner_id=owner.id,
+                instagram_user_id=f"ig-batch-{index}",
+                username=f"profile_{index}",
+                connection_status="connected",
+            )
+            for index in range(3)
+        ]
+        db.add_all(accounts)
+        await db.flush()
+
+        await routes._record_collaborator_connection(db, collaborator, accounts[0])
+        await routes._record_collaborator_connection(db, collaborator, accounts[1])
+        await routes._record_collaborator_connection(db, other_collaborator, accounts[2])
+        await db.commit()
+
+        batches = (await db.scalars(
+            select(CollaboratorConnectionBatch).order_by(CollaboratorConnectionBatch.id)
+        )).all()
+        assert [(batch.collaborator_name, batch.account_count) for batch in batches] == [
+            ("colaborador", 2),
+            ("outro", 1),
+        ]
+        assert batches[0].notify_at - batches[0].started_at == timedelta(minutes=15)
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_due_collaborator_notification_is_delivered_once(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    sent = []
+
+    async def fake_push(db, user_id, title, body, url, tag):
+        sent.append((user_id, title, body, url, tag))
+
+    monkeypatch.setattr(jobs, "SessionLocal", session_factory)
+    monkeypatch.setattr(jobs, "_send_mobile_push", fake_push)
+
+    async with session_factory() as db:
+        owner = User(email="due-owner@example.com", username="due-owner", password_hash="hash")
+        db.add(owner)
+        await db.flush()
+        now = datetime.now(timezone.utc)
+        due = CollaboratorConnectionBatch(
+            owner_id=owner.id,
+            collaborator_id=owner.id,
+            collaborator_name="Ana",
+            account_count=3,
+            started_at=now - timedelta(minutes=16),
+            notify_at=now - timedelta(minutes=1),
+        )
+        future = CollaboratorConnectionBatch(
+            owner_id=owner.id,
+            collaborator_id=owner.id,
+            collaborator_name="Ana",
+            account_count=1,
+            started_at=now,
+            notify_at=now + timedelta(minutes=15),
+        )
+        db.add_all([due, future])
+        await db.commit()
+        due_id = due.id
+        future_id = future.id
+        owner_id = owner.id
+
+    await jobs.process_due_collaborator_notifications()
+    await jobs.process_due_collaborator_notifications()
+
+    async with session_factory() as db:
+        delivered = (await db.scalars(
+            select(AppNotification).where(AppNotification.user_id == owner_id)
+        )).all()
+        due_batch = await db.get(CollaboratorConnectionBatch, due_id)
+        future_batch = await db.get(CollaboratorConnectionBatch, future_id)
+        assert len(delivered) == 1
+        assert delivered[0].body == "Ana conectou 3 contas"
+        assert due_batch.notified_at is not None
+        assert future_batch.notified_at is None
+    assert len(sent) == 1
+    assert sent[0][2] == "Ana conectou 3 contas"
+
+    await engine.dispose()
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_in_app_notification_inbox_is_scoped_to_authenticated_user():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with session_factory() as db:
+        owner = User(email="inbox-owner@example.com", username="inbox-owner", password_hash="hash")
+        other_user = User(email="inbox-other@example.com", username="inbox-other", password_hash="hash")
+        db.add_all([owner, other_user])
+        await db.flush()
+        notification = AppNotification(
+            user_id=owner.id,
+            title="Conta suspensa",
+            body="Verifique a conta.",
+            category="account_error",
+        )
+        db.add(notification)
+        await db.commit()
+
+        result = await routes.list_in_app_notifications(user=owner, db=db)
+        assert [item["id"] for item in result["notifications"]] == [notification.id]
+        assert await routes.list_in_app_notifications(user=other_user, db=db) == {
+            "notifications": []
+        }
+        with pytest.raises(HTTPException) as error:
+            await routes.mark_in_app_notification_read(
+                notification.id,
+                user=other_user,
+                db=db,
+            )
+        assert error.value.status_code == 404
+        await routes.mark_in_app_notification_read(notification.id, user=owner, db=db)
+        assert (await routes.list_in_app_notifications(user=owner, db=db))["notifications"] == []
 
     await engine.dispose()
 

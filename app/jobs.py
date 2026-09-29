@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .config import get_settings
 from .db import SessionLocal
 from .models import (
+    AppNotification,
+    CollaboratorConnectionBatch,
     InstagramAccount,
     InstagramMetric,
     NotificationSubscription,
@@ -143,17 +145,6 @@ async def _notify_account_connection_error(
     db: AsyncSession,
     account: InstagramAccount,
 ) -> None:
-    settings = get_settings()
-    if not settings.vapid_private_key or not settings.vapid_subject:
-        return
-    subscriptions = (await db.scalars(
-        select(NotificationSubscription).where(
-            NotificationSubscription.user_id == account.owner_id,
-            NotificationSubscription.pwa_installed.is_(True),
-        )
-    )).all()
-    if not subscriptions:
-        return
     status_reason = (account.status_reason or "").lower()
     if "token" in status_reason or "oauth" in status_reason or "credential" in status_reason:
         title = "Token expirado"
@@ -163,12 +154,88 @@ async def _notify_account_connection_error(
         title = "Conta restrita"
     else:
         title = "Erro na conta"
-    payload = json.dumps({
-        "title": title,
-        "body": f"@{account.username} · verifique a conta no Hub.",
-        "url": f"/hub#account-{account.id}",
-        "tag": f"account-{account.id}-connection",
-    })
+    notification = AppNotification(
+        user_id=account.owner_id,
+        title=title,
+        body=f"@{account.username} · verifique a conta no Hub.",
+        url=f"/hub#account-{account.id}",
+        category="account_error",
+    )
+    db.add(notification)
+    await db.flush()
+    await _send_mobile_push(
+        db,
+        account.owner_id,
+        title,
+        f"@{account.username} · verifique a conta no Hub.",
+        f"/hub#account-{account.id}",
+        f"account-{account.id}-connection",
+    )
+
+
+async def process_due_collaborator_notifications() -> None:
+    now = datetime.now(timezone.utc)
+    async with SessionLocal() as db:
+        due_batches = (await db.scalars(
+            select(CollaboratorConnectionBatch)
+            .where(
+                CollaboratorConnectionBatch.notified_at.is_(None),
+                CollaboratorConnectionBatch.notify_at <= now,
+            )
+            .order_by(CollaboratorConnectionBatch.notify_at, CollaboratorConnectionBatch.id)
+            .limit(50)
+        )).all()
+        for batch in due_batches:
+            claimed_id = await db.scalar(
+                update(CollaboratorConnectionBatch)
+                .where(
+                    CollaboratorConnectionBatch.id == batch.id,
+                    CollaboratorConnectionBatch.notified_at.is_(None),
+                    CollaboratorConnectionBatch.notify_at <= now,
+                )
+                .values(notified_at=now)
+                .returning(CollaboratorConnectionBatch.id)
+                .execution_options(synchronize_session=False)
+            )
+            if claimed_id is None:
+                continue
+            message = f"{batch.collaborator_name} conectou {batch.account_count} contas"
+            db.add(AppNotification(
+                user_id=batch.owner_id,
+                title="Contas conectadas por colaborador",
+                body=message,
+                url="/dashboard#overview",
+                category="collaborator_connections",
+            ))
+            await db.commit()
+            await _send_mobile_push(
+                db,
+                batch.owner_id,
+                "Contas conectadas por colaborador",
+                message,
+                "/dashboard#overview",
+                f"collaborator-{batch.collaborator_id}-batch-{batch.id}",
+            )
+
+
+async def _send_mobile_push(
+    db: AsyncSession,
+    user_id: int,
+    title: str,
+    body: str,
+    url: str,
+    tag: str,
+) -> None:
+    settings = get_settings()
+    if not settings.vapid_private_key or not settings.vapid_subject:
+        return
+    subscriptions = (await db.scalars(
+        select(NotificationSubscription).where(
+            NotificationSubscription.user_id == user_id,
+            NotificationSubscription.pwa_installed.is_(True),
+        )
+    )).all()
+    payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag})
     for subscription in subscriptions:
         try:
             await asyncio.to_thread(
@@ -186,11 +253,7 @@ async def _notify_account_connection_error(
             if response is not None and response.status_code in {404, 410}:
                 await db.delete(subscription)
             else:
-                logger.warning(
-                    "Falha ao notificar erro da conta %s no PWA: %s",
-                    account.id,
-                    exc,
-                )
+                logger.warning("Falha ao enviar notificação push para usuário %s: %s", user_id, exc)
 
 
 def _local_day_start(value) -> datetime:
@@ -293,6 +356,15 @@ def reset_scheduler() -> None:
         "interval",
         minutes=10,
         id="collect-instagram-insights",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        process_due_collaborator_notifications,
+        "interval",
+        seconds=15,
+        id="process-collaborator-notifications",
         replace_existing=True,
         coalesce=True,
         max_instances=1,

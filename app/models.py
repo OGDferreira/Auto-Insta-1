@@ -197,6 +197,30 @@ class NotificationSubscription(Base):
     user: Mapped[User] = relationship(back_populates="notification_subscriptions")
 
 
+class AppNotification(Base):
+    __tablename__ = "app_notifications"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    body: Mapped[str] = mapped_column(Text)
+    url: Mapped[str] = mapped_column(String(500), default="/dashboard#overview")
+    category: Mapped[str] = mapped_column(String(40), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class CollaboratorConnectionBatch(Base):
+    __tablename__ = "collaborator_connection_batches"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    collaborator_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    collaborator_name: Mapped[str] = mapped_column(String(80))
+    account_count: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    notify_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+
 class BotEvent(Base):
     __tablename__ = "bot_events"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

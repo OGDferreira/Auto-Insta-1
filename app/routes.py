@@ -38,8 +38,10 @@ from .jobs import (
     unschedule_post,
 )
 from .models import (
+    AppNotification,
     AutomationRule,
     BotEvent,
+    CollaboratorConnectionBatch,
     CollaboratorConnection,
     CollaboratorDailyBonus,
     DirectContact,
@@ -440,6 +442,15 @@ def _local_date(value: datetime) -> date:
     return value.astimezone(LOCAL_TIMEZONE).date()
 
 
+def _paid_revenue_by_day(events: list[BotEvent]) -> dict[date, float]:
+    revenue: dict[date, float] = {}
+    for event in events:
+        if event.event_type == "pix_paid":
+            day = _local_date(event.created_at or event.timestamp)
+            revenue[day] = revenue.get(day, 0.0) + float(event.value or 0)
+    return {day: round(amount, 2) for day, amount in revenue.items()}
+
+
 def _decimal_money(value: object, field_name: str) -> Decimal:
     try:
         amount = Decimal(str(value)).quantize(Decimal("0.01"))
@@ -475,6 +486,9 @@ async def _record_collaborator_connection(
         or account.connection_status not in {"connected", "active"}
     ):
         return
+    await db.scalar(
+        select(User.id).where(User.id == collaborator.id).with_for_update()
+    )
     existing = await db.scalar(
         select(CollaboratorConnection.id).where(
             CollaboratorConnection.owner_id == collaborator.parent_id,
@@ -504,6 +518,31 @@ async def _record_collaborator_connection(
             await db.flush()
     except IntegrityError:
         return
+
+    batch = await db.scalar(
+        select(CollaboratorConnectionBatch)
+        .where(
+            CollaboratorConnectionBatch.owner_id == collaborator.parent_id,
+            CollaboratorConnectionBatch.collaborator_id == collaborator.id,
+            CollaboratorConnectionBatch.notified_at.is_(None),
+            CollaboratorConnectionBatch.notify_at > connected_at,
+        )
+        .order_by(CollaboratorConnectionBatch.started_at.desc())
+        .with_for_update()
+    )
+    if batch is None:
+        batch = CollaboratorConnectionBatch(
+            owner_id=collaborator.parent_id,
+            collaborator_id=collaborator.id,
+            collaborator_name=collaborator.username,
+            account_count=1,
+            started_at=connected_at,
+            notify_at=connected_at + timedelta(minutes=15),
+        )
+        db.add(batch)
+    else:
+        batch.account_count += 1
+    await db.flush()
 
     if connection.daily_target <= 0 or connection.daily_bonus <= 0:
         return
@@ -1036,6 +1075,51 @@ async def subscribe_notifications(
     return {"subscribed": True}
 
 
+@router.get("/api/notifications/inbox")
+async def list_in_app_notifications(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    notifications = (await db.scalars(
+        select(AppNotification)
+        .where(AppNotification.user_id == user.id, AppNotification.read_at.is_(None))
+        .order_by(AppNotification.created_at.desc(), AppNotification.id.desc())
+        .limit(20)
+    )).all()
+    return {
+        "notifications": [
+            {
+                "id": item.id,
+                "title": item.title,
+                "body": item.body,
+                "url": item.url,
+                "category": item.category,
+            }
+            for item in notifications
+        ]
+    }
+
+
+@router.post("/api/notifications/inbox/{notification_id}/read")
+async def mark_in_app_notification_read(
+    notification_id: int,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    notification = await db.scalar(
+        select(AppNotification).where(
+            AppNotification.id == notification_id,
+            AppNotification.user_id == user.id,
+        )
+    )
+    if notification is None:
+        raise HTTPException(status_code=404, detail="Notificação não encontrada")
+    if notification.read_at is None:
+        notification.read_at = datetime.now(timezone.utc)
+        await db.commit()
+    return {"read": True}
+
+
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
@@ -1228,15 +1312,12 @@ async def dashboard(
         "failed": sum(post.status in {"failed", "blocked"} for post in period_posts),
     }
     volume_days = []
+    paid_revenue = _paid_revenue_by_day(events)
     for offset in range(chart_period_days):
         day = chart_start_date + timedelta(days=offset)
         volume_days.append({
-            "label": day.strftime("%d/%m"),
-            "pix_paid": sum(
-                event.event_type == "pix_paid"
-                and _local_date(event.created_at or event.timestamp) == day
-                for event in events
-            ),
+            "label": day.strftime("%d/%m/%Y"),
+            "revenue": paid_revenue.get(day, 0.0),
         })
     template_context = {
             "request": request,
@@ -1913,15 +1994,12 @@ async def api_status(
         )
     ]
     volume_days = []
+    paid_revenue = _paid_revenue_by_day(bot_events)
     for offset in range(chart_period_days):
         day = chart_start_date + timedelta(days=offset)
         volume_days.append({
-            "label": day.strftime("%d/%m"),
-            "pix_paid": sum(
-                event.event_type == "pix_paid"
-                and _local_date(event.created_at or event.timestamp) == day
-                for event in bot_events
-            ),
+            "label": day.strftime("%d/%m/%Y"),
+            "revenue": paid_revenue.get(day, 0.0),
         })
     funnel_rates = {
         "views_to_leads": round(bot_counts["lead_initiated"] / total_views * 100, 2) if total_views else 0,

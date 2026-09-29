@@ -389,7 +389,7 @@
       </div>
       <div class="dashboard-insights-column">
         <section class="panel dashboard-performance-panel">
-          <div class="panel-header"><div class="dashboard-performance-title"><span class="dashboard-metric-icon"><i data-lucide="activity"></i></span><div><h3>Pix pagos</h3><span class="dashboard-performance-period">{{ period_label }}</span></div></div><span class="dashboard-chart-legend"><i></i> Pix pagos</span></div>
+          <div class="panel-header"><div class="dashboard-performance-title"><span class="dashboard-metric-icon"><i data-lucide="activity"></i></span><div><h3>Rendimento Financeiro</h3><span class="dashboard-performance-period">{{ period_label }}</span></div></div><span class="dashboard-chart-legend"><i></i> Rendimento Financeiro</span></div>
           <div class="dashboard-volume-chart"><canvas id="volume-chart" height="180"></canvas></div>
         </section>
         <div class="dashboard-support-grid">
@@ -717,7 +717,7 @@
 <script>
 const chartStatus={{ chart_status|tojson }},volumeDays={{ volume_days|tojson }},funnelMetrics={{ metrics.funnel|tojson }},pixStatus={{ metrics.pix_status|tojson }};
 let dashboardStatusChart=null,dashboardVolumeChart=null;
-if(window.Chart){dashboardStatusChart=new Chart(document.getElementById("status-chart"),{type:"doughnut",data:{labels:["Publicadas","Agendadas","Falhas"],datasets:[{data:[chartStatus.published,chartStatus.scheduled,chartStatus.failed],backgroundColor:["#5B91FF","#06296B","#EF4444"],borderWidth:0}]},options:{maintainAspectRatio:false,cutout:"72%",plugins:{legend:{labels:{color:"#F2F6F3",boxWidth:10}}}}});dashboardVolumeChart=new Chart(document.getElementById("volume-chart"),{type:"line",data:{labels:volumeDays.map(item=>item.label),datasets:[{label:"Pix pagos",data:volumeDays.map(item=>item.pix_paid),borderColor:"#5B91FF",backgroundColor:"rgba(91,145,255,.15)",fill:true,tension:.35}]},options:{maintainAspectRatio:false,scales:{x:{ticks:{color:"#A9B7AE"},grid:{color:"rgba(255,255,255,.04)"}},y:{beginAtZero:true,ticks:{color:"#A9B7AE",precision:0},grid:{color:"rgba(255,255,255,.06)"}}},plugins:{legend:{display:false}}}})}
+if(window.Chart){dashboardStatusChart=new Chart(document.getElementById("status-chart"),{type:"doughnut",data:{labels:["Publicadas","Agendadas","Falhas"],datasets:[{data:[chartStatus.published,chartStatus.scheduled,chartStatus.failed],backgroundColor:["#5B91FF","#06296B","#EF4444"],borderWidth:0}]},options:{maintainAspectRatio:false,cutout:"72%",plugins:{legend:{labels:{color:"#F2F6F3",boxWidth:10}}}}});dashboardVolumeChart=new Chart(document.getElementById("volume-chart"),{type:"line",data:{labels:volumeDays.map(item=>item.label),datasets:[{label:"Rendimento Financeiro",data:volumeDays.map(item=>item.revenue),borderColor:"#5B91FF",backgroundColor:"rgba(91,145,255,.15)",fill:true,tension:.35}]},options:{maintainAspectRatio:false,interaction:{mode:"index",intersect:false},scales:{x:{ticks:{display:false},grid:{display:false}},y:{beginAtZero:true,ticks:{color:"#A9B7AE",callback:value=>Number(value).toLocaleString("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0})},grid:{color:"rgba(255,255,255,.06)"}}},plugins:{legend:{display:false},tooltip:{callbacks:{title:items=>items[0]?.label||"",label:context=>Number(context.raw).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}}}}})}
 const files=document.getElementById("bulk-files"),list=document.getElementById("media-items"),time=document.getElementById("bulk-time"),form=document.getElementById("bulk-form"),captionFields=document.getElementById("caption-fields"),globalCaption=document.getElementById("global-caption-field"),driveButton=document.getElementById("drive-import"),loopEnabled=document.getElementById("loop-enabled"),scheduleField=document.getElementById("schedule-field"),scheduleNote=document.getElementById("schedule-note");
 const pad=value=>String(value).padStart(2,"0");
 const escapeHtml=value=>String(value).replace(/[&<>\"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[char]));
@@ -793,7 +793,7 @@ async function applyDashboardPeriod(period,startDate="",endDate=""){
     const periodLabel=document.querySelector(".dashboard-performance-period");
     if(periodLabel)periodLabel.textContent=data.period_label||"";
     if(dashboardStatusChart&&data.chart_status){dashboardStatusChart.data.datasets[0].data=[data.chart_status.published,data.chart_status.scheduled,data.chart_status.failed];dashboardStatusChart.update()}
-    if(dashboardVolumeChart&&Array.isArray(data.volume_days)){dashboardVolumeChart.data.labels=data.volume_days.map(item=>item.label);dashboardVolumeChart.data.datasets[0].data=data.volume_days.map(item=>item.pix_paid);dashboardVolumeChart.update()}
+    if(dashboardVolumeChart&&Array.isArray(data.volume_days)){dashboardVolumeChart.data.labels=data.volume_days.map(item=>item.label);dashboardVolumeChart.data.datasets[0].data=data.volume_days.map(item=>item.revenue);dashboardVolumeChart.update()}
     updateDashboardUpdatedAt();
   }catch(error){
     if(request!==dashboardPeriodRequest)return;

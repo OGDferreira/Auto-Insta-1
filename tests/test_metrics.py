@@ -253,12 +253,14 @@ async def test_dashboard_cards_and_paid_chart_follow_selected_period():
             BotEvent(
                 account_id=connected_account.id,
                 event_type="pix_paid",
+                value=25.5,
                 timestamp=old_timestamp,
                 created_at=today_start + timedelta(hours=3),
             ),
             BotEvent(
                 account_id=connected_account.id,
                 event_type="pix_paid",
+                value=15,
                 timestamp=old_timestamp,
                 created_at=yesterday_start + timedelta(hours=3),
             ),
@@ -272,10 +274,11 @@ async def test_dashboard_cards_and_paid_chart_follow_selected_period():
 
         assert today_payload["metrics"]["net_followers"] == 1200
         assert today_payload["funnel_rates"]["pix_to_paid"] == 50
-        assert today_payload["volume_days"][-1]["pix_paid"] == 1
+        assert today_payload["volume_days"][-1]["label"] == today.strftime("%d/%m/%Y")
+        assert today_payload["volume_days"][-1]["revenue"] == 25.5
         assert week_payload["metrics"]["net_followers"] == 1200
         assert week_payload["funnel_rates"]["pix_to_paid"] == 100
-        assert sum(day["pix_paid"] for day in week_payload["volume_days"]) == 2
+        assert sum(day["revenue"] for day in week_payload["volume_days"]) == 40.5
 
     await engine.dispose()
 
