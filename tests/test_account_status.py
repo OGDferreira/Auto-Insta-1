@@ -36,7 +36,11 @@ def account():
 @pytest.mark.asyncio
 async def test_refresh_account_status_marks_profile_response_as_connected():
     current = account()
-    client = FakeClient([FakeResponse({"id": "123", "username": "tester"})])
+    current.followers_count = 0
+    client = FakeClient([
+        FakeResponse({"id": "123", "username": "tester"}),
+        FakeResponse({"followers_count": 2468}),
+    ])
 
     result = await _refresh_account_status(
         client,
@@ -49,6 +53,7 @@ async def test_refresh_account_status_marks_profile_response_as_connected():
     assert current.connection_status == "connected"
     assert current.status_reason is None
     assert current.status_checked_at is not None
+    assert current.followers_count == 2468
 
 
 @pytest.mark.asyncio

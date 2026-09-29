@@ -100,6 +100,7 @@ async def init_db() -> None:
                 "status_reason": "TEXT",
                 "status_checked_at": "DATETIME",
                 "token_expires_at": "DATETIME",
+                "followers_count": "INTEGER NOT NULL DEFAULT 0",
                 "ice_breakers": "TEXT NOT NULL DEFAULT '[]'",
             }
             columns = await connection.exec_driver_sql("PRAGMA table_info(automation_rules)")
@@ -204,6 +205,7 @@ async def init_db() -> None:
                     "status_reason": "TEXT",
                     "status_checked_at": "TIMESTAMP WITH TIME ZONE",
                     "token_expires_at": "TIMESTAMP WITH TIME ZONE",
+                    "followers_count": "INTEGER NOT NULL DEFAULT 0",
                     "ice_breakers": "TEXT NOT NULL DEFAULT '[]'",
                 },
                 "notification_subscriptions": {

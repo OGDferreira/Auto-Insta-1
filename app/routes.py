@@ -377,6 +377,16 @@ def local_scheduled_datetime(value: datetime) -> str:
     return utc_value.astimezone(LOCAL_TIMEZONE).strftime("%d/%m/%Y %H:%M")
 
 
+def local_datetime_iso(value: datetime) -> str:
+    utc_value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return utc_value.astimezone(LOCAL_TIMEZONE).isoformat()
+
+
+def local_activity_datetime(value: datetime) -> str:
+    utc_value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return utc_value.astimezone(LOCAL_TIMEZONE).strftime("%d/%m %H:%M")
+
+
 def format_brl(value: object) -> str:
     amount = Decimal(str(value or 0)).quantize(Decimal("0.01"))
     formatted = f"{amount:,.2f}".replace(",", "\0").replace(".", ",").replace("\0", ".")
@@ -634,6 +644,8 @@ async def _collaborator_daily_summary(
 
 
 templates.env.globals["local_scheduled_datetime"] = local_scheduled_datetime
+templates.env.globals["local_datetime_iso"] = local_datetime_iso
+templates.env.globals["local_activity_datetime"] = local_activity_datetime
 templates.env.globals["format_brl"] = format_brl
 
 
@@ -1210,6 +1222,11 @@ async def dashboard(
         "today_posts": len(period_posts),
         "daily_views": total_views,
         "total_views": total_views,
+        "net_followers": sum(
+            account.followers_count or 0
+            for account in accounts
+            if status_classes.get(account.id) == "connected"
+        ),
         "average_views": round(total_views / max(len(accounts), 1)),
         "funnel": event_counts,
         "funnel_rates": funnel_rates,
@@ -1227,13 +1244,11 @@ async def dashboard(
         day = chart_start_date + timedelta(days=offset)
         volume_days.append({
             "label": day.strftime("%d/%m"),
-            "published": sum(
-                post.status == "published"
-                and post.published_at is not None
-                and _local_date(post.published_at) == day
-                for post in period_posts
+            "pix_paid": sum(
+                event.event_type == "pix_paid"
+                and _local_date(event.created_at or event.timestamp) == day
+                for event in events
             ),
-            "interactions": 0,
         })
     template_context = {
             "request": request,
@@ -1914,13 +1929,11 @@ async def api_status(
         day = chart_start_date + timedelta(days=offset)
         volume_days.append({
             "label": day.strftime("%d/%m"),
-            "published": sum(
-                post.status == "published"
-                and post.published_at is not None
-                and _local_date(post.published_at) == day
-                for post in period_posts
+            "pix_paid": sum(
+                event.event_type == "pix_paid"
+                and _local_date(event.created_at or event.timestamp) == day
+                for event in bot_events
             ),
-            "interactions": 0,
         })
     funnel_rates = {
         "views_to_leads": round(bot_counts["lead_initiated"] / total_views * 100, 2) if total_views else 0,
@@ -1935,6 +1948,11 @@ async def api_status(
             "active_accounts": sum(value == "connected" for value in account_statuses.values()),
             "error_accounts": sum(value == "error" for value in account_statuses.values()),
             "total_views": total_views,
+            "net_followers": sum(
+                account.followers_count or 0
+                for account in accounts
+                if account_statuses.get(account.id) == "connected"
+            ),
             "today_posts": len(period_posts),
         },
         "sharkbot": bot_counts,
@@ -1960,6 +1978,7 @@ async def api_status(
                 "status": account.connection_status,
                 "reason": account.status_reason,
                 "checked_at": account.status_checked_at.isoformat() if account.status_checked_at else None,
+                "checked_at_local": local_scheduled_datetime(account.status_checked_at) if account.status_checked_at else None,
             }
             for account in accounts
         },
@@ -1985,6 +2004,21 @@ async def api_status(
 @router.get("/api/logs")
 async def api_logs(user: User = Depends(current_user)):
     return {"logs": get_recent_logs()}
+
+
+@router.get("/api/time")
+async def api_time(user: User = Depends(current_user)):
+    server_time = datetime.now().astimezone()
+    utc_time = server_time.astimezone(timezone.utc)
+    brazil_time = utc_time.astimezone(LOCAL_TIMEZONE)
+    return {
+        "timezone": str(LOCAL_TIMEZONE),
+        "server_timezone": str(server_time.tzinfo),
+        "server_time": server_time.isoformat(),
+        "utc_time": utc_time.isoformat(),
+        "brazil_time": brazil_time.isoformat(),
+        "brazil_time_formatted": local_scheduled_datetime(brazil_time),
+    }
 
 
 @router.post("/api/meta/test")
@@ -2386,10 +2420,10 @@ async def calendar_posts(
                 "media_url": post.media_url,
                 "media_type": post.media_type,
                 "caption": post.caption,
-                "scheduled_for": post.scheduled_for.isoformat(),
+                "scheduled_for": local_datetime_iso(post.scheduled_for),
                 "status": post.status,
                 "error_message": post.error_message,
-                "error_at": post.error_at.isoformat() if post.error_at else None,
+                "error_at": local_datetime_iso(post.error_at) if post.error_at else None,
                 "conflict": conflicts[
                     f"{post.account_id}:{post.scheduled_for.astimezone(timezone.utc).isoformat()}"
                 ] > 1,
@@ -2443,7 +2477,7 @@ async def update_batch_interval(
         "batch_id": batch_id,
         "updated": len(pending_posts),
         "intervalo_minutos": interval_minutes,
-        "first_scheduled_for": pending_posts[0].scheduled_for.isoformat(),
+        "first_scheduled_for": local_datetime_iso(pending_posts[0].scheduled_for),
     }
 
 
@@ -2502,7 +2536,7 @@ async def update_batch_config(
         "batch_id": batch_id,
         "updated": len(pending_posts),
         "intervalo_minutos": interval_minutes,
-        "first_scheduled_for": pending_posts[0].scheduled_for.isoformat(),
+        "first_scheduled_for": local_datetime_iso(pending_posts[0].scheduled_for),
     }
 
 
@@ -2553,7 +2587,7 @@ async def retry_batch_failures(
         "batch_id": batch_id,
         "updated": len(failed_posts),
         "intervalo_minutos": interval_minutes,
-        "first_scheduled_for": failed_posts[0].scheduled_for.isoformat(),
+        "first_scheduled_for": local_datetime_iso(failed_posts[0].scheduled_for),
     }
 
 
@@ -2584,7 +2618,7 @@ async def reschedule_calendar_post(
     await db.commit()
     unschedule_post(post.id)
     schedule_post(post.id, scheduled_for)
-    return {"id": post.id, "scheduled_for": scheduled_for.isoformat()}
+    return {"id": post.id, "scheduled_for": local_datetime_iso(scheduled_for)}
 
 
 @router.get("/api/analytics")
@@ -3034,6 +3068,7 @@ async def verify_account(
                 "status": account.connection_status,
                 "reason": account.status_reason,
                 "checked_at": account.status_checked_at.isoformat() if account.status_checked_at else None,
+                "checked_at_local": local_scheduled_datetime(account.status_checked_at) if account.status_checked_at else None,
                 "reconnect_url": f"/auth/instagram/start?reconnect_account_id={account.id}",
             }
         return RedirectResponse(
@@ -3060,6 +3095,7 @@ async def verify_account(
             "status": account.connection_status,
             "reason": account.status_reason,
             "checked_at": account.status_checked_at.isoformat() if account.status_checked_at else None,
+            "checked_at_local": local_scheduled_datetime(account.status_checked_at) if account.status_checked_at else None,
         }
         if account.connection_status != "connected":
             response["reconnect_url"] = f"/auth/instagram/start?reconnect_account_id={account.id}"

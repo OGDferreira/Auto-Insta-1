@@ -1,3 +1,5 @@
+import { formatBrazilDateTime } from "./timezone.js";
+
 const profileButtons = [...document.querySelectorAll("[data-metrics-account]")];
 const profileList = document.getElementById("metrics-profile-list");
 const profileFeed = document.getElementById("profile-feed");
@@ -194,7 +196,14 @@ function renderMedia(items) {
     if (item.timestamp) {
       const parsedDate = new Date(item.timestamp);
       if (!Number.isNaN(parsedDate.getTime())) {
-        date = parsedDate.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        date = formatBrazilDateTime(parsedDate, {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23",
+        });
       }
     }
     return `<article class="profile-feed-card">

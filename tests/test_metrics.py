@@ -62,6 +62,29 @@ def request_for_metrics():
     })
 
 
+def test_schedule_datetime_and_display_use_brasilia_timezone():
+    utc_value = routes.parse_scheduled_datetime("2026-09-29T10:25")
+
+    assert utc_value == datetime(2026, 9, 29, 13, 25, tzinfo=timezone.utc)
+    assert routes.local_scheduled_datetime(utc_value) == "29/09/2026 10:25"
+    assert routes.local_datetime_iso(utc_value) == "2026-09-29T10:25:00-03:00"
+
+
+@pytest.mark.asyncio
+async def test_time_diagnostic_returns_server_and_brasilia_offsets():
+    owner = User(email="time@example.com", username="time_owner", password_hash="hash")
+
+    payload = await routes.api_time(user=owner)
+    utc_time = datetime.fromisoformat(payload["utc_time"])
+    brazil_time = datetime.fromisoformat(payload["brazil_time"])
+
+    assert payload["timezone"] == "America/Sao_Paulo"
+    assert utc_time.utcoffset() == timedelta(0)
+    assert brazil_time.utcoffset() == timedelta(hours=-3)
+    assert brazil_time == utc_time.astimezone(routes.LOCAL_TIMEZONE)
+    assert payload["brazil_time_formatted"] == routes.local_scheduled_datetime(brazil_time)
+
+
 @pytest.mark.asyncio
 async def test_instagram_metrics_page_renders_only_owned_connected_profiles():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -200,6 +223,83 @@ async def test_dashboard_total_period_includes_all_historical_metric_snapshots()
 
         assert total_metrics["total_views"] == 110
         assert recent_metrics["total_views"] == 10
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_dashboard_conversion_and_paid_chart_follow_period_and_ignore_error_followers():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with session_factory() as db:
+        owner = User(email="dashboard-cards@example.com", username="dashboard_cards", password_hash="hash")
+        db.add(owner)
+        await db.flush()
+        connected_account = InstagramAccount(
+            owner_id=owner.id,
+            instagram_user_id="ig-dashboard-connected",
+            username="dashboard_connected",
+            access_token_encrypted="encrypted",
+            connection_status="connected",
+            followers_count=1200,
+        )
+        error_account = InstagramAccount(
+            owner_id=owner.id,
+            instagram_user_id="ig-dashboard-error",
+            username="dashboard_error",
+            access_token_encrypted="encrypted",
+            connection_status="error",
+            followers_count=9000,
+        )
+        db.add_all([connected_account, error_account])
+        await db.flush()
+        today = datetime.now(routes.LOCAL_TIMEZONE).date()
+        today_start, _ = routes._local_day_bounds(today)
+        yesterday_start, _ = routes._local_day_bounds(today - timedelta(days=1))
+        old_timestamp = datetime(2000, 1, 1, tzinfo=timezone.utc)
+        db.add_all([
+            BotEvent(
+                account_id=connected_account.id,
+                event_type="pix_generated",
+                timestamp=old_timestamp,
+                created_at=today_start + timedelta(hours=1),
+            ),
+            BotEvent(
+                account_id=connected_account.id,
+                event_type="pix_generated",
+                timestamp=old_timestamp,
+                created_at=today_start + timedelta(hours=2),
+            ),
+            BotEvent(
+                account_id=connected_account.id,
+                event_type="pix_paid",
+                timestamp=old_timestamp,
+                created_at=today_start + timedelta(hours=3),
+            ),
+            BotEvent(
+                account_id=connected_account.id,
+                event_type="pix_paid",
+                timestamp=old_timestamp,
+                created_at=yesterday_start + timedelta(hours=3),
+            ),
+        ])
+        await db.commit()
+
+        today_response = await routes.api_status(period_days=1, user=owner, db=db)
+        week_response = await routes.api_status(period_days=7, user=owner, db=db)
+        today_payload = json.loads(today_response.body)
+        week_payload = json.loads(week_response.body)
+
+        assert today_payload["metrics"]["net_followers"] == 1200
+        assert today_payload["funnel_rates"]["pix_to_paid"] == 50
+        assert today_payload["volume_days"][-1]["pix_paid"] == 1
+        assert today_payload["sharkbot"]["pix_paid"] == 1
+        assert week_payload["metrics"]["net_followers"] == 1200
+        assert week_payload["funnel_rates"]["pix_to_paid"] == 100
+        assert sum(day["pix_paid"] for day in week_payload["volume_days"]) == 2
 
     await engine.dispose()
 

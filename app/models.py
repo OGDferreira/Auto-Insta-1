@@ -62,6 +62,7 @@ class InstagramAccount(Base):
     status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     status_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    followers_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     owner: Mapped[User] = relationship(back_populates="instagram_accounts")
     scheduled_posts: Mapped[list["ScheduledPost"]] = relationship(

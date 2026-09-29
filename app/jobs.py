@@ -110,6 +110,32 @@ async def _refresh_account_status(
     account.connection_status = "connected"
     account.status_reason = None
     account.status_checked_at = datetime.now(timezone.utc)
+    try:
+        followers_response = await client.get(
+            f"https://graph.instagram.com/{settings.graph_api_version}/me",
+            params={"fields": "followers_count", "access_token": token},
+        )
+        if followers_response.is_error:
+            logger.warning(
+                "Contagem de seguidores indisponível para a conta Instagram %s: %s",
+                account.instagram_user_id,
+                _api_error(followers_response),
+            )
+        else:
+            profile_data = followers_response.json()
+            followers_count = (
+                profile_data.get("followers_count")
+                if isinstance(profile_data, dict)
+                else None
+            )
+            if followers_count is not None:
+                account.followers_count = max(0, int(followers_count))
+    except (httpx.HTTPError, TypeError, ValueError) as exc:
+        logger.warning(
+            "Contagem de seguidores inválida para a conta Instagram %s: %s",
+            account.instagram_user_id,
+            exc,
+        )
     return True
 
 
