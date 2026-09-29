@@ -29,6 +29,7 @@ from .config import get_settings
 from .db import get_db
 from .jobs import (
     PENDING_STATUSES,
+    _detach_account_from_batches,
     _refresh_account_status,
     _notify_account_connection_error,
     _advance_loop_after_post,
@@ -112,16 +113,45 @@ async def _remove_stale_pending_accounts(db: AsyncSession, owner_id: int) -> Non
 
 
 def account_status_classes(accounts: list[InstagramAccount]) -> dict[int, str]:
-    return {
-        account.id: (
-            "connected"
-            if account.connection_status == "active"
-            else account.connection_status
-            if account.connection_status in ACCOUNT_STATUS_CLASSES
-            else "error"
+    result = {}
+    now = datetime.now(timezone.utc)
+    token_problem_terms = ("token", "oauth", "credential", "access token")
+    for account in accounts:
+        status_reason = (account.status_reason or "").lower()
+        expires_at = account.token_expires_at
+        if expires_at is not None and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        token_problem = (
+            not account.access_token_encrypted
+            or any(term in status_reason for term in token_problem_terms)
+            or (expires_at is not None and expires_at <= now)
         )
-        for account in accounts
-    }
+        if account.connection_status in {"disconnected", "suspended", "error"} or (
+            account.connection_status in {"active", "connected"} and token_problem
+        ):
+            result[account.id] = "error"
+        elif account.connection_status == "active":
+            result[account.id] = "connected"
+        elif account.connection_status in ACCOUNT_STATUS_CLASSES:
+            result[account.id] = account.connection_status
+        else:
+            result[account.id] = "error"
+    return result
+
+
+async def _detach_error_accounts_from_batches(
+    db: AsyncSession,
+    accounts: list[InstagramAccount],
+) -> dict[int, str]:
+    status_classes = account_status_classes(accounts)
+    errored_accounts = [
+        account for account in accounts if status_classes[account.id] == "error"
+    ]
+    for account in errored_accounts:
+        await _detach_account_from_batches(db, account)
+    if errored_accounts:
+        await db.commit()
+    return status_classes
 
 
 def _account_publication_stats(
@@ -129,7 +159,13 @@ def _account_publication_stats(
     account_ids: list[int],
 ) -> dict[int, dict[str, int]]:
     stats = {
-        account_id: {"published": 0, "failed": 0, "pending": 0, "processing": 0}
+        account_id: {
+            "published": 0,
+            "failed": 0,
+            "pending": 0,
+            "processing": 0,
+            "queued": 0,
+        }
         for account_id in account_ids
     }
     for post in posts:
@@ -142,8 +178,10 @@ def _account_publication_stats(
             account_stats["failed"] += 1
         elif post.status == "processing":
             account_stats["processing"] += 1
+            account_stats["queued"] += 1
         elif post.status in PENDING_STATUSES:
             account_stats["pending"] += 1
+            account_stats["queued"] += 1
     return stats
 
 
@@ -286,6 +324,41 @@ def _local_day_bounds(value: date) -> tuple[datetime, datetime]:
     start = datetime.combine(value, time.min, tzinfo=LOCAL_TIMEZONE).astimezone(timezone.utc)
     end = datetime.combine(value + timedelta(days=1), time.min, tzinfo=LOCAL_TIMEZONE).astimezone(timezone.utc)
     return start, end
+
+
+def _dashboard_period_bounds(
+    period_days: int,
+    now: datetime | None = None,
+) -> tuple[datetime | None, datetime | None, date, date, int]:
+    if period_days not in {0, 1, 2, 7, 30, 90}:
+        period_days = 7
+    current_local_date = (now or datetime.now(timezone.utc)).astimezone(LOCAL_TIMEZONE).date()
+    if period_days == 0:
+        chart_start = current_local_date - timedelta(days=6)
+        return None, None, chart_start, current_local_date, 7
+    selected_days = 1 if period_days == 2 else period_days
+    end_date = current_local_date - timedelta(days=1) if period_days == 2 else current_local_date
+    start_date = end_date - timedelta(days=selected_days - 1)
+    start_at, _ = _local_day_bounds(start_date)
+    _, end_at = _local_day_bounds(end_date)
+    return start_at, end_at, start_date, end_date, selected_days
+
+
+def _period_label(period_days: int) -> str:
+    return {
+        0: "ÚLTIMOS 7 DIAS",
+        1: "HOJE",
+        2: "ONTEM",
+        7: "ÚLTIMOS 7 DIAS",
+        30: "ÚLTIMOS 30 DIAS",
+        90: "ÚLTIMOS 90 DIAS",
+    }.get(period_days, "ÚLTIMOS 7 DIAS")
+
+
+def _local_date(value: datetime) -> date:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(LOCAL_TIMEZONE).date()
 
 
 def _decimal_money(value: object, field_name: str) -> Decimal:
@@ -895,6 +968,11 @@ async def dashboard(
 ):
     if user.role == "collaborator":
         return RedirectResponse("/hub", status_code=status.HTTP_303_SEE_OTHER)
+    if period_days not in {0, 1, 2, 7, 30, 90}:
+        period_days = 7
+    start_at, end_at, chart_start_date, chart_end_date, chart_period_days = (
+        _dashboard_period_bounds(period_days)
+    )
     owner_id = workspace_owner_id(user)
     await _remove_stale_pending_accounts(db, owner_id)
     accounts = (await db.scalars(
@@ -902,6 +980,7 @@ async def dashboard(
         .where(InstagramAccount.owner_id == owner_id)
         .order_by(InstagramAccount.created_at, InstagramAccount.id)
     )).all()
+    status_classes = await _detach_error_accounts_from_batches(db, accounts)
     batches = (
         await db.scalars(
             select(PostingBatch)
@@ -962,29 +1041,45 @@ async def dashboard(
     queue_groups = [group for group in queue_groups if group["posts"]]
     unbatched_posts = [post for post in posts if post.batch_id is None]
     unbatched_account_groups = build_account_groups(unbatched_posts)
-    today = datetime.now(timezone.utc).date()
-    today_posts = [post for post in posts if post.created_at and post.created_at.date() == today]
-    if period_days not in {0, 1, 7, 30, 90}:
-        period_days = 7
+    def occurred_in_period(value: datetime | None) -> bool:
+        if value is None:
+            return False
+        if start_at is None or end_at is None:
+            return True
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return start_at <= value.astimezone(timezone.utc) < end_at
+
+    period_posts = [
+        post
+        for post in posts
+        if occurred_in_period(
+            post.published_at
+            if post.status == "published" and post.published_at
+            else post.error_at
+            if post.status in {"failed", "blocked"} and post.error_at
+            else post.created_at
+        )
+    ]
     metric_query = select(InstagramMetric).where(
         InstagramMetric.account_id.in_([a.id for a in accounts])
     )
-    if period_days:
+    if start_at is not None and end_at is not None:
         metric_query = metric_query.where(
-            InstagramMetric.metric_date
-            >= datetime.now(timezone.utc) - timedelta(days=period_days - 1)
+            InstagramMetric.metric_date >= start_at,
+            InstagramMetric.metric_date < end_at,
         )
     metric_rows = (await db.scalars(metric_query)).all() if accounts else []
-    events = (
-        await db.scalars(
-            select(BotEvent).where(
-                or_(
-                    BotEvent.account_id.in_([a.id for a in accounts]),
-                    BotEvent.account_id.is_(None),
-                )
-            )
+    event_query = select(BotEvent).where(
+        or_(
+            BotEvent.account_id.in_([a.id for a in accounts]),
+            BotEvent.account_id.is_(None),
         )
-    ).all() if accounts else (await db.scalars(select(BotEvent).where(BotEvent.account_id.is_(None)))).all()
+    ) if accounts else select(BotEvent).where(BotEvent.account_id.is_(None))
+    if start_at is not None and end_at is not None:
+        event_time = func.coalesce(BotEvent.created_at, BotEvent.timestamp)
+        event_query = event_query.where(event_time >= start_at, event_time < end_at)
+    events = (await db.scalars(event_query)).all()
     views_by_account = _metric_views_by_account(metric_rows, [account.id for account in accounts])
     total_views = sum(views_by_account.values())
     account_views = views_by_account
@@ -1002,7 +1097,7 @@ async def dashboard(
     metrics = {
         "active_accounts": len(accounts),
         "error_accounts": sum(account.connection_status == "error" for account in accounts),
-        "today_posts": len(today_posts),
+        "today_posts": len(period_posts),
         "daily_views": total_views,
         "total_views": total_views,
         "average_views": round(total_views / max(len(accounts), 1)),
@@ -1013,24 +1108,30 @@ async def dashboard(
             "pending": sum(event.event_type == "pix_pending" for event in events),
             "generated": event_counts["pix_generated"],
         },
-        "published": sum(post.status == "published" for post in posts),
-        "pending": sum(post.status == "scheduled" for post in posts),
-        "failed": sum(post.status == "failed" for post in posts),
+        "published": sum(post.status == "published" for post in period_posts),
+        "pending": sum(post.status in {"scheduled", "processing", "aguardando", "pending"} for post in period_posts),
+        "failed": sum(post.status in {"failed", "blocked"} for post in period_posts),
     }
     volume_days = []
-    chart_period_days = period_days or 7
-    for offset in range(chart_period_days - 1, -1, -1):
-        day = datetime.now(timezone.utc).date() - timedelta(days=offset)
+    for offset in range(chart_period_days):
+        day = chart_start_date + timedelta(days=offset)
         volume_days.append({
             "label": day.strftime("%d/%m"),
-            "published": sum(post.status == "published" and post.created_at and post.created_at.date() == day for post in posts),
+            "published": sum(
+                post.status == "published"
+                and post.published_at is not None
+                and _local_date(post.published_at) == day
+                for post in period_posts
+            ),
             "interactions": 0,
         })
     template_context = {
             "request": request,
             "user": user,
             "accounts": accounts,
-            "account_status_classes": account_status_classes(accounts),
+            "account_status_classes": status_classes,
+            "connected_count": sum(value == "connected" for value in status_classes.values()),
+            "error_count": sum(value == "error" for value in status_classes.values()),
             "account_views": account_views,
             "account_publication_stats": _account_publication_stats(
                 posts, [account.id for account in accounts]
@@ -1046,12 +1147,13 @@ async def dashboard(
             "app_version": get_settings().app_version,
             "deploy_timestamp": get_settings().deploy_timestamp or "não informado",
             "chart_status": {
-                "published": sum(post.status == "published" for post in posts),
-                "scheduled": sum(post.status in {"scheduled", "pending", "aguardando", "processing"} for post in posts),
-                "failed": sum(post.status == "failed" for post in posts),
+                "published": sum(post.status == "published" for post in period_posts),
+                "scheduled": sum(post.status in {"scheduled", "pending", "aguardando", "processing"} for post in period_posts),
+                "failed": sum(post.status in {"failed", "blocked"} for post in period_posts),
             },
             "volume_days": volume_days,
             "period_days": period_days,
+            "period_label": _period_label(period_days),
         }
     response = templates.TemplateResponse("dashboard.html", template_context)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -1286,8 +1388,15 @@ async def hub(request: Request, user: User = Depends(current_user), db: AsyncSes
         .order_by(InstagramAccount.created_at, InstagramAccount.id)
     )
     accounts = (await db.scalars(query)).all()
+    status_classes = await _detach_error_accounts_from_batches(db, accounts)
     account_publication_stats = {
-        account.id: {"published": 0, "failed": 0, "pending": 0, "processing": 0}
+        account.id: {
+            "published": 0,
+            "failed": 0,
+            "pending": 0,
+            "processing": 0,
+            "queued": 0,
+        }
         for account in accounts
     }
     publication_counts = await db.execute(
@@ -1305,8 +1414,10 @@ async def hub(request: Request, user: User = Depends(current_user), db: AsyncSes
             stats["failed"] += count
         elif post_status == "processing":
             stats["processing"] += count
+            stats["queued"] += count
         elif post_status in PENDING_STATUSES:
             stats["pending"] += count
+            stats["queued"] += count
     account_views = {}
     collaborator_today = None
     if user.role == "collaborator":
@@ -1344,7 +1455,9 @@ async def hub(request: Request, user: User = Depends(current_user), db: AsyncSes
                 "expired": remaining_seconds <= 0,
                 "warning": remaining_seconds <= 7 * 86400,
             }
-    response = templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_status_classes": account_status_classes(accounts), "account_views": account_views, "account_publication_stats": account_publication_stats, "token_expiry_details": token_expiry_details, "collaborator_today": collaborator_today, "notice": request.session.pop("access_notice", None)})
+    connected_count = sum(value == "connected" for value in status_classes.values())
+    error_count = sum(value == "error" for value in status_classes.values())
+    response = templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_status_classes": status_classes, "account_views": account_views, "account_publication_stats": account_publication_stats, "connected_count": connected_count, "error_count": error_count, "token_expiry_details": token_expiry_details, "collaborator_today": collaborator_today, "notice": request.session.pop("access_notice", None)})
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -1607,8 +1720,11 @@ async def api_status(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if period_days not in {0, 1, 7, 30, 90}:
+    if period_days not in {0, 1, 2, 7, 30, 90}:
         period_days = 7
+    start_at, end_at, chart_start_date, _chart_end_date, chart_period_days = (
+        _dashboard_period_bounds(period_days)
+    )
     posts = (
         await db.scalars(
             select(ScheduledPost)
@@ -1627,14 +1743,17 @@ async def api_status(
         bot_query = select(BotEvent).where(
             or_(BotEvent.account_id.in_(account_ids), BotEvent.account_id.is_(None))
         )
+    if start_at is not None and end_at is not None:
+        event_time = func.coalesce(BotEvent.created_at, BotEvent.timestamp)
+        bot_query = bot_query.where(event_time >= start_at, event_time < end_at)
     bot_events = (await db.scalars(bot_query)).all()
     metric_query = select(InstagramMetric).where(
         InstagramMetric.account_id.in_(account_ids)
     )
-    if period_days:
+    if start_at is not None and end_at is not None:
         metric_query = metric_query.where(
-            InstagramMetric.metric_date
-            >= datetime.now(timezone.utc) - timedelta(days=period_days - 1)
+            InstagramMetric.metric_date >= start_at,
+            InstagramMetric.metric_date < end_at,
         )
     metric_rows = (await db.scalars(metric_query)).all() if account_ids else []
     account_views = _metric_views_by_account(metric_rows, account_ids)
@@ -1652,19 +1771,66 @@ async def api_status(
         key=lambda event: (event.timestamp or datetime.min.replace(tzinfo=timezone.utc), event.id),
         default=None,
     )
+    def occurred_in_period(value: datetime | None) -> bool:
+        if value is None:
+            return False
+        if start_at is None or end_at is None:
+            return True
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return start_at <= value.astimezone(timezone.utc) < end_at
+
+    period_posts = [
+        post
+        for post in posts
+        if occurred_in_period(
+            post.published_at
+            if post.status == "published" and post.published_at
+            else post.error_at
+            if post.status in {"failed", "blocked"} and post.error_at
+            else post.created_at
+        )
+    ]
+    volume_days = []
+    for offset in range(chart_period_days):
+        day = chart_start_date + timedelta(days=offset)
+        volume_days.append({
+            "label": day.strftime("%d/%m"),
+            "published": sum(
+                post.status == "published"
+                and post.published_at is not None
+                and _local_date(post.published_at) == day
+                for post in period_posts
+            ),
+            "interactions": 0,
+        })
+    funnel_rates = {
+        "views_to_leads": round(bot_counts["lead_initiated"] / total_views * 100, 2) if total_views else 0,
+        "leads_to_pix": round(bot_counts["pix_generated"] / bot_counts["lead_initiated"] * 100, 2) if bot_counts["lead_initiated"] else 0,
+        "pix_to_paid": round(bot_counts["pix_paid"] / bot_counts["pix_generated"] * 100, 2) if bot_counts["pix_generated"] else 0,
+    }
     response = JSONResponse({
         "metrics": {
-            "pending": sum(post.status in {"scheduled", "processing", "aguardando", "pending"} for post in posts),
-            "published": sum(post.status == "published" for post in posts),
-            "failed": sum(post.status == "failed" for post in posts),
+            "pending": sum(post.status in {"scheduled", "processing", "aguardando", "pending"} for post in period_posts),
+            "published": sum(post.status == "published" for post in period_posts),
+            "failed": sum(post.status in {"failed", "blocked"} for post in period_posts),
             "error_accounts": sum(account.connection_status == "error" for account in (
                 await db.scalars(select(InstagramAccount).where(
                     InstagramAccount.owner_id == workspace_owner_id(user)
                 ))
             ).all()),
             "total_views": total_views,
+            "today_posts": len(period_posts),
         },
         "sharkbot": bot_counts,
+        "funnel_rates": funnel_rates,
+        "chart_status": {
+            "published": sum(post.status == "published" for post in period_posts),
+            "scheduled": sum(post.status in {"scheduled", "pending", "aguardando", "processing"} for post in period_posts),
+            "failed": sum(post.status in {"failed", "blocked"} for post in period_posts),
+        },
+        "volume_days": volume_days,
+        "period_label": _period_label(period_days),
         "latest_sale": {
             "value": latest_paid.value,
             "customer_name": latest_paid.customer_name,
@@ -2753,6 +2919,7 @@ async def verify_account(
         account.connection_status = "error"
         account.status_reason = f"Falha ao verificar a autorização na Meta: {str(exc)[:400]}"
         account.status_checked_at = datetime.now(timezone.utc)
+        await _detach_account_from_batches(db, account)
         if previous_status not in {"disconnected", "suspended", "error"}:
             await _notify_account_connection_error(db, account)
         logger.exception("Falha na verificação manual da conta %s", account.instagram_user_id)
@@ -2867,6 +3034,7 @@ async def retry_post(
         authorized = False
         account.connection_status = "error"
         account.status_reason = f"Falha ao verificar a autorização na Meta: {str(exc)[:400]}"
+        await _detach_account_from_batches(db, account)
         if previous_status not in {"disconnected", "suspended", "error"}:
             await _notify_account_connection_error(db, account)
     if not authorized:
@@ -2921,6 +3089,7 @@ async def retry_blocked_posts(
                 previous_status = account.connection_status
                 account.connection_status = "error"
                 account.status_reason = f"Falha ao verificar a autorização na Meta: {str(exc)[:400]}"
+                await _detach_account_from_batches(db, account)
                 if previous_status not in {"disconnected", "suspended", "error"}:
                     await _notify_account_connection_error(db, account)
     posts_query = select(ScheduledPost).where(

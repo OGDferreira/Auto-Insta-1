@@ -102,9 +102,10 @@ async def _refresh_account_status(
         )
         if db is not None and (
             account.connection_status in {"disconnected", "suspended", "error"}
-            and previous_status not in {"disconnected", "suspended", "error"}
         ):
-            await _notify_account_connection_error(db, account)
+            await _detach_account_from_batches(db, account)
+            if previous_status not in {"disconnected", "suspended", "error"}:
+                await _notify_account_connection_error(db, account)
         return False
     account.connection_status = "connected"
     account.status_reason = None
@@ -366,6 +367,36 @@ def unschedule_post(post_id: int) -> None:
     job_id = f"scheduled-post-{post_id}"
     if scheduler.get_job(job_id):
         scheduler.remove_job(job_id)
+
+
+async def _detach_account_from_batches(
+    db: AsyncSession,
+    account: InstagramAccount,
+) -> None:
+    batches = (
+        await db.scalars(
+            select(PostingBatch).where(PostingBatch.owner_id == account.owner_id)
+        )
+    ).all()
+    for batch in batches:
+        account_ids = list(dict.fromkeys(json.loads(batch.account_ids or "[]")))
+        if account.id not in account_ids:
+            continue
+        batch.account_ids = json.dumps(
+            [account_id for account_id in account_ids if account_id != account.id]
+        )
+        pending_posts = (
+            await db.scalars(
+                select(ScheduledPost).where(
+                    ScheduledPost.batch_id == batch.id,
+                    ScheduledPost.account_id == account.id,
+                    ScheduledPost.status.in_(PENDING_STATUSES),
+                )
+            )
+        ).all()
+        for post in pending_posts:
+            unschedule_post(post.id)
+            await db.delete(post)
 
 
 async def schedule_pending_posts() -> None:
@@ -669,6 +700,15 @@ async def _publish(post_id: int) -> None:
                 account.connection_status = "disconnected"
                 account.status_reason = error_message[:500]
                 account.status_checked_at = datetime.now(timezone.utc)
+                await _detach_account_from_batches(db, account)
+                if previous_connection_status not in {"disconnected", "suspended", "error"}:
+                    await _notify_account_connection_error(db, account)
+            elif isinstance(exc, httpx.RequestError):
+                post.status = "failed"
+                account.connection_status = "error"
+                account.status_reason = f"Falha de conexão ao publicar: {error_message[:450]}"
+                account.status_checked_at = datetime.now(timezone.utc)
+                await _detach_account_from_batches(db, account)
                 if previous_connection_status not in {"disconnected", "suspended", "error"}:
                     await _notify_account_connection_error(db, account)
             else:

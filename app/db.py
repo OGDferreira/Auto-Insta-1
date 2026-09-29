@@ -164,12 +164,16 @@ async def init_db() -> None:
                 "bot_name": "TEXT",
                 "transaction_id": "TEXT",
                 "plan_name": "TEXT",
+                "created_at": "DATETIME",
             }
             for name, definition in new_columns.items():
                 if name not in existing:
                     await connection.exec_driver_sql(
                         f"ALTER TABLE bot_events ADD COLUMN {name} {definition}"
                     )
+            await connection.exec_driver_sql(
+                "UPDATE bot_events SET created_at = timestamp WHERE created_at IS NULL"
+            )
         else:
             migrations = {
                 "users": {
@@ -203,6 +207,7 @@ async def init_db() -> None:
                     "bot_name": "VARCHAR(180)",
                     "transaction_id": "VARCHAR(120)",
                     "plan_name": "VARCHAR(180)",
+                    "created_at": "TIMESTAMP WITH TIME ZONE",
                 },
                 "scheduled_posts": {
                     "original_media_url": "TEXT",
@@ -249,3 +254,6 @@ async def init_db() -> None:
                         await connection.exec_driver_sql(
                             f'ALTER TABLE "{table_name}" ADD COLUMN "{name}" {definition}'
                         )
+            await connection.exec_driver_sql(
+                'UPDATE "bot_events" SET "created_at" = "timestamp" WHERE "created_at" IS NULL'
+            )

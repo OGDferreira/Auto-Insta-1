@@ -303,11 +303,19 @@ async def test_hub_shows_connection_and_publication_status_in_account_creation_o
             instagram_user_id="ig-hub-newer",
             username="hub_newer",
             access_token_encrypted="encrypted",
-            connection_status="disconnected",
-            status_reason="Autorização expirada",
+            connection_status="connected",
+            status_reason="Token inválido: Autorização expirada",
             created_at=now,
         )
         db.add_all([older_account, newer_account])
+        await db.flush()
+        loop_batch = PostingBatch(
+            owner_id=owner.id,
+            name="Hub loop queue",
+            account_ids=json.dumps([older_account.id]),
+            is_loop=True,
+        )
+        db.add(loop_batch)
         await db.flush()
         db.add_all([
             ScheduledPost(
@@ -336,6 +344,19 @@ async def test_hub_shows_connection_and_publication_status_in_account_creation_o
                 error_message="Token expirado",
                 scheduled_for=now,
             ),
+            *[
+                ScheduledPost(
+                    owner_id=owner.id,
+                    account_id=older_account.id,
+                    batch_id=loop_batch.id,
+                    loop_index=index,
+                    media_url=f"https://example.com/loop-{index}.mp4",
+                    media_type="REELS",
+                    status="processing" if index == 19 else "scheduled",
+                    scheduled_for=now + timedelta(minutes=index),
+                )
+                for index in range(20)
+            ],
         ])
         await db.commit()
 
@@ -360,10 +381,99 @@ async def test_hub_shows_connection_and_publication_status_in_account_creation_o
             f'data-account-id="{newer_account.id}"'
         )
         assert f"status-connected publication-warning" in html
-        assert f"status-disconnected publication-error" in html
+        assert f"status-error publication-error" in html
+        assert "Conectadas: 1 | Erros: 1" in html
+        assert "1 contas conectadas, 1 ocultas por erro" in html
+        assert f'data-account-category="error" hidden' in html
+        assert "20 na fila" in html
         assert "1 publicadas" in html
         assert "1 falhas" in html
         assert "Autorização expirada" in html
+
+        dashboard_response = await routes.dashboard(request, user=owner, db=db)
+        dashboard_html = dashboard_response.body.decode()
+        assert 'id="dashboard-account-filter"' not in dashboard_html
+        assert dashboard_html.count("data-dashboard-account-tab=") == 3
+        assert 'data-account-category="error" hidden' in dashboard_html
+        assert "Conectadas: 1 | Erros: 1" in dashboard_html
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_connection_error_detaches_account_and_pending_posts_from_batches(monkeypatch):
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    removed_jobs = []
+    monkeypatch.setattr(jobs, "unschedule_post", removed_jobs.append)
+
+    async with session_factory() as db:
+        owner = User(email="detach@example.com", username="detach", password_hash="hash")
+        db.add(owner)
+        await db.flush()
+        errored_account = InstagramAccount(
+            owner_id=owner.id,
+            instagram_user_id="ig-detach-error",
+            username="detach_error",
+            access_token_encrypted="encrypted",
+            connection_status="disconnected",
+        )
+        healthy_account = InstagramAccount(
+            owner_id=owner.id,
+            instagram_user_id="ig-detach-healthy",
+            username="detach_healthy",
+            access_token_encrypted="encrypted",
+            connection_status="connected",
+        )
+        db.add_all([errored_account, healthy_account])
+        await db.flush()
+        batch = PostingBatch(
+            owner_id=owner.id,
+            name="Detach loop",
+            account_ids=json.dumps([errored_account.id, healthy_account.id]),
+            is_loop=True,
+        )
+        db.add(batch)
+        await db.flush()
+        errored_pending = ScheduledPost(
+            owner_id=owner.id,
+            account_id=errored_account.id,
+            batch_id=batch.id,
+            loop_index=1,
+            media_url="https://example.com/errored.mp4",
+            scheduled_for=datetime.now(timezone.utc),
+        )
+        healthy_pending = ScheduledPost(
+            owner_id=owner.id,
+            account_id=healthy_account.id,
+            batch_id=batch.id,
+            loop_index=1,
+            media_url="https://example.com/healthy.mp4",
+            scheduled_for=datetime.now(timezone.utc),
+        )
+        completed = ScheduledPost(
+            owner_id=owner.id,
+            account_id=errored_account.id,
+            batch_id=batch.id,
+            loop_index=0,
+            media_url="https://example.com/completed.mp4",
+            status="published",
+            scheduled_for=datetime.now(timezone.utc),
+        )
+        db.add_all([errored_pending, healthy_pending, completed])
+        await db.flush()
+        pending_id = errored_pending.id
+
+        await jobs._detach_account_from_batches(db, errored_account)
+        await db.commit()
+
+        assert json.loads(batch.account_ids) == [healthy_account.id]
+        assert await db.get(ScheduledPost, pending_id) is None
+        assert await db.get(ScheduledPost, healthy_pending.id) is not None
+        assert await db.get(ScheduledPost, completed.id) is not None
+        assert removed_jobs == [pending_id]
 
     await engine.dispose()
 

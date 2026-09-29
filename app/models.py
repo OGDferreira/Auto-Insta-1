@@ -210,6 +210,7 @@ class BotEvent(Base):
     transaction_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     plan_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     account: Mapped[InstagramAccount | None] = relationship(back_populates="bot_events")
 
 
