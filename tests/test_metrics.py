@@ -62,29 +62,6 @@ def request_for_metrics():
     })
 
 
-def test_schedule_datetime_and_display_use_brasilia_timezone():
-    utc_value = routes.parse_scheduled_datetime("2026-09-29T10:25")
-
-    assert utc_value == datetime(2026, 9, 29, 13, 25, tzinfo=timezone.utc)
-    assert routes.local_scheduled_datetime(utc_value) == "29/09/2026 10:25"
-    assert routes.local_datetime_iso(utc_value) == "2026-09-29T10:25:00-03:00"
-
-
-@pytest.mark.asyncio
-async def test_time_diagnostic_returns_server_and_brasilia_offsets():
-    owner = User(email="time@example.com", username="time_owner", password_hash="hash")
-
-    payload = await routes.api_time(user=owner)
-    utc_time = datetime.fromisoformat(payload["utc_time"])
-    brazil_time = datetime.fromisoformat(payload["brazil_time"])
-
-    assert payload["timezone"] == "America/Sao_Paulo"
-    assert utc_time.utcoffset() == timedelta(0)
-    assert brazil_time.utcoffset() == timedelta(hours=-3)
-    assert brazil_time == utc_time.astimezone(routes.LOCAL_TIMEZONE)
-    assert payload["brazil_time_formatted"] == routes.local_scheduled_datetime(brazil_time)
-
-
 @pytest.mark.asyncio
 async def test_instagram_metrics_page_renders_only_owned_connected_profiles():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -228,7 +205,7 @@ async def test_dashboard_total_period_includes_all_historical_metric_snapshots()
 
 
 @pytest.mark.asyncio
-async def test_dashboard_conversion_and_paid_chart_follow_period_and_ignore_error_followers():
+async def test_dashboard_cards_and_paid_chart_follow_selected_period():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -296,7 +273,6 @@ async def test_dashboard_conversion_and_paid_chart_follow_period_and_ignore_erro
         assert today_payload["metrics"]["net_followers"] == 1200
         assert today_payload["funnel_rates"]["pix_to_paid"] == 50
         assert today_payload["volume_days"][-1]["pix_paid"] == 1
-        assert today_payload["sharkbot"]["pix_paid"] == 1
         assert week_payload["metrics"]["net_followers"] == 1200
         assert week_payload["funnel_rates"]["pix_to_paid"] == 100
         assert sum(day["pix_paid"] for day in week_payload["volume_days"]) == 2

@@ -1,40 +1,30 @@
 import { escapeHtml, showModuleToast } from "./dashboard.js";
-import { brazilDateKey, brazilDateParts, formatBrazilDateTime } from "./timezone.js";
 
-const todayParts = brazilDateParts();
-const state = {
-  date: new Date(Date.UTC(Number(todayParts.year), Number(todayParts.month) - 1, Number(todayParts.day))),
-  view: "month",
-  items: [],
-};
+const state = { date: new Date(), view: "month", items: [] };
 const pad = value => String(value).padStart(2, "0");
-const dateKey = date => `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+const dateKey = date => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 
 function render() {
   const grid = document.getElementById("calendar-grid");
   if (!grid) return;
-  const first = new Date(Date.UTC(state.date.getUTCFullYear(), state.date.getUTCMonth(), 1));
+  const first = new Date(state.date.getFullYear(), state.date.getMonth(), 1);
   const start = new Date(first);
-  start.setUTCDate(1 - first.getUTCDay());
+  start.setDate(1 - first.getDay());
   const days = Array.from({ length: 42 }, (_, index) => {
     const day = new Date(start);
-    day.setUTCDate(start.getUTCDate() + index);
+    day.setDate(start.getDate() + index);
     const key = dateKey(day);
-    const items = state.items.filter(item => brazilDateKey(item.scheduled_for) === key);
-    return `<div class="calendar-day ${day.getUTCMonth() !== state.date.getUTCMonth() ? "outside" : ""}" data-calendar-date="${key}">
-      <div class="calendar-day-number">${day.getUTCDate()}</div>
+    const items = state.items.filter(item => item.scheduled_for.slice(0, 10) === key);
+    return `<div class="calendar-day ${day.getMonth() !== state.date.getMonth() ? "outside" : ""}" data-calendar-date="${key}">
+      <div class="calendar-day-number">${day.getDate()}</div>
       ${items.map(item => `<div class="calendar-event ${item.status === "failed" ? "failed" : ""} ${item.conflict ? "conflict" : ""}" draggable="true" data-calendar-id="${item.id}" title="${escapeHtml(item.error_message || item.caption || "")}">
-        <img src="${escapeHtml(item.media_url || "")}" alt=""><span>@${escapeHtml(item.account)} · ${formatBrazilDateTime(item.scheduled_for, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })} · ${escapeHtml(item.status)}</span>
+        <img src="${escapeHtml(item.media_url || "")}" alt=""><span>@${escapeHtml(item.account)} · ${escapeHtml(item.status)}</span>
       </div>`).join("")}
     </div>`;
   });
   grid.innerHTML = `<div class="calendar-weekday">Dom</div><div class="calendar-weekday">Seg</div><div class="calendar-weekday">Ter</div><div class="calendar-weekday">Qua</div><div class="calendar-weekday">Qui</div><div class="calendar-weekday">Sex</div><div class="calendar-weekday">Sáb</div>${days.join("")}`;
   bindDrag();
-  document.getElementById("calendar-title").textContent = new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "UTC",
-    month: "long",
-    year: "numeric",
-  }).format(state.date);
+  document.getElementById("calendar-title").textContent = state.date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 }
 
 function bindDrag() {
@@ -47,9 +37,9 @@ function bindDrag() {
       event.preventDefault(); day.classList.remove("drag-over");
       const item = state.items.find(entry => String(entry.id) === String(dragged));
       if (!item) return;
-      const original = brazilDateParts(new Date(item.scheduled_for));
-      const target = `${day.dataset.calendarDate}T${original.hour}:${original.minute}`;
-      const response = await fetch(`/api/calendar/posts/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scheduled_for: target }) });
+      const original = new Date(item.scheduled_for);
+      const target = new Date(`${day.dataset.calendarDate}T${pad(original.getHours())}:${pad(original.getMinutes())}:00`);
+      const response = await fetch(`/api/calendar/posts/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ scheduled_for: target.toISOString() }) });
       if (!response.ok) return showModuleToast((await response.json()).detail || "Falha ao reagendar.", "error");
       await load();
     });
@@ -71,13 +61,9 @@ async function load() {
 
 export function initCalendarModule() {
   if (!document.getElementById("calendar-grid")) return;
-  document.getElementById("calendar-prev").addEventListener("click", () => { state.date.setUTCMonth(state.date.getUTCMonth() - 1); render(); });
-  document.getElementById("calendar-next").addEventListener("click", () => { state.date.setUTCMonth(state.date.getUTCMonth() + 1); render(); });
-  document.getElementById("calendar-today").addEventListener("click", () => {
-    const parts = brazilDateParts();
-    state.date = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)));
-    render();
-  });
+  document.getElementById("calendar-prev").addEventListener("click", () => { state.date.setMonth(state.date.getMonth() - 1); render(); });
+  document.getElementById("calendar-next").addEventListener("click", () => { state.date.setMonth(state.date.getMonth() + 1); render(); });
+  document.getElementById("calendar-today").addEventListener("click", () => { state.date = new Date(); render(); });
   document.getElementById("calendar-refresh").addEventListener("click", load);
   ["calendar-account-filter", "calendar-status-filter"].forEach(id => {
     document.getElementById(id).addEventListener("change", load);
