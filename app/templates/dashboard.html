@@ -592,6 +592,33 @@
   </section>
 
   <section id="analytics" class="workspace-view" data-panel="analytics">
+    <style>
+      .analytics-comparison-panel{margin-bottom:1rem}
+      .analytics-comparison-controls{display:flex;align-items:end;gap:.55rem;flex-wrap:wrap;margin:.8rem 0}
+      .analytics-comparison-controls label{min-width:125px;margin:0;font-size:.74rem}
+      .analytics-comparison-controls select,.analytics-comparison-controls input{margin-top:.25rem}
+      .analytics-comparison-controls select[multiple]{min-width:180px}
+      .analytics-comparison-controls button{width:auto;white-space:nowrap}
+      .analytics-custom-date[hidden]{display:none}
+      .analytics-comparison-panel th,.analytics-comparison-panel td{min-width:135px}
+      .analytics-comparison-panel th:first-child,.analytics-comparison-panel td:first-child{min-width:115px}
+      .analytics-comparison-subhead,.analytics-comparison-previous,.analytics-comparison-change{display:block;margin-top:.2rem;color:var(--muted);font-size:.65rem;font-weight:500}
+      .analytics-comparison-previous{margin-top:.3rem}
+      @media(max-width:600px){.analytics-comparison-controls label,.analytics-comparison-controls button{width:100%}.analytics-comparison-controls select[multiple]{width:100%}}
+    </style>
+    <section class="panel analytics-comparison-panel" aria-labelledby="analytics-comparison-title">
+      <div class="panel-header"><div><div class="eyebrow">Relatórios comparativos</div><h2 id="analytics-comparison-title">Comparar desempenho das contas</h2><p class="section-note">Compare alcance, impressões e ações com o período anterior equivalente.</p></div></div>
+      <div class="analytics-comparison-controls">
+        <label>Período<select id="analytics-comparison-period"><option value="7">Últimos 7 dias</option><option value="30" selected>Últimos 30 dias</option><option value="90">Últimos 90 dias</option><option value="custom">Personalizado</option></select></label>
+        <label class="analytics-custom-date">De<input id="analytics-comparison-start" type="date"></label>
+        <label class="analytics-custom-date">Até<input id="analytics-comparison-end" type="date"></label>
+        <label>Contas (opcional)<select id="analytics-comparison-accounts" multiple size="3" aria-label="Selecionar contas para comparar">{% for account in accounts %}<option value="{{ account.id }}">@{{ account.username }}</option>{% endfor %}</select></label>
+        <button type="button" id="analytics-comparison-refresh"><i data-lucide="chart-no-axes-combined"></i> Comparar</button>
+        <button type="button" class="secondary" id="analytics-comparison-export" disabled><i data-lucide="download"></i> Exportar CSV</button>
+      </div>
+      <p id="analytics-comparison-status" class="section-note" aria-live="polite">Selecione um período e compare as contas conectadas.</p>
+      <div class="table-wrap"><table><thead><tr><th>Conta</th><th>Alcance</th><th>Impressões</th><th>Visitas ao perfil</th><th>Cliques no link</th></tr></thead><tbody id="analytics-comparison-table"><tr><td colspan="5">Nenhum relatório carregado.</td></tr></tbody></table></div>
+    </section>
     <main class="profile-metrics">
       <header class="metrics-header"><div><h1>Perfis &amp; Métricas</h1><p>Veja seguidores, publicações e visualizações dos perfis conectados.</p></div><div class="metrics-header-actions"><button type="button" id="profile-metrics-refresh"><i data-lucide="refresh-cw"></i> Atualizar</button></div></header>
       <div class="profile-metrics-layout">
@@ -897,5 +924,6 @@ if(form){form.addEventListener("submit",event=>{const looping=Boolean(loopEnable
   import "/static/js/profile-metrics.js";
   import "/static/js/ux.js";
   import "/static/js/direct-campaign.js";
+  import "/static/js/analytics.js";
 </script>
 {% endblock %}

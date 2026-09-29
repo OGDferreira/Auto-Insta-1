@@ -155,6 +155,15 @@ async def init_db() -> None:
                     await connection.exec_driver_sql(
                         f"ALTER TABLE posting_batches ADD COLUMN {name} {definition}"
                     )
+            columns = await connection.exec_driver_sql(
+                "PRAGMA table_info(collaborator_connections)"
+            )
+            existing = {row[1] for row in columns}
+            if "instagram_username" not in existing:
+                await connection.exec_driver_sql(
+                    "ALTER TABLE collaborator_connections "
+                    "ADD COLUMN instagram_username TEXT NOT NULL DEFAULT ''"
+                )
             columns = await connection.exec_driver_sql("PRAGMA table_info(bot_events)")
             existing = {row[1] for row in columns}
             new_columns = {
@@ -219,6 +228,9 @@ async def init_db() -> None:
                     "loop_index": "INTEGER",
                     "error_at": "TIMESTAMP WITH TIME ZONE",
                     "published_at": "TIMESTAMP WITH TIME ZONE",
+                },
+                "collaborator_connections": {
+                    "instagram_username": "VARCHAR(120) NOT NULL DEFAULT ''",
                 },
                 "posting_batches": {
                     "is_loop": "BOOLEAN NOT NULL DEFAULT FALSE",

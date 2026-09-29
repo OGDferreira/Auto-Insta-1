@@ -110,6 +110,7 @@ async def test_collaborator_history_snapshots_rates_and_awards_bonus_once(monkey
             db, collaborator, date(2024, 12, 31), date(2025, 1, 1)
         )
         assert rows[0]["connections"] == 2
+        assert [account["username"] for account in rows[0]["accounts"]] == ["first", "second"]
         assert rows[0]["rate_summary"] == "R$ 10,00 × 1 · R$ 20,00 × 1"
         assert rows[0]["rate_total"] == 30
         assert rows[0]["goal_reached"] is True

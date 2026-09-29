@@ -107,6 +107,10 @@
     .notification-panel h2{margin:.15rem .25rem .65rem;font-size:.95rem}
     .notification-list{display:grid;gap:.45rem}
     .notification-item{display:grid;grid-template-columns:30px minmax(0,1fr);align-items:center;gap:.55rem;padding:.65rem;border:1px solid rgba(104,139,255,.22);border-radius:11px;background:rgba(21,35,76,.38);color:var(--text);text-decoration:none}
+    .notification-entry{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:.45rem;padding:.55rem;border:1px solid rgba(104,139,255,.22);border-radius:11px;background:rgba(21,35,76,.38)}
+    .notification-entry .notification-item{padding:.1rem;border:0;background:transparent}
+    .notification-entry .notification-item:hover{background:transparent}
+    .notification-action{width:auto;padding:.4rem .55rem;font-size:.68rem;white-space:nowrap}
     .notification-item img{width:28px;height:28px;border-radius:8px;object-fit:cover}
     .notification-item:hover{border-color:var(--cyan);background:rgba(26,60,125,.18)}
     .notification-item.warning>i{color:var(--warning)}
@@ -267,7 +271,7 @@ const notificationInstallGuidance=document.getElementById("notification-install-
 const notificationEnableButton=document.getElementById("enable-notifications");
 const notificationEnabledStatus=document.getElementById("notification-enabled-status");
 const installedMobileApp=isInstalledMobileApp();
-if(notificationMenu&&installedMobileApp)notificationMenu.hidden=false;
+if(notificationMenu)notificationMenu.hidden=false;
 if(notificationEnableButton&&installedMobileApp)notificationEnableButton.hidden=false;
 if(notificationInstallGuidance&&installedMobileApp)notificationInstallGuidance.textContent="Receba avisos curtos quando uma conta perder conexão ou o token expirar.";
 async function registerNotifications(){
@@ -357,8 +361,6 @@ if(installedMobileApp&&"Notification" in window&&Notification.permission==="gran
     const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
     })[character]);
-    if (!installedMobileApp) return;
-
     function renderAlerts(alerts) {
       count.textContent = alerts.length > 9 ? "9+" : String(alerts.length);
       count.hidden = alerts.length === 0;
@@ -369,10 +371,13 @@ if(installedMobileApp&&"Notification" in window&&Notification.permission==="gran
         list.innerHTML = '<p class="notification-empty">Nenhum problema de conta no momento.</p>';
       } else {
         list.innerHTML = alerts.map(alert => `
-          <a class="notification-item ${escapeHtml(alert.severity)}" href="${escapeHtml(alert.href)}">
-            <img src="/static/media_downloader_icon_512.png" alt="Auto-Insta">
-            <span><strong>${escapeHtml(alert.title)} · @${escapeHtml(alert.username)}</strong><small>${escapeHtml(alert.reason)}</small></span>
-          </a>`).join("");
+          <article class="notification-entry ${escapeHtml(alert.severity)}">
+            <a class="notification-item ${escapeHtml(alert.severity)}" href="${escapeHtml(alert.href)}">
+              <img src="/static/media_downloader_icon_512.png" alt="">
+              <span><strong>${escapeHtml(alert.title)}${alert.account_id ? ` · @${escapeHtml(alert.username)}` : ` · ${escapeHtml(alert.username)}`}</strong><small>${escapeHtml(alert.reason)}</small></span>
+            </a>
+            ${alert.action_url ? `<button type="button" class="secondary notification-action" data-alert-action="${escapeHtml(alert.action_url)}">${escapeHtml(alert.action_label || "Resolver")}</button>` : ""}
+          </article>`).join("");
         if (window.lucide) window.lucide.createIcons();
       }
       const rows = [...document.querySelectorAll("[data-account-id]")];
@@ -423,6 +428,24 @@ if(installedMobileApp&&"Notification" in window&&Notification.permission==="gran
       panel.hidden = !panel.hidden;
       trigger.setAttribute("aria-expanded", String(!panel.hidden));
       if (!panel.hidden) refreshAlerts();
+    });
+    list.addEventListener("click", async event => {
+      const button = event.target.closest("[data-alert-action]");
+      if (!button) return;
+      button.disabled = true;
+      try {
+        const response = await fetch(button.dataset.alertAction, {
+          method: "POST",
+          headers: { "Accept": "text/html" },
+        });
+        if (!response.ok) throw new Error("Não foi possível executar esta ação. Verifique o item no Hub ou na fila.");
+        window.showToast?.("Ação enviada com sucesso.", "success");
+        await refreshAlerts();
+      } catch (error) {
+        window.showToast?.(error.message, "error");
+      } finally {
+        button.disabled = false;
+      }
     });
     document.addEventListener("click", event => {
       if (!panel.hidden && !event.target.closest(".notification-menu")) {

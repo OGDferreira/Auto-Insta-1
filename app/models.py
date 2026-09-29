@@ -93,6 +93,7 @@ class CollaboratorConnection(Base):
         ForeignKey("instagram_accounts.id", ondelete="SET NULL"), nullable=True, index=True
     )
     instagram_user_id: Mapped[str] = mapped_column(String(120))
+    instagram_username: Mapped[str] = mapped_column(String(120), default="")
     connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     rate_per_account: Mapped[float] = mapped_column(Numeric(10, 2))
     daily_target: Mapped[int] = mapped_column(Integer)

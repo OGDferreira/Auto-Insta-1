@@ -197,8 +197,6 @@ async def _account_alerts(
             .where(InstagramAccount.owner_id == owner_id)
             .order_by(InstagramAccount.username, InstagramAccount.id)
         )).all()
-    if not accounts:
-        return []
     current_time = now or datetime.now(timezone.utc)
     alerts: list[dict[str, str | int]] = []
     for account in accounts:
@@ -241,8 +239,73 @@ async def _account_alerts(
             "severity": "error",
             "title": title,
             "reason": reason,
-            "href": f"/hub#account-{account.id}",
+            "href": f"/hub?tab=error#account-{account.id}",
         })
+
+    failed_posts = (await db.scalars(
+        select(ScheduledPost)
+        .options(selectinload(ScheduledPost.account))
+        .where(
+            ScheduledPost.owner_id == owner_id,
+            ScheduledPost.status.in_({"failed", "blocked"}),
+        )
+        .order_by(ScheduledPost.error_at.desc(), ScheduledPost.id.desc())
+        .limit(10)
+    )).all()
+    for post in failed_posts:
+        account = post.account
+        if account is None:
+            continue
+        account_status = account_status_classes([account]).get(account.id)
+        can_retry = account_status == "connected" and bool(account.access_token_encrypted)
+        alerts.append({
+            "id": f"post-{post.id}-failure",
+            "account_id": account.id,
+            "username": account.username,
+            "type": "publication",
+            "severity": "error",
+            "title": "Publicação com falha",
+            "reason": (post.error_message or "A publicação não foi concluída.")[:240],
+            "href": "/dashboard#queue",
+            "action_url": f"/posts/{post.id}/retry" if can_retry else "",
+            "action_label": "Tentar novamente" if can_retry else "",
+        })
+
+    paused_batches = (await db.scalars(
+        select(PostingBatch)
+        .where(
+            PostingBatch.owner_id == owner_id,
+            PostingBatch.status == "paused",
+        )
+        .order_by(PostingBatch.created_at.desc())
+        .limit(10)
+    )).all()
+    paused_batch_ids = [batch.id for batch in paused_batches]
+    if paused_batch_ids:
+        pending_batch_ids = set((await db.scalars(
+            select(ScheduledPost.batch_id)
+            .where(
+                ScheduledPost.owner_id == owner_id,
+                ScheduledPost.batch_id.in_(paused_batch_ids),
+                ScheduledPost.status.in_(PENDING_STATUSES),
+            )
+            .distinct()
+        )).all())
+        for batch in paused_batches:
+            if batch.id not in pending_batch_ids:
+                continue
+            alerts.append({
+                "id": f"batch-{batch.id}-paused",
+                "account_id": 0,
+                "username": batch.name,
+                "type": "batch",
+                "severity": "warning",
+                "title": "Lote pausado com publicações pendentes",
+                "reason": "Retome o lote para continuar a fila de publicações.",
+                "href": "/dashboard#queue",
+                "action_url": f"/batches/{batch.id}/resume",
+                "action_label": "Retomar lote",
+            })
     return alerts
 
 
@@ -429,6 +492,7 @@ async def _record_collaborator_connection(
         collaborator_id=collaborator.id,
         instagram_account_id=account.id,
         instagram_user_id=account.instagram_user_id,
+        instagram_username=account.username,
         connected_at=connected_at,
         rate_per_account=_decimal_money(collaborator.collaborator_rate_per_account, "valor por conta"),
         daily_target=collaborator.collaborator_daily_target,
@@ -492,6 +556,22 @@ async def _collaborator_daily_summary(
         )
         .order_by(CollaboratorConnection.connected_at, CollaboratorConnection.id)
     )).all()
+    account_ids = {
+        item.instagram_account_id
+        for item in connections
+        if item.instagram_account_id is not None
+    }
+    accounts_by_id = {}
+    if account_ids:
+        accounts_by_id = {
+            account.id: account
+            for account in (await db.scalars(
+                select(InstagramAccount).where(
+                    InstagramAccount.owner_id == collaborator.parent_id,
+                    InstagramAccount.id.in_(account_ids),
+                )
+            )).all()
+        }
     bonuses = (await db.scalars(
         select(CollaboratorDailyBonus).where(
             CollaboratorDailyBonus.collaborator_id == collaborator.id,
@@ -527,6 +607,18 @@ async def _collaborator_daily_summary(
         days.append({
             "date": cursor,
             "connections": count,
+            "accounts": [
+                {
+                    "username": item.instagram_username
+                    or (
+                        accounts_by_id[item.instagram_account_id].username
+                        if item.instagram_account_id in accounts_by_id
+                        else item.instagram_user_id
+                    ),
+                    "instagram_user_id": item.instagram_user_id,
+                }
+                for item in daily_connections
+            ],
             "rate_summary": " · ".join(
                 f"{format_brl(rate)} × {count}"
                 for rate, count in sorted(rate_counts.items())
@@ -2499,12 +2591,17 @@ async def reschedule_calendar_post(
 async def analytics(
     account_ids: list[int] = Query(default=[]),
     period_days: int = 30,
+    start_date: date | None = None,
+    end_date: date | None = None,
     include_media: bool = True,
+    include_account_insights: bool = False,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if period_days not in {7, 30, 90}:
         raise HTTPException(status_code=400, detail="Período analítico inválido")
+    if (start_date is None) != (end_date is None):
+        raise HTTPException(status_code=400, detail="Informe as datas inicial e final")
     owner_id = workspace_owner_id(user)
     query = select(InstagramAccount).where(
         InstagramAccount.owner_id == owner_id,
@@ -2515,7 +2612,11 @@ async def analytics(
     accounts = (await db.scalars(query.order_by(InstagramAccount.username))).all()
     settings = get_settings()
     today_local = datetime.now(LOCAL_TIMEZONE).date()
-    start_date = today_local - timedelta(days=period_days - 1)
+    end_date = end_date or today_local
+    start_date = start_date or end_date - timedelta(days=period_days - 1)
+    if start_date > end_date or (end_date - start_date).days > 365:
+        raise HTTPException(status_code=400, detail="O período analítico deve abranger no máximo 366 dias")
+    period_days = (end_date - start_date).days + 1
     account_rows = []
     media_rows = []
     errors = []
@@ -2529,14 +2630,14 @@ async def analytics(
                 )
                 profile_data = profile.json() if not profile.is_error else {}
                 insight_values = {}
-                if include_media:
+                if include_media or include_account_insights:
                     insights = await client.get(
                         f"https://graph.instagram.com/{settings.graph_api_version}/{account.instagram_user_id}/insights",
                         params={
                             "metric": "reach,impressions,profile_views,website_clicks",
                             "period": "day",
                             "since": start_date.isoformat(),
-                            "until": today_local.isoformat(),
+                            "until": end_date.isoformat(),
                             "access_token": token,
                         },
                     )
@@ -2598,7 +2699,14 @@ async def analytics(
             except Exception as exc:
                 logger.exception("Falha ao consultar analytics da conta %s", account.instagram_user_id)
                 errors.append({"account_id": account.id, "account": account.username, "error": str(exc)})
-    return {"accounts": account_rows, "media": media_rows, "errors": errors, "period_days": period_days}
+    return {
+        "accounts": account_rows,
+        "media": media_rows,
+        "errors": errors,
+        "period_days": period_days,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+    }
 
 
 @router.post("/api/feed/delete")

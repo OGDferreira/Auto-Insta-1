@@ -9,7 +9,7 @@ from starlette.requests import Request
 
 from app import jobs, routes
 from app.db import Base
-from app.models import InstagramAccount, NotificationSubscription, ScheduledPost, User
+from app.models import InstagramAccount, NotificationSubscription, PostingBatch, ScheduledPost, User
 
 
 @pytest.mark.asyncio
@@ -69,7 +69,7 @@ async def test_account_alerts_only_report_lost_or_restricted_connections():
 
 
 @pytest.mark.asyncio
-async def test_account_alerts_ignore_publication_failures_when_connection_is_healthy():
+async def test_account_alerts_offer_direct_retry_for_failed_publications():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -98,7 +98,60 @@ async def test_account_alerts_ignore_publication_failures_when_connection_is_hea
 
         alerts = await routes._account_alerts(db, owner.id, now=now)
 
-        assert alerts == []
+        assert len(alerts) == 1
+        failure = alerts[0]
+        assert failure["type"] == "publication"
+        assert failure["account_id"] == account.id
+        assert failure["action_url"] == f"/posts/{failure['id'].split('-')[1]}/retry"
+        assert failure["action_label"] == "Tentar novamente"
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_account_alerts_offer_resume_for_paused_batches_with_pending_posts():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with session_factory() as db:
+        owner = User(email="paused-alerts@example.com", username="paused", password_hash="hash")
+        db.add(owner)
+        await db.flush()
+        account = InstagramAccount(
+            owner_id=owner.id,
+            instagram_user_id="ig-paused",
+            username="paused_profile",
+            access_token_encrypted="token",
+            connection_status="connected",
+        )
+        batch = PostingBatch(
+            owner_id=owner.id,
+            name="Loop da campanha",
+            status="paused",
+            account_ids="[]",
+            is_loop=True,
+        )
+        db.add_all([account, batch])
+        await db.flush()
+        db.add(ScheduledPost(
+            owner_id=owner.id,
+            account_id=account.id,
+            batch_id=batch.id,
+            status="scheduled",
+            scheduled_for=datetime.now(timezone.utc) + timedelta(hours=1),
+            media_url="https://example.com/paused.jpg",
+        ))
+        await db.commit()
+
+        alerts = await routes._account_alerts(db, owner.id)
+
+        assert len(alerts) == 1
+        assert alerts[0]["type"] == "batch"
+        assert alerts[0]["username"] == "Loop da campanha"
+        assert alerts[0]["action_url"] == f"/batches/{batch.id}/resume"
+        assert alerts[0]["action_label"] == "Retomar lote"
 
     await engine.dispose()
 

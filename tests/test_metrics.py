@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -137,7 +137,10 @@ async def test_analytics_can_load_profile_counters_without_fetching_media(monkey
         payload = await routes.analytics(
             account_ids=[account.id],
             period_days=30,
+            start_date=date(2026, 9, 1),
+            end_date=date(2026, 9, 10),
             include_media=False,
+            include_account_insights=True,
             user=owner,
             db=db,
         )
@@ -145,8 +148,14 @@ async def test_analytics_can_load_profile_counters_without_fetching_media(monkey
         assert payload["accounts"][0]["following"] == 88
         assert payload["accounts"][0]["media_count"] == 12
         assert payload["media"] == []
-        assert len(client.calls) == 1
+        assert payload["period_days"] == 10
+        assert payload["start_date"] == "2026-09-01"
+        assert payload["end_date"] == "2026-09-10"
+        assert len(client.calls) == 2
         assert "follows_count" in client.calls[0][1]["fields"]
+        insight_call = next(call for call in client.calls if call[0].endswith("/insights"))
+        assert insight_call[1]["since"] == "2026-09-01"
+        assert insight_call[1]["until"] == "2026-09-10"
 
     await engine.dispose()
 
