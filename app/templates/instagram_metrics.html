@@ -83,7 +83,7 @@
           <option value="asc">Menor para maior</option>
         </select>
       </label>
-      <small class="profile-account-sort-hint" id="profile-account-sort-status" aria-live="polite">Média de interações nas até 25 publicações mais recentes por conta.</small>
+      <small class="profile-account-sort-hint" id="profile-account-sort-status" aria-live="polite">Interações das publicações divididas pelas impressões (ou visualizações disponíveis).</small>
       {% for account in accounts %}
       <button type="button" class="profile-option" data-metrics-account="{{ account.id }}" data-username="{{ account.username }}" aria-pressed="false">
         {% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}<span class="profile-option-initial">{{ account.username[:1]|upper }}</span>{% endif %}

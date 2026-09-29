@@ -53,17 +53,10 @@ function updateProfileRows(accounts) {
   });
 }
 
-function engagementValue(item) {
-  if (item.engagement !== null && item.engagement !== undefined && item.engagement !== "") {
-    const engagement = Number(item.engagement);
-    if (Number.isFinite(engagement)) return engagement;
-  }
-  const interactions = ["likes", "comments", "shares", "saves"]
-    .map(key => item[key])
-    .filter(value => value !== null && value !== undefined && value !== "")
-    .map(Number)
-    .filter(Number.isFinite);
-  return interactions.length ? interactions.reduce((total, value) => total + value, 0) : null;
+function metricCount(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : null;
 }
 
 function sortProfileButtons(scores) {
@@ -88,14 +81,35 @@ function collectAccountEngagement(payload) {
   const totals = new Map();
   (payload.media || []).forEach(item => {
     const accountId = String(item.account_id ?? "");
-    const value = engagementValue(item);
-    if (!accountId || value === null) return;
-    const current = totals.get(accountId) || { total: 0, count: 0 };
-    current.total += value;
-    current.count += 1;
+    if (!accountId) return;
+    const interactions = ["likes", "comments", "shares", "saves"]
+      .map(key => metricCount(item[key]))
+      .filter(value => value !== null);
+    const reportedTotal = metricCount(item.engagement);
+    const views = metricCount(item.views);
+    const impressions = metricCount(item.impressions);
+    const current = totals.get(accountId) || { interactions: 0, hasInteractions: false, views: 0, impressions: 0 };
+    if (reportedTotal !== null) {
+      current.interactions += reportedTotal;
+      current.hasInteractions = true;
+    } else if (interactions.length) {
+      current.interactions += interactions.reduce((total, value) => total + value, 0);
+      current.hasInteractions = true;
+    }
+    if (views !== null) current.views += views;
+    if (impressions !== null) current.impressions += impressions;
     totals.set(accountId, current);
   });
-  return new Map([...totals].map(([accountId, value]) => [accountId, value.total / value.count]));
+  const accountImpressions = new Map((payload.accounts || []).map(account => [
+    String(account.account_id),
+    metricCount(account.impressions),
+  ]));
+  return new Map([...totals].flatMap(([accountId, value]) => {
+    const impressions = accountImpressions.get(accountId);
+    const exposure = impressions > 0 ? impressions : value.impressions || value.views;
+    if (!value.hasInteractions || exposure <= 0) return [];
+    return [[accountId, value.interactions / exposure * 100]];
+  }));
 }
 
 function renderAccountEngagement(scores) {
@@ -106,7 +120,7 @@ function renderAccountEngagement(scores) {
     node.hidden = false;
     node.textContent = score === undefined
       ? "Engajamento indisponível"
-      : `${formatCount(score)} interações/publicação`;
+      : `${score.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}% de engajamento`;
   });
 }
 
@@ -115,7 +129,7 @@ async function updateAccountOrder() {
   if (!accountEngagementSort || accountEngagementSort.value === "default") {
     sortProfileButtons(null);
     if (accountSortStatus) {
-      accountSortStatus.textContent = "Média de interações nas até 25 publicações mais recentes por conta.";
+      accountSortStatus.textContent = "Interações das publicações divididas pelas impressões (ou visualizações disponíveis).";
       accountSortStatus.classList.remove("error");
     }
     return;
@@ -138,7 +152,7 @@ async function updateAccountOrder() {
       if (accountSortStatus) {
         accountSortStatus.textContent = errorCount || unavailableCount
           ? `Dados incompletos: ${unavailableCount} conta(s) sem métricas e ${errorCount} erro(s) na consulta.`
-          : "Média de interações nas até 25 publicações mais recentes por conta.";
+          : "Interações das publicações divididas pelas impressões (ou visualizações disponíveis).";
         accountSortStatus.classList.toggle("error", Boolean(errorCount || unavailableCount));
       }
     } catch (error) {

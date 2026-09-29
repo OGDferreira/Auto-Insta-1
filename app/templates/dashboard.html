@@ -288,12 +288,20 @@
   .dashboard-period-label{display:flex;align-items:center;gap:.55rem;color:#7894c7;font:500 .72rem "Space Grotesk",sans-serif;letter-spacing:.12em}
   .dashboard-period-label i{width:17px;height:17px;color:var(--cyan)}
   .dashboard-period-controls{display:flex;align-items:center;justify-content:flex-end;gap:.65rem}
-  .dashboard-period-options{display:grid;grid-template-columns:repeat(5,minmax(72px,1fr));gap:.25rem;padding:.22rem;border:1px solid rgba(117,165,255,.16);border-radius:11px;background:rgba(5,8,14,.74)}
+  .dashboard-period-options{display:grid;grid-template-columns:repeat(6,minmax(72px,1fr));gap:.25rem;padding:.22rem;border:1px solid rgba(117,165,255,.16);border-radius:11px;background:rgba(5,8,14,.74)}
   .dashboard-period-option{min-height:2.35rem;padding:.45rem .75rem;border:1px solid transparent;border-radius:8px;background:transparent;color:#9ba6b8;box-shadow:none;font-size:.75rem;font-weight:600;white-space:nowrap}
   .dashboard-period-option:hover,.dashboard-period-option[aria-pressed="true"]{border-color:rgba(117,165,255,.16);background:rgba(148,163,184,.13);color:#f4f6fb;box-shadow:none;transform:none}
   .dashboard-period-option:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
   .dashboard-period-controls button{width:auto;white-space:nowrap}
   .dashboard-updated-at{color:#788397;font-size:.62rem;font-weight:500;letter-spacing:.01em;white-space:nowrap}
+  .dashboard-date-dialog{width:min(360px,calc(100% - 2rem));padding:1.1rem;border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);box-shadow:0 20px 60px rgba(0,0,0,.55)}
+  .dashboard-date-dialog::backdrop{background:rgba(0,0,0,.68);backdrop-filter:blur(3px)}
+  .dashboard-date-dialog h3{margin:0 0 .8rem;font-size:1rem}
+  .dashboard-date-fields{display:grid;gap:.7rem}
+  .dashboard-date-fields label{margin:0;font-size:.75rem}
+  .dashboard-date-fields input{margin:.25rem 0 0}
+  .dashboard-date-actions{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem}
+  .dashboard-date-actions button{width:auto}
   .dashboard-overview-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:stretch;gap:1rem}
   .dashboard-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:.8rem}
   .dashboard-metric{display:flex;min-width:0;min-height:116px;flex-direction:column;align-items:flex-start;justify-content:flex-start;padding:1rem 1.05rem;border-color:rgba(117,165,255,.18);border-radius:13px;background:linear-gradient(145deg,rgba(10,14,24,.98),rgba(8,8,10,.98));box-shadow:0 8px 26px rgba(0,0,0,.2)}
@@ -325,7 +333,7 @@
   .dashboard-funnel-panel .status-line strong{white-space:nowrap}
   @media(max-width:1100px){.dashboard-overview-layout{grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr)}.dashboard-metrics-grid{gap:.65rem}.dashboard-metric{min-height:108px;padding:.85rem}.dashboard-support-grid{grid-template-columns:1fr}.dashboard-status-chart{height:125px}}
   @media(max-width:850px){.dashboard-overview-layout{grid-template-columns:1fr}.dashboard-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-insights-column{grid-template-rows:auto auto}.dashboard-performance-panel{min-height:340px}.dashboard-support-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  @media(max-width:600px){.dashboard-period-bar{align-items:flex-start;flex-direction:column;padding:.75rem}.dashboard-period-controls{width:100%;flex-wrap:wrap;justify-content:flex-start}.dashboard-period-options{width:100%;grid-template-columns:repeat(5,minmax(0,1fr))}.dashboard-period-option{padding:.4rem .2rem;font-size:.68rem}.dashboard-period-controls button:not(.dashboard-period-option){flex:1 1 100%;width:100%}.dashboard-period-controls .section-note{flex:1 1 auto}.dashboard-metrics-grid{gap:.55rem}.dashboard-metric{min-height:104px;padding:.7rem}.dashboard-metric-heading{gap:.45rem}.dashboard-metric-heading small{font-size:.69rem}.dashboard-metric-icon{width:30px;height:30px;border-radius:8px}.dashboard-metric-icon i{width:15px;height:15px}.dashboard-metric>strong{margin-top:.62rem;font-size:1.38rem}.dashboard-metric .metric-detail{font-size:.64rem}.dashboard-performance-panel{min-height:300px;padding:.85rem}.dashboard-volume-chart{min-height:220px}.dashboard-support-grid{grid-template-columns:1fr}.dashboard-status-chart{height:155px}}
+  @media(max-width:600px){.dashboard-period-bar{align-items:flex-start;flex-direction:column;padding:.75rem}.dashboard-period-controls{width:100%;flex-wrap:wrap;justify-content:flex-start}.dashboard-period-options{width:100%;grid-template-columns:repeat(3,minmax(0,1fr))}.dashboard-period-option{padding:.4rem .2rem;font-size:.68rem}.dashboard-period-controls button:not(.dashboard-period-option){flex:1 1 100%;width:100%}.dashboard-period-controls .section-note{flex:1 1 auto}.dashboard-metrics-grid{gap:.55rem}.dashboard-metric{min-height:104px;padding:.7rem}.dashboard-metric-heading{gap:.45rem}.dashboard-metric-heading small{font-size:.69rem}.dashboard-metric-icon{width:30px;height:30px;border-radius:8px}.dashboard-metric-icon i{width:15px;height:15px}.dashboard-metric>strong{margin-top:.62rem;font-size:1.38rem}.dashboard-metric .metric-detail{font-size:.64rem}.dashboard-performance-panel{min-height:300px;padding:.85rem}.dashboard-volume-chart{min-height:220px}.dashboard-support-grid{grid-template-columns:1fr}.dashboard-status-chart{height:155px}}
   @media(max-width:360px){.dashboard-metrics-grid{grid-template-columns:1fr}.dashboard-metric{min-height:92px}.dashboard-period-controls{gap:.45rem}}
 </style>
 <nav class="workspace-tabs" aria-label="Navegação do workspace">
@@ -349,14 +357,25 @@
           <button class="dashboard-period-option" type="button" data-dashboard-period="7" aria-pressed="{{ 'true' if period_days == 7 else 'false' }}">7 dias</button>
           <button class="dashboard-period-option" type="button" data-dashboard-period="30" aria-pressed="{{ 'true' if period_days == 30 else 'false' }}">30 dias</button>
           <button class="dashboard-period-option" type="button" data-dashboard-period="0" aria-pressed="{{ 'true' if period_days == 0 else 'false' }}">Total</button>
+          <button class="dashboard-period-option" type="button" data-dashboard-period="custom" aria-pressed="{{ 'true' if period_key == 'custom' else 'false' }}">Personalizado</button>
         </div>
         <span class="dashboard-updated-at" id="views-updated-at" aria-live="polite"></span>
       </div>
     </header>
+    <dialog class="dashboard-date-dialog" id="dashboard-date-dialog" aria-labelledby="dashboard-date-title">
+      <form id="dashboard-date-form">
+        <h3 id="dashboard-date-title">Período personalizado</h3>
+        <div class="dashboard-date-fields">
+          <label>Data inicial<input type="date" id="dashboard-start-date" required value="{{ custom_start_date }}"></label>
+          <label>Data final<input type="date" id="dashboard-end-date" required value="{{ custom_end_date }}"></label>
+        </div>
+        <div class="dashboard-date-actions"><button type="button" class="secondary" id="dashboard-date-cancel">Cancelar</button><button type="submit">Aplicar período</button></div>
+      </form>
+    </dialog>
     <div class="dashboard-overview-layout">
       <div class="metric-grid dashboard-metrics-grid">
         <article class="metric dashboard-metric"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="eye"></i></span><small>Total de visualizações</small></div><strong data-metric="total_views">{{ metrics.total_views }}</strong><span class="metric-detail">todas as contas conectadas</span></article>
-        <article class="metric dashboard-metric"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="users-round"></i></span><small>Contas ativas</small></div><strong>{{ metrics.active_accounts }}</strong><span class="metric-detail">conectadas ao workspace</span></article>
+        <article class="metric dashboard-metric"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="users-round"></i></span><small>Contas ativas</small></div><strong data-metric="active_accounts">{{ metrics.active_accounts }}</strong><span class="metric-detail">conectadas ao workspace</span></article>
         <article class="metric dashboard-metric"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="images"></i></span><small>Posts no período</small></div><strong data-metric="today_posts">{{ metrics.today_posts }}</strong><span class="metric-detail">publicações criadas</span></article>
         <article class="metric dashboard-metric"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="layers-3"></i></span><small>Na fila</small></div><strong data-metric="pending">{{ metrics.pending }}</strong><span class="metric-detail">aguardando publicação</span></article>
         <article class="metric dashboard-metric"><div class="dashboard-metric-heading"><span class="dashboard-metric-icon"><i data-lucide="circle-check"></i></span><small>Publicados</small></div><strong data-metric="published">{{ metrics.published }}</strong><span class="metric-detail">concluídos com sucesso</span></article>
@@ -584,7 +603,7 @@
               <option value="asc">Menor para maior</option>
             </select>
           </label>
-          <small class="profile-account-sort-hint" id="profile-account-sort-status" aria-live="polite">Média de interações nas até 25 publicações mais recentes por conta.</small>
+          <small class="profile-account-sort-hint" id="profile-account-sort-status" aria-live="polite">Interações das publicações divididas pelas impressões (ou visualizações disponíveis).</small>
           {% for account in accounts if account.access_token_encrypted %}<button type="button" class="profile-option" data-metrics-account="{{ account.id }}" data-username="{{ account.username }}" aria-pressed="false">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}<span class="profile-option-initial">{{ account.username[:1]|upper }}</span>{% endif %}<span class="profile-option-copy"><span class="profile-option-name">@{{ account.username }}</span><span class="profile-option-followers" data-account-followers>— seguidores</span><span class="profile-option-engagement" data-account-engagement hidden></span></span></button>{% else %}<div class="profile-list-empty">Nenhum perfil autorizado.</div>{% endfor %}
         </aside>
         <section class="profile-metrics-content" aria-label="Feed e métricas do perfil selecionado">
@@ -686,25 +705,53 @@ function selectDashboardView(view,updateUrl=true){const normalized=(view||"overv
 document.querySelectorAll("[data-view]").forEach(link=>link.addEventListener("click",event=>{event.preventDefault();selectDashboardView(link.dataset.view)}));
 const initialView=cleanDashboardUrl()||"overview";selectDashboardView(initialView,false);
 const dashboardPeriodButtons=[...document.querySelectorAll("[data-dashboard-period]")];
-let activeDashboardPeriod=String({{ period_days|tojson }});
+let activeDashboardPeriod=String({{ period_key|tojson }});
 let dashboardPeriodRequest=0;
 const dashboardUpdatedAt=document.getElementById("views-updated-at");
+const dashboardDateDialog=document.getElementById("dashboard-date-dialog");
+const dashboardDateForm=document.getElementById("dashboard-date-form");
+const dashboardStartDate=document.getElementById("dashboard-start-date");
+const dashboardEndDate=document.getElementById("dashboard-end-date");
+let activeDashboardStartDate={{ custom_start_date|tojson }};
+let activeDashboardEndDate={{ custom_end_date|tojson }};
+function saoPauloDateString(date=new Date()){
+  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(date);
+  const values=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
 function updateDashboardUpdatedAt(){
   if(!dashboardUpdatedAt)return;
   const time=new Intl.DateTimeFormat("pt-BR",{hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date());
   dashboardUpdatedAt.textContent=`Atualizado ${time}`;
 }
 updateDashboardUpdatedAt();
-async function applyDashboardPeriod(period){
+async function applyDashboardPeriod(period,startDate="",endDate=""){
   const request=++dashboardPeriodRequest;
   activeDashboardPeriod=period;
   dashboardPeriodButtons.forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.dashboardPeriod===period)));
   const url=new URL(window.location.href);
-  url.searchParams.set("period_days",period);
+  const query=new URLSearchParams();
+  if(period==="custom"){
+    activeDashboardStartDate=startDate;
+    activeDashboardEndDate=endDate;
+    query.set("start_date",startDate);
+    query.set("end_date",endDate);
+    url.searchParams.set("period_days","7");
+    url.searchParams.set("start_date",startDate);
+    url.searchParams.set("end_date",endDate);
+  }else{
+    activeDashboardStartDate="";
+    activeDashboardEndDate="";
+    query.set("period_days",period);
+    url.searchParams.set("period_days",period);
+    url.searchParams.delete("start_date");
+    url.searchParams.delete("end_date");
+  }
   url.hash="overview";
   history.replaceState(null,"",url.toString());
   try{
-    const response=await fetch(`/api/status?period_days=${encodeURIComponent(period)}&at=${Date.now()}`,{cache:"no-store",headers:{"Accept":"application/json","Cache-Control":"no-cache"}});
+    query.set("at",String(Date.now()));
+    const response=await fetch(`/api/status?${query.toString()}`,{cache:"no-store",headers:{"Accept":"application/json","Cache-Control":"no-cache"}});
     if(!response.ok)throw new Error("Falha ao atualizar o período");
     const data=await response.json();
     if(request!==dashboardPeriodRequest)return;
@@ -721,7 +768,23 @@ async function applyDashboardPeriod(period){
     showToast("Não foi possível aplicar o filtro sem recarregar a página.","error");
   }
 }
-dashboardPeriodButtons.forEach(button=>button.addEventListener("click",()=>applyDashboardPeriod(button.dataset.dashboardPeriod)));
+dashboardPeriodButtons.forEach(button=>button.addEventListener("click",()=>{
+  const period=button.dataset.dashboardPeriod;
+  if(period!=="custom"){applyDashboardPeriod(period);return}
+  const defaultDate=saoPauloDateString();
+  dashboardStartDate.value=activeDashboardStartDate||defaultDate;
+  dashboardEndDate.value=activeDashboardEndDate||defaultDate;
+  dashboardDateDialog.showModal();
+}));
+document.getElementById("dashboard-date-cancel")?.addEventListener("click",()=>dashboardDateDialog.close());
+dashboardDateDialog?.addEventListener("click",event=>{if(event.target===dashboardDateDialog)dashboardDateDialog.close()});
+dashboardDateForm?.addEventListener("submit",event=>{
+  event.preventDefault();
+  const startDate=dashboardStartDate.value,endDate=dashboardEndDate.value;
+  if(startDate>endDate){dashboardEndDate.setCustomValidity("A data final deve ser igual ou posterior à data inicial.");dashboardEndDate.reportValidity();dashboardEndDate.setCustomValidity("");return}
+  dashboardDateDialog.close();
+  applyDashboardPeriod("custom",startDate,endDate);
+});
 let media=[];
 if(list&&window.Sortable)new Sortable(list,{animation:150,onEnd:event=>{const [item]=media.splice(event.oldIndex,1);media.splice(event.newIndex,0,item);render()}});
 if(files){files.addEventListener("change",async()=>{for(const file of files.files){if(media.length>=30){alert("Cada lote pode conter no máximo 30 publicações.");break}const data=new FormData();data.append("media",file,file.name);const response=await fetch("/media/upload",{method:"POST",body:data});if(!response.ok){let message="Falha ao enviar "+file.name;try{const error=await response.json();message=error.detail||message}catch{}alert(message);continue}const result=await response.json();media.push({file,preview:URL.createObjectURL(file),url:result.url,storagePath:result.storage_path,type:result.media_type,caption:""})}files.value="";render()})}

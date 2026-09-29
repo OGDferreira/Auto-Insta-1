@@ -329,10 +329,20 @@ def _local_day_bounds(value: date) -> tuple[datetime, datetime]:
 def _dashboard_period_bounds(
     period_days: int,
     now: datetime | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> tuple[datetime | None, datetime | None, date, date, int]:
+    if (start_date is None) != (end_date is None):
+        raise HTTPException(status_code=400, detail="Informe as datas inicial e final do período personalizado")
+    if start_date is not None and end_date is not None:
+        if start_date > end_date:
+            raise HTTPException(status_code=400, detail="A data inicial deve ser anterior ou igual à data final")
+        start_at, _ = _local_day_bounds(start_date)
+        _, end_at = _local_day_bounds(end_date)
+        return start_at, end_at, start_date, end_date, (end_date - start_date).days + 1
     if period_days not in {0, 1, 2, 7, 30, 90}:
         period_days = 7
-    current_local_date = (now or datetime.now(timezone.utc)).astimezone(LOCAL_TIMEZONE).date()
+    current_local_date = _local_date(now or datetime.now(timezone.utc))
     if period_days == 0:
         chart_start = current_local_date - timedelta(days=6)
         return None, None, chart_start, current_local_date, 7
@@ -344,7 +354,13 @@ def _dashboard_period_bounds(
     return start_at, end_at, start_date, end_date, selected_days
 
 
-def _period_label(period_days: int) -> str:
+def _period_label(
+    period_days: int,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> str:
+    if start_date is not None and end_date is not None:
+        return f"{start_date.strftime('%d/%m/%Y')} – {end_date.strftime('%d/%m/%Y')}"
     return {
         0: "ÚLTIMOS 7 DIAS",
         1: "HOJE",
@@ -962,6 +978,8 @@ async def logout(request: Request):
 async def dashboard(
     request: Request,
     period_days: int = 7,
+    start_date: date | None = None,
+    end_date: date | None = None,
     account_id: int | None = None,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -971,7 +989,7 @@ async def dashboard(
     if period_days not in {0, 1, 2, 7, 30, 90}:
         period_days = 7
     start_at, end_at, chart_start_date, chart_end_date, chart_period_days = (
-        _dashboard_period_bounds(period_days)
+        _dashboard_period_bounds(period_days, start_date=start_date, end_date=end_date)
     )
     owner_id = workspace_owner_id(user)
     await _remove_stale_pending_accounts(db, owner_id)
@@ -1095,8 +1113,8 @@ async def dashboard(
         "pix_to_paid": round(paid_count / generated_count * 100, 2) if generated_count else 0,
     }
     metrics = {
-        "active_accounts": len(accounts),
-        "error_accounts": sum(account.connection_status == "error" for account in accounts),
+        "active_accounts": sum(value == "connected" for value in status_classes.values()),
+        "error_accounts": sum(value == "error" for value in status_classes.values()),
         "today_posts": len(period_posts),
         "daily_views": total_views,
         "total_views": total_views,
@@ -1153,7 +1171,10 @@ async def dashboard(
             },
             "volume_days": volume_days,
             "period_days": period_days,
-            "period_label": _period_label(period_days),
+            "period_key": "custom" if start_date is not None and end_date is not None else str(period_days),
+            "custom_start_date": start_date.isoformat() if start_date else "",
+            "custom_end_date": end_date.isoformat() if end_date else "",
+            "period_label": _period_label(period_days, start_date, end_date),
         }
     response = templates.TemplateResponse("dashboard.html", template_context)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -1495,11 +1516,14 @@ async def metrics_page(request: Request, user: User = Depends(current_user), db:
     )}
     paid_events = [event for event in events if event.event_type == "pix_paid"]
     generated_events = [event for event in events if event.event_type == "pix_generated"]
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(LOCAL_TIMEZONE).date()
     daily_activity = []
     for offset in range(6, -1, -1):
         day = today - timedelta(days=offset)
-        day_events = [event for event in events if event.timestamp and event.timestamp.date() == day]
+        day_events = [
+            event for event in events
+            if event.timestamp and _local_date(event.timestamp) == day
+        ]
         daily_activity.append({
             "label": day.strftime("%a").capitalize(),
             "revenue": round(sum(event.value for event in day_events if event.event_type == "pix_paid"), 2),
@@ -1717,13 +1741,15 @@ async def collaborator_report(
 @router.get("/api/status")
 async def api_status(
     period_days: int = 7,
+    start_date: date | None = None,
+    end_date: date | None = None,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if period_days not in {0, 1, 2, 7, 30, 90}:
         period_days = 7
     start_at, end_at, chart_start_date, _chart_end_date, chart_period_days = (
-        _dashboard_period_bounds(period_days)
+        _dashboard_period_bounds(period_days, start_date=start_date, end_date=end_date)
     )
     posts = (
         await db.scalars(
@@ -1733,11 +1759,11 @@ async def api_status(
             .order_by(ScheduledPost.scheduled_for.desc())
         )
     ).all()
-    account_ids = [account.id for account in (
-        await db.scalars(select(InstagramAccount).where(
+    accounts = (await db.scalars(select(InstagramAccount).where(
             InstagramAccount.owner_id == workspace_owner_id(user)
-        ))
-    ).all()]
+        ))).all()
+    account_ids = [account.id for account in accounts]
+    account_statuses = account_status_classes(accounts)
     bot_query = select(BotEvent).where(BotEvent.account_id.is_(None))
     if account_ids:
         bot_query = select(BotEvent).where(
@@ -1814,11 +1840,8 @@ async def api_status(
             "pending": sum(post.status in {"scheduled", "processing", "aguardando", "pending"} for post in period_posts),
             "published": sum(post.status == "published" for post in period_posts),
             "failed": sum(post.status in {"failed", "blocked"} for post in period_posts),
-            "error_accounts": sum(account.connection_status == "error" for account in (
-                await db.scalars(select(InstagramAccount).where(
-                    InstagramAccount.owner_id == workspace_owner_id(user)
-                ))
-            ).all()),
+            "active_accounts": sum(value == "connected" for value in account_statuses.values()),
+            "error_accounts": sum(value == "error" for value in account_statuses.values()),
             "total_views": total_views,
             "today_posts": len(period_posts),
         },
@@ -1830,7 +1853,10 @@ async def api_status(
             "failed": sum(post.status in {"failed", "blocked"} for post in period_posts),
         },
         "volume_days": volume_days,
-        "period_label": _period_label(period_days),
+        "period_label": _period_label(period_days, start_date, end_date),
+        "period_key": "custom" if start_date is not None and end_date is not None else str(period_days),
+        "custom_start_date": start_date.isoformat() if start_date else "",
+        "custom_end_date": end_date.isoformat() if end_date else "",
         "latest_sale": {
             "value": latest_paid.value,
             "customer_name": latest_paid.customer_name,
@@ -1843,13 +1869,7 @@ async def api_status(
                 "reason": account.status_reason,
                 "checked_at": account.status_checked_at.isoformat() if account.status_checked_at else None,
             }
-            for account in (
-                await db.scalars(
-                    select(InstagramAccount).where(
-                        InstagramAccount.owner_id == workspace_owner_id(user)
-                    )
-                )
-            ).all()
+            for account in accounts
         },
         "posts": [
             {
@@ -2494,7 +2514,8 @@ async def analytics(
         query = query.where(InstagramAccount.id.in_(set(account_ids)))
     accounts = (await db.scalars(query.order_by(InstagramAccount.username))).all()
     settings = get_settings()
-    start_date = (datetime.now(timezone.utc) - timedelta(days=period_days - 1)).date()
+    today_local = datetime.now(LOCAL_TIMEZONE).date()
+    start_date = today_local - timedelta(days=period_days - 1)
     account_rows = []
     media_rows = []
     errors = []
@@ -2515,7 +2536,7 @@ async def analytics(
                             "metric": "reach,impressions,profile_views,website_clicks",
                             "period": "day",
                             "since": start_date.isoformat(),
-                            "until": datetime.now(timezone.utc).date().isoformat(),
+                            "until": today_local.isoformat(),
                             "access_token": token,
                         },
                     )
@@ -2571,6 +2592,7 @@ async def analytics(
                         "shares": media_insights.get("shares"),
                         "saves": media_insights.get("saved"),
                         "views": media_insights.get("views") if media_insights.get("views") is not None else media_insights.get("impressions"),
+                        "impressions": media_insights.get("impressions"),
                         "engagement": media_insights.get("total_interactions"),
                     })
             except Exception as exc:

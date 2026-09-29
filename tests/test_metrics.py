@@ -216,6 +216,25 @@ def test_dashboard_period_bounds_use_local_calendar_days():
         today - timedelta(days=1),
         1,
     )
+    range_start = today - timedelta(days=3)
+    range_end = today - timedelta(days=1)
+    custom_start, custom_end, custom_chart_start, custom_chart_end, custom_days = (
+        routes._dashboard_period_bounds(
+            7,
+            now,
+            start_date=range_start,
+            end_date=range_end,
+        )
+    )
+    assert (custom_start, custom_end) == (
+        routes._local_day_bounds(range_start)[0],
+        routes._local_day_bounds(range_end)[1],
+    )
+    assert (custom_chart_start, custom_chart_end, custom_days) == (
+        range_start,
+        range_end,
+        3,
+    )
 
 
 @pytest.mark.asyncio
@@ -236,7 +255,14 @@ async def test_dashboard_period_filters_metrics_and_sharkbot_by_received_at():
             access_token_encrypted="encrypted",
             connection_status="connected",
         )
-        db.add(account)
+        disconnected_account = InstagramAccount(
+            owner_id=owner.id,
+            instagram_user_id="ig-period-filter-disconnected",
+            username="period_filter_disconnected",
+            access_token_encrypted="encrypted",
+            connection_status="disconnected",
+        )
+        db.add_all([account, disconnected_account])
         await db.flush()
         today = datetime.now(routes.LOCAL_TIMEZONE).date()
         today_start, today_end = routes._local_day_bounds(today)
@@ -295,9 +321,17 @@ async def test_dashboard_period_filters_metrics_and_sharkbot_by_received_at():
         today_response = await routes.api_status(period_days=1, user=owner, db=db)
         yesterday_response = await routes.api_status(period_days=2, user=owner, db=db)
         week_response = await routes.api_status(period_days=7, user=owner, db=db)
+        custom_response = await routes.api_status(
+            period_days=7,
+            start_date=today - timedelta(days=1),
+            end_date=today,
+            user=owner,
+            db=db,
+        )
         today_payload = json.loads(today_response.body)
         yesterday_payload = json.loads(yesterday_response.body)
         week_payload = json.loads(week_response.body)
+        custom_payload = json.loads(custom_response.body)
 
         assert today_payload["metrics"]["total_views"] == 18
         assert today_payload["sharkbot"]["lead_initiated"] == 2
@@ -307,6 +341,13 @@ async def test_dashboard_period_filters_metrics_and_sharkbot_by_received_at():
         assert yesterday_payload["period_label"] == "ONTEM"
         assert week_payload["metrics"]["total_views"] == 23
         assert week_payload["sharkbot"]["lead_initiated"] == 3
+        assert today_payload["metrics"]["active_accounts"] == 1
+        assert custom_payload["metrics"]["total_views"] == 23
+        assert custom_payload["sharkbot"]["lead_initiated"] == 3
+        assert custom_payload["period_key"] == "custom"
+        assert custom_payload["period_label"] == (
+            f"{(today - timedelta(days=1)).strftime('%d/%m/%Y')} – {today.strftime('%d/%m/%Y')}"
+        )
 
         request = Request({
             "type": "http",
