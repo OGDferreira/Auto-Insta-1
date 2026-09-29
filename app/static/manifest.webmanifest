@@ -2,7 +2,7 @@
   "name": "Auto-Insta",
   "short_name": "Auto-Insta",
   "description": "Gerenciamento de contas e publicações do Instagram.",
-  "start_url": "/dashboard#queue",
+  "start_url": "/dashboard#overview",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
