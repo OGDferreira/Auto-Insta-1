@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -59,6 +59,8 @@ from .oauth import (
     fetch_instagram_business_account,
     fetch_profile,
     new_state,
+    new_oauth_state,
+    read_oauth_state,
     token_expiration_from_data,
 )
 from .observability import get_recent_logs
@@ -1283,9 +1285,9 @@ async def dashboard(
     event_query = select(BotEvent).where(
         or_(
             BotEvent.account_id.in_([a.id for a in accounts]),
-            BotEvent.account_id.is_(None),
+            and_(BotEvent.account_id.is_(None), BotEvent.owner_id == owner_id),
         )
-    ) if accounts else select(BotEvent).where(BotEvent.account_id.is_(None))
+    ) if accounts else select(BotEvent).where(BotEvent.account_id.is_(None), BotEvent.owner_id == workspace_owner_id(user))
     if start_at is not None and end_at is not None:
         event_time = func.coalesce(BotEvent.created_at, BotEvent.timestamp)
         event_query = event_query.where(event_time >= start_at, event_time < end_at)
@@ -1293,9 +1295,9 @@ async def dashboard(
     all_time_event_query = select(BotEvent).where(
         or_(
             BotEvent.account_id.in_([account.id for account in accounts]),
-            BotEvent.account_id.is_(None),
+            and_(BotEvent.account_id.is_(None), BotEvent.owner_id == owner_id),
         )
-    ) if accounts else select(BotEvent).where(BotEvent.account_id.is_(None))
+    ) if accounts else select(BotEvent).where(BotEvent.account_id.is_(None), BotEvent.owner_id == workspace_owner_id(user))
     all_time_event_query = all_time_event_query.where(BotEvent.event_type == "pix_paid")
     all_time_paid_events = (await db.scalars(all_time_event_query)).all()
     views_by_account = _metric_views_by_account(metric_rows, [account.id for account in accounts])
@@ -1701,8 +1703,8 @@ async def metrics_page(request: Request, user: User = Depends(current_user), db:
     accounts = (await db.scalars(select(InstagramAccount).where(InstagramAccount.owner_id == owner_id))).all()
     account_ids = [account.id for account in accounts]
     event_query = select(BotEvent).options(selectinload(BotEvent.account)).where(
-        or_(BotEvent.account_id.in_(account_ids), BotEvent.account_id.is_(None))
-    ).order_by(BotEvent.timestamp.desc()) if account_ids else select(BotEvent).options(selectinload(BotEvent.account)).where(BotEvent.account_id.is_(None)).order_by(BotEvent.timestamp.desc())
+        or_(BotEvent.account_id.in_(account_ids), and_(BotEvent.account_id.is_(None), BotEvent.owner_id == workspace_owner_id(user)))
+    ).order_by(BotEvent.timestamp.desc()) if account_ids else select(BotEvent).options(selectinload(BotEvent.account)).where(BotEvent.account_id.is_(None), BotEvent.owner_id == owner_id).order_by(BotEvent.timestamp.desc())
     events = (await db.scalars(event_query)).all()
     counts = {event_type: sum(event.event_type == event_type for event in events) for event_type in (
         "link_click", "lead_initiated", "pix_generated", "pix_paid"
@@ -1722,9 +1724,13 @@ async def metrics_page(request: Request, user: User = Depends(current_user), db:
             "revenue": round(sum(event.value for event in day_events if event.event_type == "pix_paid"), 2),
             "leads": sum(event.event_type == "lead_initiated" for event in day_events),
         })
+    if not user.sharkbot_webhook_token:
+        user.sharkbot_webhook_token = new_state()
+        await db.commit()
+    sharkbot_webhook_url = f"{get_settings().public_base_url}/webhook/sharkbot/{user.sharkbot_webhook_token}"
     return templates.TemplateResponse("metrics.html", {
         "request": request, "user": user,
-        "sharkbot_webhook_url": get_settings().sharkbot_webhook_url,
+        "sharkbot_webhook_url": sharkbot_webhook_url,
         "bot_name": "Sharkbot",
         "approved_sales": sum(event.value for event in paid_events),
         "conversion_rate": (len(paid_events) / len(generated_events) * 100) if generated_events else 0,
@@ -1957,19 +1963,19 @@ async def api_status(
         ))).all()
     account_ids = [account.id for account in accounts]
     account_statuses = account_status_classes(accounts)
-    bot_query = select(BotEvent).where(BotEvent.account_id.is_(None))
+    bot_query = select(BotEvent).where(BotEvent.account_id.is_(None), BotEvent.owner_id == workspace_owner_id(user))
     if account_ids:
         bot_query = select(BotEvent).where(
-            or_(BotEvent.account_id.in_(account_ids), BotEvent.account_id.is_(None))
+            or_(BotEvent.account_id.in_(account_ids), and_(BotEvent.account_id.is_(None), BotEvent.owner_id == workspace_owner_id(user)))
         )
     if start_at is not None and end_at is not None:
         event_time = func.coalesce(BotEvent.created_at, BotEvent.timestamp)
         bot_query = bot_query.where(event_time >= start_at, event_time < end_at)
     bot_events = (await db.scalars(bot_query)).all()
-    all_time_bot_query = select(BotEvent).where(BotEvent.account_id.is_(None))
+    all_time_bot_query = select(BotEvent).where(BotEvent.account_id.is_(None), BotEvent.owner_id == workspace_owner_id(user))
     if account_ids:
         all_time_bot_query = select(BotEvent).where(
-            or_(BotEvent.account_id.in_(account_ids), BotEvent.account_id.is_(None))
+            or_(BotEvent.account_id.in_(account_ids), and_(BotEvent.account_id.is_(None), BotEvent.owner_id == workspace_owner_id(user)))
         )
     all_time_bot_query = all_time_bot_query.where(BotEvent.event_type == "pix_paid")
     all_time_paid_events = (await db.scalars(all_time_bot_query)).all()
@@ -2871,7 +2877,8 @@ async def instagram_start(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    state = new_state()
+    state = new_oauth_state(getattr(user, "id", 0), reconnect_account_id)
+    # Mantém compatibilidade com sessões existentes, mas o callback também valida o estado assinado.
     request.session["instagram_oauth_state"] = state
     if reconnect_account_id is not None:
         account = await db.scalar(
@@ -2897,17 +2904,19 @@ async def instagram_callback(
     error_description: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    session_user_id = request.session.get("user_id")
     expected_state = request.session.pop("instagram_oauth_state", None)
-    if not session_user_id or not state or state != expected_state:
+    signed_state = read_oauth_state(state or "") if state else None
+    session_user_id = request.session.get("user_id") or (signed_state or {}).get("user_id")
+    # O state é assinado e expira em 15 minutos. O cookie continua sendo conferido quando presente,
+    # mas não é mais a única fonte de verdade no retorno do Instagram.
+    if not signed_state or not session_user_id:
         logger.warning(
             "Instagram OAuth callback rejected before token exchange: "
-            "session_user=%s callback_state=%s expected_state=%s",
-            bool(session_user_id),
-            bool(state),
-            bool(expected_state),
+            "session_user=%s callback_state=%s expected_state=%s signed_state=%s",
+            bool(request.session.get("user_id")), bool(state), bool(expected_state), bool(signed_state),
         )
-        raise HTTPException(status_code=400, detail="OAuth state inválido")
+        raise HTTPException(status_code=400, detail="OAuth state inválido ou expirado")
+    request.session["user_id"] = int(session_user_id)
     if error:
         request.session.pop("instagram_reconnect_account_id", None)
         detail = error_description or error_reason or error
@@ -2940,6 +2949,8 @@ async def instagram_callback(
         raise HTTPException(status_code=401, detail="Login required")
     owner_id = workspace_owner_id(user)
     reconnect_account_id = request.session.pop("instagram_reconnect_account_id", None)
+    if reconnect_account_id is None:
+        reconnect_account_id = signed_state.get("reconnect_account_id")
     profile_id = str(profile.get("user_id") or profile["id"])
     account_ids = {profile_id}
     if business_account:
@@ -3039,9 +3050,8 @@ async def instagram_callback(
     loop_posts_to_schedule = []
     if account.connection_status in {"active", "connected"}:
         await _record_collaborator_connection(db, user, account)
-        loop_posts_to_schedule = await _include_account_in_existing_loops(
-            db, owner_id, account.id
-        )
+        # Novas contas ficam disponíveis no Hub; a associação a cada Loop é sempre manual.
+        loop_posts_to_schedule = []
     await db.commit()
     for should_schedule, post_id, scheduled_for in loop_posts_to_schedule:
         if should_schedule:
@@ -3812,6 +3822,63 @@ async def update_batch_accounts(
             schedule_post(post.id, post.scheduled_for)
     return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
 
+
+@router.post("/batches/{batch_id}/media")
+async def update_loop_media(
+    batch_id: int,
+    media_urls: list[str] = Form(...),
+    media_types: list[str] = Form(...),
+    storage_paths: list[str] = Form(default=[]),
+    drive_media_urls: list[str] = Form(default=[]),
+    drive_account_emails: list[str] = Form(default=[]),
+    drive_credentials_encrypted: list[str] = Form(default=[]),
+    captions: list[str] = Form(default=[]),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    batch = await db.scalar(select(PostingBatch).where(
+        PostingBatch.id == batch_id, PostingBatch.owner_id == owner_id, PostingBatch.is_loop.is_(True)
+    ))
+    if not batch:
+        raise HTTPException(status_code=404, detail="Loop não encontrado")
+    if not media_urls or len(media_urls) != len(media_types) or len(media_urls) > MAX_BATCH_MEDIA:
+        raise HTTPException(status_code=400, detail="A playlist do Loop é inválida")
+    posts = (await db.scalars(select(ScheduledPost).where(
+        ScheduledPost.batch_id == batch.id, ScheduledPost.loop_index.is_not(None)
+    ).order_by(ScheduledPost.loop_index, ScheduledPost.id))).all()
+    indices = sorted({post.loop_index for post in posts if post.loop_index is not None})
+    if len(indices) != len(media_urls):
+        raise HTTPException(status_code=400, detail="A alteração deve manter a mesma quantidade de mídias do Loop")
+    pending = []
+    for index, media_url, media_type in zip(indices, media_urls, media_types):
+        normalized_type = media_type.upper()
+        if normalized_type == "VIDEO":
+            normalized_type = "REELS"
+        if normalized_type not in {"IMAGE", "REELS"} or not media_url.strip():
+            raise HTTPException(status_code=400, detail="Mídia inválida")
+        rows = [post for post in posts if post.loop_index == index]
+        targets = [post for post in rows if post.status in PENDING_STATUSES]
+        if not targets:
+            targets = rows[:1]
+        for post in targets:
+            post.media_url = media_url.strip()
+            post.original_media_url = media_url.strip()
+            post.media_type = normalized_type
+            post.storage_path = storage_paths[index] if index < len(storage_paths) else None
+            post.drive_media_url = drive_media_urls[index] if index < len(drive_media_urls) else None
+            post.drive_account_email = drive_account_emails[index] if index < len(drive_account_emails) else None
+            post.drive_credentials_encrypted = drive_credentials_encrypted[index] if index < len(drive_credentials_encrypted) else None
+            if index < len(captions):
+                post.caption = captions[index][:2200]
+            if post.status in PENDING_STATUSES:
+                pending.append(post)
+    await db.commit()
+    for post in pending:
+        unschedule_post(post.id)
+        if batch.status == "active":
+            schedule_post(post.id, post.scheduled_for)
+    return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)
 
 async def _include_account_in_existing_loops(
     db: AsyncSession,

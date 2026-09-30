@@ -58,6 +58,7 @@ async def init_db() -> None:
                 "collaborator_rate_per_account": "NUMERIC(10, 2) NOT NULL DEFAULT 0",
                 "collaborator_daily_target": "INTEGER NOT NULL DEFAULT 0",
                 "collaborator_daily_bonus": "NUMERIC(10, 2) NOT NULL DEFAULT 0",
+                "sharkbot_webhook_token": "TEXT NOT NULL DEFAULT ''",
             }.items():
                 if name not in existing_user_columns:
                     await connection.exec_driver_sql(
@@ -168,6 +169,7 @@ async def init_db() -> None:
             columns = await connection.exec_driver_sql("PRAGMA table_info(bot_events)")
             existing = {row[1] for row in columns}
             new_columns = {
+                "owner_id": "INTEGER",
                 "webhook_id": "TEXT",
                 "customer_name": "TEXT",
                 "customer_username": "TEXT",
@@ -184,12 +186,21 @@ async def init_db() -> None:
             await connection.exec_driver_sql(
                 "UPDATE bot_events SET created_at = timestamp WHERE created_at IS NULL"
             )
+            import secrets
+            users = await connection.exec_driver_sql("SELECT id, sharkbot_webhook_token FROM users")
+            for user_id, webhook_token in users:
+                if not webhook_token:
+                    await connection.exec_driver_sql(
+                        "UPDATE users SET sharkbot_webhook_token = ? WHERE id = ?",
+                        (secrets.token_urlsafe(32), user_id),
+                    )
         else:
             migrations = {
                 "users": {
                     "collaborator_rate_per_account": "NUMERIC(10, 2) NOT NULL DEFAULT 0",
                     "collaborator_daily_target": "INTEGER NOT NULL DEFAULT 0",
                     "collaborator_daily_bonus": "NUMERIC(10, 2) NOT NULL DEFAULT 0",
+                    "sharkbot_webhook_token": "VARCHAR(120) NOT NULL DEFAULT ''",
                 },
                 "direct_contacts": {
                     "owner_id": "INTEGER NOT NULL",
@@ -212,6 +223,7 @@ async def init_db() -> None:
                     "pwa_installed": "BOOLEAN NOT NULL DEFAULT FALSE",
                 },
                 "bot_events": {
+                    "owner_id": "INTEGER",
                     "webhook_id": "VARCHAR(120)",
                     "customer_name": "VARCHAR(180)",
                     "customer_username": "VARCHAR(120)",
@@ -271,3 +283,11 @@ async def init_db() -> None:
             await connection.exec_driver_sql(
                 'UPDATE "bot_events" SET "created_at" = "timestamp" WHERE "created_at" IS NULL'
             )
+            import secrets
+            users = await connection.exec_driver_sql('SELECT "id", "sharkbot_webhook_token" FROM "users"')
+            for user_id, webhook_token in users:
+                if not webhook_token:
+                    await connection.exec_driver_sql(
+                        'UPDATE "users" SET "sharkbot_webhook_token" = :token WHERE "id" = :id',
+                        {"token": secrets.token_urlsafe(32), "id": user_id},
+                    )

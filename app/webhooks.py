@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from .config import get_settings
 from .db import SessionLocal
-from .models import AutomationRule, BotEvent, DirectContact, InstagramAccount
+from .models import AutomationRule, BotEvent, DirectContact, InstagramAccount, User
 from .security import decrypt_token
 from .utils import parse_spintax
 
@@ -298,7 +298,8 @@ async def _delayed_auto_reply(account_id: int, event: dict) -> None:
 @router.post("")
 @router.post("/sharkbot")
 @router.post("/sharkbot/")
-async def receive_webhook(request: Request):
+@router.post("/sharkbot/{webhook_token}")
+async def receive_webhook(request: Request, webhook_token: str | None = None):
     try:
         payload = await request.json()
     except ValueError as exc:
@@ -310,6 +311,11 @@ async def receive_webhook(request: Request):
     if not events:
         raise HTTPException(status_code=422, detail="Nenhum evento reconhecível no payload")
     async with SessionLocal() as db:
+        webhook_owner = None
+        if webhook_token:
+            webhook_owner = await db.scalar(select(User).where(User.sharkbot_webhook_token == webhook_token))
+            if webhook_owner is None:
+                raise HTTPException(status_code=404, detail="Webhook do usuário não encontrado")
         for event in events:
             value = event.get("value", event)
             if not isinstance(value, dict):
@@ -333,11 +339,12 @@ async def receive_webhook(request: Request):
                     or value.get("recipient", {}).get("id")
                 )
                 if account_key:
-                    account = await db.scalar(
-                        select(InstagramAccount).where(
-                            InstagramAccount.instagram_user_id == str(account_key)
-                        )
+                    account_query = select(InstagramAccount).where(
+                        InstagramAccount.instagram_user_id == str(account_key)
                     )
+                    if webhook_owner:
+                        account_query = account_query.where(InstagramAccount.owner_id == webhook_owner.id)
+                    account = await db.scalar(account_query)
                 transaction = _event_transaction(value)
                 customer = value.get("customer")
                 if not isinstance(customer, dict):
@@ -356,10 +363,13 @@ async def receive_webhook(request: Request):
                 transaction_id = str(
                     transaction.get("id") or transaction.get("external_id")
                 ) if transaction.get("id") or transaction.get("external_id") else None
+                event_owner_id = account.owner_id if account else (webhook_owner.id if webhook_owner else None)
                 duplicate_query = select(BotEvent).where(
                     BotEvent.webhook_id == webhook_id,
                     BotEvent.event_type == event_type,
                 )
+                if event_owner_id is not None:
+                    duplicate_query = duplicate_query.where(BotEvent.owner_id == event_owner_id)
                 if transaction_id:
                     duplicate_query = duplicate_query.where(
                         BotEvent.transaction_id == transaction_id
@@ -378,6 +388,7 @@ async def receive_webhook(request: Request):
                     )
                     continue
                 db.add(BotEvent(
+                    owner_id=event_owner_id,
                     account_id=account.id if account else None,
                     event_type=event_type,
                     value=event_value,
@@ -395,11 +406,12 @@ async def receive_webhook(request: Request):
                 or value.get("recipient", {}).get("id")
             )
             if account_id:
-                account = await db.scalar(
-                    select(InstagramAccount).where(
-                        InstagramAccount.instagram_user_id == str(account_id)
-                    )
+                account_query = select(InstagramAccount).where(
+                    InstagramAccount.instagram_user_id == str(account_id)
                 )
+                if webhook_owner:
+                    account_query = account_query.where(InstagramAccount.owner_id == webhook_owner.id)
+                account = await db.scalar(account_query)
                 if account:
                     sender_id = (value.get("sender") or {}).get("id") or (value.get("from") or {}).get("id")
                     if sender_id and not _is_comment_event(value, value.get("comment_id")):

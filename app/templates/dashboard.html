@@ -452,8 +452,10 @@
             <div class="loop-editor-fields"><label>Nome do Loop<input type="text" name="batch_name" maxlength="160" value="{{ batch.name }}" required></label><label>Intervalo (min)<input type="number" name="interval_minutes" min="1" max="1440" value="{{ batch.loop_interval_minutes }}" required></label></div>
             <label class="loop-pool-label">Contas Instagram</label>
             <div class="loop-account-grid">{% for account in accounts %}<label class="loop-account-card"><input type="checkbox" name="account_ids" value="{{ account.id }}" {% if account.id in batch_account_ids[batch.id] %}checked{% endif %}>{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% endif %}<span>@{{ account.username }}</span></label>{% endfor %}</div>
-            <label class="loop-pool-label">Mídias no pool ({{ batch_posts|selectattr("loop_index", "defined")|map(attribute="loop_index")|unique|list|length }})</label>
-            <div class="loop-media-pool">{% set pool = namespace(indices=[]) %}{% for post in batch_posts|sort(attribute="loop_index") %}{% if post.loop_index is not none and post.loop_index not in pool.indices %}{% set pool.indices = pool.indices + [post.loop_index] %}<div class="loop-media-row"><span class="loop-media-kind">{{ "VÍDEO" if post.media_type == "REELS" else "IMAGEM" }}</span><span class="loop-media-name">{{ post.media_url.rsplit("/", 1)[-1].split("?", 1)[0] }}</span></div>{% endif %}{% endfor %}</div>
+            <label class="loop-pool-label">Playlist do Loop ({{ batch_posts|selectattr("loop_index", "defined")|map(attribute="loop_index")|unique|list|length }})</label>
+            <div class="loop-media-pool">{% set pool = namespace(indices=[]) %}{% for post in batch_posts|sort(attribute="loop_index") %}{% if post.loop_index is not none and post.loop_index not in pool.indices %}{% set pool.indices = pool.indices + [post.loop_index] %}<div class="loop-media-row"><span class="loop-media-index">{{ post.loop_index + 1 }}</span><span class="loop-media-kind">{{ "VÍDEO" if post.media_type == "REELS" else "IMAGEM" }}</span><span class="loop-media-name">{{ post.media_url.rsplit("/", 1)[-1].split("?", 1)[0] }}</span></div>{% endif %}{% endfor %}</div>
+            <form class="loop-media-editor" data-loop-media-editor="{{ batch.id }}" method="post" action="/batches/{{ batch.id }}/media" enctype="multipart/form-data" hidden><input type="file" data-loop-media-files multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"><small class="muted">Envie exatamente {{ batch_posts|selectattr("loop_index", "defined")|map(attribute="loop_index")|unique|list|length }} mídias para substituir a playlist, mantendo os horários e as contas.</small><div data-loop-media-items class="thumb-list"></div><button type="submit" class="secondary">Salvar novas mídias</button></form>
+            <button type="button" class="secondary loop-media-edit-button" data-loop-media-edit="{{ batch.id }}"><i data-lucide="images"></i> Alterar mídias</button>
             <div class="loop-editor-actions"><button type="submit"><i data-lucide="save"></i> Salvar alterações</button></div>
           </form>
           <div class="loop-details" id="loop-details-{{ batch.id }}" data-loop-details="{{ batch.id }}" hidden>
@@ -480,8 +482,9 @@
       </section>
     </section>
     <div class="queue-layout">
-      <div class="panel composer">
-        <div class="panel-kicker">Novo agendamento</div><h3>Postagem em massa ou Loop</h3>
+      <div class="panel composer" id="loop-composer" hidden>
+        <div class="panel-kicker">Configuração</div><h3>Novo Loop</h3>
+        <p class="muted form-note">Escolha as contas manualmente e monte a playlist. Contas conectadas depois não entram automaticamente.</p>
         {% if accounts %}
         <form id="bulk-form" method="post" action="/posts/bulk">
           <label>Contas de destino</label>
@@ -490,8 +493,8 @@
             {% for account in accounts %}<label class="account-check"><input class="account-selector" type="checkbox" name="account_ids" value="{{ account.id }}" checked><span class="mini-avatar">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}{{ account.username[:1]|upper }}{% endif %}</span><b title="@{{ account.username }}">@{{ account.username }}</b></label>{% endfor %}
           </div>
           <label>Nome do lote<input name="batch_name" maxlength="160" placeholder="Ex.: Campanha de setembro"></label>
-          <label class="select-all-accounts"><input id="loop-enabled" name="is_loop" type="checkbox" value="true"> <span>Repetir as publicações em Loop contínuo</span></label>
-          <label class="dropzone" for="bulk-files"><span id="bulk-label"><b>Solte suas mídias aqui</b><br><small>Imagens e vídeos · ordem da seleção</small></span><input id="bulk-files" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></label>
+          <input id="loop-enabled" name="is_loop" type="checkbox" value="true" checked hidden>
+          <label class="dropzone" for="bulk-files"><span id="bulk-label"><b>Adicionar mídias à playlist</b><br><small>Imagens e vídeos · ordem fixa do Loop</small></span><input id="bulk-files" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></label>
           <button type="button" class="secondary" id="drive-import"><i data-lucide="hard-drive"></i> Importar do Drive</button>
           <div id="media-items" class="thumb-list"></div>
           <p class="muted media-limit-note">Limite de 30 publicações por lote.</p>

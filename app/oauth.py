@@ -1,4 +1,5 @@
 import secrets
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
@@ -48,6 +49,19 @@ def authorization_url(state: str) -> str:
 
 def new_state() -> str:
     return secrets.token_urlsafe(32)
+
+def new_oauth_state(user_id: int, reconnect_account_id: int | None = None) -> str:
+    """Create a short-lived, signed state that survives cookie loss on provider return."""
+    serializer = URLSafeTimedSerializer(get_settings().secret_key, salt="instagram-oauth")
+    return serializer.dumps({"user_id": int(user_id), "reconnect_account_id": reconnect_account_id, "nonce": new_state()})
+
+def read_oauth_state(value: str, max_age: int = 900) -> dict | None:
+    serializer = URLSafeTimedSerializer(get_settings().secret_key, salt="instagram-oauth")
+    try:
+        payload = serializer.loads(value, max_age=max_age)
+    except (BadSignature, SignatureExpired):
+        return None
+    return payload if isinstance(payload, dict) and payload.get("user_id") else None
 
 
 async def exchange_code(code: str) -> dict:

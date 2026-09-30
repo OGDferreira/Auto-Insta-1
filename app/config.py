@@ -32,7 +32,7 @@ class Settings(BaseModel):
 
     @property
     def oauth_redirect_uri(self) -> str:
-        return "https://auto-insta-aeqr.onrender.com/auth/callback"
+        return os.getenv("INSTAGRAM_REDIRECT_URI", f"{self.public_base_url}/auth/callback").rstrip("/")
 
     @property
     def secure_cookies_enabled(self) -> bool:

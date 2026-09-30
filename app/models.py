@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+import secrets
 
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -21,6 +22,7 @@ class User(Base):
     collaborator_rate_per_account: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
     collaborator_daily_target: Mapped[int] = mapped_column(Integer, default=0)
     collaborator_daily_bonus: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    sharkbot_webhook_token: Mapped[str] = mapped_column(String(120), unique=True, index=True, default=lambda: secrets.token_urlsafe(32))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     instagram_accounts: Mapped[list["InstagramAccount"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
@@ -224,6 +226,7 @@ class CollaboratorConnectionBatch(Base):
 class BotEvent(Base):
     __tablename__ = "bot_events"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     account_id: Mapped[int | None] = mapped_column(
         ForeignKey("instagram_accounts.id", ondelete="CASCADE"), nullable=True, index=True
     )
