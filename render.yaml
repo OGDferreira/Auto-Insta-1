@@ -25,9 +25,17 @@ services:
         sync: false
       - key: PUBLIC_BASE_URL
         value: https://auto-insta-aeqr.onrender.com
+      - key: INSTAGRAM_REDIRECT_URI
+        value: https://auto-insta-aeqr.onrender.com/auth/callback
       - key: WEBHOOK_VERIFY_TOKEN
         sync: false
       - key: GRAPH_API_VERSION
         value: v25.0
       - key: COOKIE_SECURE
         value: "true"
+      - key: MAX_UPLOAD_SIZE_MB
+        value: "50"
+      - key: EDITOR_UPLOAD_SIZE_MB
+        value: "50"
+      - key: UPLOAD_DIR
+        value: uploads

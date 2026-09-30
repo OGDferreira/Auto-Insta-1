@@ -70,8 +70,9 @@ from .utils import parse_spintax
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 logger = logging.getLogger(__name__)
-UPLOAD_DIR = Path("uploads")
-MAX_UPLOAD_SIZE = 50 * 1024 * 1024
+UPLOAD_DIR = Path(get_settings().upload_dir)
+MAX_UPLOAD_SIZE = get_settings().max_upload_size_mb * 1024 * 1024
+EDITOR_UPLOAD_SIZE = get_settings().editor_upload_size_mb * 1024 * 1024
 MAX_BATCH_MEDIA = 30
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]{2,80}$")
@@ -801,9 +802,9 @@ async def upload_media(
     filename = f"{uuid4().hex}{extension}"
     upload_content_type = media.content_type or guess_type(filename)[0] or "application/octet-stream"
     try:
-        content = await media.read(MAX_UPLOAD_SIZE + 1)
-        if len(content) > MAX_UPLOAD_SIZE:
-            raise HTTPException(status_code=413, detail="Arquivo excede o limite de 50 MB")
+        content = await media.read(EDITOR_UPLOAD_SIZE + 1)
+        if len(content) > EDITOR_UPLOAD_SIZE:
+            raise HTTPException(status_code=413, detail=f"Arquivo excede o limite de {get_settings().editor_upload_size_mb} MB")
     except HTTPException:
         raise
     finally:
@@ -922,7 +923,7 @@ async def drive_import(
             _, done = downloader.next_chunk()
         content = buffer.getvalue()
         if len(content) > MAX_UPLOAD_SIZE:
-            raise ValueError("Arquivo excede o limite de 50 MB")
+            raise ValueError(f"Arquivo excede o limite de {get_settings().max_upload_size_mb} MB")
         media_type = metadata["mimeType"]
         filename = f"{uuid4().hex}{Path(metadata['name']).suffix.lower()}"
         folder = uuid4().hex
