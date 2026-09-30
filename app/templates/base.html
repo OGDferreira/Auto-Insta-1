@@ -396,12 +396,11 @@ if(installedMobileApp&&"Notification" in window&&Notification.permission==="gran
           const message = notification.category === "collaborator_connections"
             ? notification.body
             : `${notification.title}: ${notification.body}`;
-          window.showToast(message, "info");
-          const readResponse = await fetch(
-            `/api/notifications/inbox/${encodeURIComponent(notification.id)}/read`,
-            {method: "POST", cache: "no-store"},
-          );
-          if (!readResponse.ok) throw new Error("Não foi possível atualizar o estado da notificação.");
+          const seenKey = `auto-insta-notification-${notification.id}`;
+          if (!sessionStorage.getItem(seenKey)) {
+            window.showToast(message, notification.category === "account_error" ? "error" : "info");
+            sessionStorage.setItem(seenKey, "1");
+          }
         }
       } catch (error) {
         console.error("Falha ao atualizar notificações:", error);
@@ -438,7 +437,7 @@ if(installedMobileApp&&"Notification" in window&&Notification.permission==="gran
       } else {
         list.innerHTML = alerts.map(alert => `
           <article class="notification-entry ${escapeHtml(alert.severity)}">
-            <a class="notification-item ${escapeHtml(alert.severity)}" href="${escapeHtml(alert.href)}">
+            <a class="notification-item ${escapeHtml(alert.severity)}" data-notification-id="${escapeHtml(alert.notification_id || "")}" href="${escapeHtml(alert.href)}">
               <img src="/static/media_downloader_icon_512.png" alt="">
               <span><strong>${escapeHtml(alert.title)}${alert.account_id ? ` · @${escapeHtml(alert.username)}` : ` · ${escapeHtml(alert.username)}`}</strong><small>${escapeHtml(alert.reason)}</small></span>
             </a>
@@ -496,6 +495,10 @@ if(installedMobileApp&&"Notification" in window&&Notification.permission==="gran
       if (!panel.hidden) refreshAlerts();
     });
     list.addEventListener("click", async event => {
+      const notificationLink = event.target.closest("[data-notification-id]");
+      if (notificationLink?.dataset.notificationId) {
+        fetch(`/api/notifications/inbox/${encodeURIComponent(notificationLink.dataset.notificationId)}/read`, {method: "POST", cache: "no-store"}).catch(() => {});
+      }
       const button = event.target.closest("[data-alert-action]");
       if (!button) return;
       button.disabled = true;

@@ -73,7 +73,6 @@ logger = logging.getLogger(__name__)
 UPLOAD_DIR = Path(get_settings().upload_dir)
 MAX_UPLOAD_SIZE = get_settings().max_upload_size_mb * 1024 * 1024
 EDITOR_UPLOAD_SIZE = get_settings().editor_upload_size_mb * 1024 * 1024
-MAX_BATCH_MEDIA = 30
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]{2,80}$")
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
@@ -1345,7 +1344,7 @@ async def dashboard(
             "accounts": accounts,
             "account_status_classes": status_classes,
             "connected_count": sum(value == "connected" for value in status_classes.values()),
-            "error_count": sum(value == "error" for value in status_classes.values()),
+            "error_count": sum(value in {"error", "disconnected", "suspended"} for value in status_classes.values()),
             "account_views": account_views,
             "account_publication_stats": _account_publication_stats(
                 posts, [account.id for account in accounts]
@@ -1360,6 +1359,7 @@ async def dashboard(
             "metrics": metrics,
             "app_version": get_settings().app_version,
             "deploy_timestamp": get_settings().deploy_timestamp or "não informado",
+            "sharkbot_webhook_url": f"{get_settings().public_base_url}/webhook/sharkbot/{user.sharkbot_webhook_token}",
             "chart_status": {
                 "published": sum(post.status == "published" for post in period_posts),
                 "scheduled": sum(post.status in {"scheduled", "pending", "aguardando", "processing"} for post in period_posts),
@@ -1586,12 +1586,34 @@ async def delete_selected_accounts(
 ):
     if not account_ids:
         raise HTTPException(status_code=400, detail="Nenhuma conta selecionada")
-    await db.execute(delete(InstagramAccount).where(
-        InstagramAccount.id.in_(set(account_ids)),
-        InstagramAccount.owner_id == workspace_owner_id(user),
-    ))
+    owner_id = workspace_owner_id(user)
+    accounts = (await db.scalars(select(InstagramAccount).where(
+        InstagramAccount.id.in_(set(account_ids)), InstagramAccount.owner_id == owner_id
+    ))).all()
+    for account in accounts:
+        await _detach_account_from_batches(db, account)
+        await db.delete(account)
     await db.commit()
     destination = return_to if return_to in {"/dashboard#accounts", "/hub"} else "/dashboard#accounts"
+    return RedirectResponse(destination, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/accounts/delete-errors")
+async def delete_error_accounts(
+    return_to: str = Form("/hub"),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    accounts = (await db.scalars(select(InstagramAccount).where(
+        InstagramAccount.owner_id == owner_id,
+        InstagramAccount.connection_status.in_(("disconnected", "suspended", "error")),
+    ))).all()
+    for account in accounts:
+        await _detach_account_from_batches(db, account)
+        await db.delete(account)
+    await db.commit()
+    destination = return_to if return_to in {"/dashboard#accounts", "/hub"} else "/hub"
     return RedirectResponse(destination, status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -1673,7 +1695,7 @@ async def hub(request: Request, user: User = Depends(current_user), db: AsyncSes
                 "warning": remaining_seconds <= 7 * 86400,
             }
     connected_count = sum(value == "connected" for value in status_classes.values())
-    error_count = sum(value == "error" for value in status_classes.values())
+    error_count = sum(value in {"error", "disconnected", "suspended"} for value in status_classes.values())
     response = templates.TemplateResponse("hub.html", {"request": request, "user": user, "accounts": accounts, "account_status_classes": status_classes, "account_views": account_views, "account_publication_stats": account_publication_stats, "connected_count": connected_count, "error_count": error_count, "token_expiry_details": token_expiry_details, "collaborator_today": collaborator_today, "notice": request.session.pop("access_notice", None)})
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
@@ -1686,6 +1708,22 @@ async def list_account_alerts(
     db: AsyncSession = Depends(get_db),
 ):
     alerts = await _account_alerts(db, workspace_owner_id(user))
+    notifications = (await db.scalars(select(AppNotification).where(
+        AppNotification.user_id == user.id, AppNotification.read_at.is_(None)
+    ).order_by(AppNotification.created_at.desc(), AppNotification.id.desc()).limit(20))).all()
+    alerts.extend({
+        "id": f"notification-{item.id}",
+        "notification_id": item.id,
+        "account_id": 0,
+        "username": "Sistema",
+        "type": "system",
+        "severity": "error" if item.category == "account_error" else "warning",
+        "title": item.title,
+        "reason": item.body,
+        "href": item.url,
+        "action_url": "",
+        "action_label": "",
+    } for item in notifications)
     return {"alerts": alerts, "count": len(alerts)}
 
 
@@ -3075,6 +3113,7 @@ async def delete_account(
     )
     if not account:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
+    await _detach_account_from_batches(db, account)
     await db.delete(account)
     await db.commit()
     default_destination = "/hub" if user.role == "collaborator" else "/dashboard#accounts"
@@ -3541,11 +3580,6 @@ async def create_bulk_posts(
         raise HTTPException(status_code=400, detail="O intervalo máximo do Loop é de 1440 minutos")
     if not media_urls or len(media_urls) != len(media_types):
         raise HTTPException(status_code=400, detail="Lista de mídias inválida")
-    if len(media_urls) > MAX_BATCH_MEDIA:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cada lote pode conter no máximo {MAX_BATCH_MEDIA} publicações.",
-        )
     if caption_mode not in {"global", "individual"}:
         raise HTTPException(status_code=400, detail="Modo de legenda inválido")
     if caption_mode == "global":
@@ -3843,40 +3877,57 @@ async def update_loop_media(
     ))
     if not batch:
         raise HTTPException(status_code=404, detail="Loop não encontrado")
-    if not media_urls or len(media_urls) != len(media_types) or len(media_urls) > MAX_BATCH_MEDIA:
+    if not media_urls or len(media_urls) != len(media_types):
         raise HTTPException(status_code=400, detail="A playlist do Loop é inválida")
     posts = (await db.scalars(select(ScheduledPost).where(
         ScheduledPost.batch_id == batch.id, ScheduledPost.loop_index.is_not(None)
     ).order_by(ScheduledPost.loop_index, ScheduledPost.id))).all()
-    indices = sorted({post.loop_index for post in posts if post.loop_index is not None})
-    if len(indices) != len(media_urls):
-        raise HTTPException(status_code=400, detail="A alteração deve manter a mesma quantidade de mídias do Loop")
-    pending = []
-    for index, media_url, media_type in zip(indices, media_urls, media_types):
+    if not media_urls:
+        raise HTTPException(status_code=400, detail="Adicione ao menos uma mídia ao Loop")
+    normalized_media = []
+    for index, (media_url, media_type) in enumerate(zip(media_urls, media_types)):
         normalized_type = media_type.upper()
         if normalized_type == "VIDEO":
             normalized_type = "REELS"
         if normalized_type not in {"IMAGE", "REELS"} or not media_url.strip():
             raise HTTPException(status_code=400, detail="Mídia inválida")
-        rows = [post for post in posts if post.loop_index == index]
-        targets = [post for post in rows if post.status in PENDING_STATUSES]
-        if not targets:
-            targets = rows[:1]
-        for post in targets:
-            post.media_url = media_url.strip()
-            post.original_media_url = media_url.strip()
-            post.media_type = normalized_type
-            post.storage_path = storage_paths[index] if index < len(storage_paths) else None
-            post.drive_media_url = drive_media_urls[index] if index < len(drive_media_urls) else None
-            post.drive_account_email = drive_account_emails[index] if index < len(drive_account_emails) else None
-            post.drive_credentials_encrypted = drive_credentials_encrypted[index] if index < len(drive_credentials_encrypted) else None
-            if index < len(captions):
-                post.caption = captions[index][:2200]
-            if post.status in PENDING_STATUSES:
-                pending.append(post)
+        normalized_media.append({
+            "url": media_url.strip(),
+            "type": normalized_type,
+            "storage_path": storage_paths[index] if index < len(storage_paths) else None,
+            "drive_url": drive_media_urls[index] if index < len(drive_media_urls) else None,
+            "drive_email": drive_account_emails[index] if index < len(drive_account_emails) else None,
+            "drive_credentials": drive_credentials_encrypted[index] if index < len(drive_credentials_encrypted) else None,
+            "caption": captions[index][:2200] if index < len(captions) else "",
+        })
+    # Substituição integral: preserva contas e intervalo, remove somente o futuro
+    # e cria a nova playlist com qualquer quantidade de mídias. O histórico publicado fica intacto.
+    for post in posts:
+        if post.status in PENDING_STATUSES:
+            unschedule_post(post.id)
+            await db.delete(post)
+    await db.flush()
+    account_ids = list(dict.fromkeys(json.loads(batch.account_ids or "[]")))
+    accounts = (await db.scalars(select(InstagramAccount).where(
+        InstagramAccount.id.in_(account_ids), InstagramAccount.owner_id == owner_id
+    ))).all() if account_ids else []
+    first_time = datetime.now(timezone.utc) + timedelta(minutes=3)
+    replacements = []
+    for account in accounts:
+        for index, media in enumerate(normalized_media):
+            post = ScheduledPost(
+                owner_id=owner_id, account_id=account.id, batch_id=batch.id,
+                media_url=media["url"], original_media_url=media["url"],
+                storage_path=media["storage_path"], drive_media_url=media["drive_url"],
+                drive_account_email=media["drive_email"],
+                drive_credentials_encrypted=media["drive_credentials"],
+                media_type=media["type"], caption=media["caption"], loop_index=index,
+                scheduled_for=first_time + timedelta(minutes=index * batch.loop_interval_minutes),
+            )
+            db.add(post)
+            replacements.append(post)
     await db.commit()
-    for post in pending:
-        unschedule_post(post.id)
+    for post in replacements:
         if batch.status == "active":
             schedule_post(post.id, post.scheduled_for)
     return RedirectResponse("/dashboard#queue", status_code=status.HTTP_303_SEE_OTHER)

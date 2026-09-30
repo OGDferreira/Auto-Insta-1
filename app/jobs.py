@@ -154,6 +154,14 @@ async def _notify_account_connection_error(
         title = "Conta restrita"
     else:
         title = "Erro na conta"
+    recent = await db.scalar(select(AppNotification.id).where(
+        AppNotification.user_id == account.owner_id,
+        AppNotification.category == "account_error",
+        AppNotification.url == f"/hub#account-{account.id}",
+        AppNotification.read_at.is_(None),
+    ).limit(1))
+    if recent is not None:
+        return
     notification = AppNotification(
         user_id=account.owner_id,
         title=title,
