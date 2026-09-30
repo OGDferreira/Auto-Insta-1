@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -287,7 +288,7 @@ async def init_db() -> None:
             users = await connection.exec_driver_sql('SELECT "id", "sharkbot_webhook_token" FROM "users"')
             for user_id, webhook_token in users:
                 if not webhook_token:
-                    await connection.exec_driver_sql(
-                        'UPDATE "users" SET "sharkbot_webhook_token" = :token WHERE "id" = :id',
+                    await connection.execute(
+                        text('UPDATE "users" SET "sharkbot_webhook_token" = :token WHERE "id" = :id'),
                         {"token": secrets.token_urlsafe(32), "id": user_id},
                     )
