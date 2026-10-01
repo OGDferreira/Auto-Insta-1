@@ -47,6 +47,7 @@ from .models import (
     DirectContact,
     InstagramAccount,
     InstagramMetric,
+    MetaApp,
     PostingBatch,
     ScheduledPost,
     User,
@@ -371,6 +372,37 @@ async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> 
 
 def workspace_owner_id(user: User) -> int:
     return user.parent_id if user.role == "collaborator" and user.parent_id else user.id
+
+
+def _meta_app_public(app: MetaApp) -> dict:
+    return {
+        "id": app.id,
+        "name": app.name,
+        "app_id": app.app_id,
+        "is_active": bool(app.is_active),
+        "is_default": bool(app.is_default),
+        "secret_configured": bool(app.app_secret_encrypted),
+    }
+
+
+async def _selected_meta_app(
+    db: AsyncSession,
+    owner_id: int,
+    requested_id: int | None = None,
+) -> tuple[MetaApp | None, str, str]:
+    query = select(MetaApp).where(MetaApp.owner_id == owner_id, MetaApp.is_active.is_(True))
+    if requested_id is not None:
+        app = await db.scalar(query.where(MetaApp.id == requested_id))
+        if not app:
+            raise HTTPException(status_code=404, detail="Aplicativo Meta não encontrado ou inativo")
+        return app, app.app_id, decrypt_token(app.app_secret_encrypted)
+    app = await db.scalar(query.order_by(MetaApp.is_default.desc(), MetaApp.created_at.asc(), MetaApp.id.asc()))
+    if app:
+        return app, app.app_id, decrypt_token(app.app_secret_encrypted)
+    settings = get_settings()
+    if not settings.meta_app_id.strip():
+        raise HTTPException(status_code=503, detail="Nenhum aplicativo Meta configurado para este usuário")
+    return None, settings.meta_app_id.strip(), settings.meta_app_secret
 
 
 async def admin_user(user: User = Depends(current_user)) -> User:
@@ -1187,6 +1219,91 @@ async def logout(request: Request, user: User = Depends(current_user)):
     return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.get("/api/meta-apps")
+async def list_meta_apps(
+    user: User = Depends(admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    apps = (await db.scalars(
+        select(MetaApp).where(MetaApp.owner_id == owner_id).order_by(MetaApp.is_default.desc(), MetaApp.created_at.asc())
+    )).all()
+    settings = get_settings()
+    return {
+        "legacy": bool(settings.meta_app_id and settings.meta_app_secret),
+        "legacy_app_id": settings.meta_app_id if settings.meta_app_id else None,
+        "apps": [_meta_app_public(app) for app in apps],
+    }
+
+
+@router.post("/meta-apps")
+async def create_meta_app(
+    request: Request,
+    name: str = Form(...),
+    app_id: str = Form(...),
+    app_secret: str = Form(...),
+    user: User = Depends(admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    name = name.strip()[:120]
+    app_id = app_id.strip()[:160]
+    app_secret = app_secret.strip()
+    if not name or not app_id or not app_secret:
+        raise HTTPException(status_code=400, detail="Informe nome, App ID e App Secret")
+    owner_id = workspace_owner_id(user)
+    duplicate = await db.scalar(select(MetaApp).where(MetaApp.owner_id == owner_id, MetaApp.app_id == app_id))
+    if duplicate:
+        raise HTTPException(status_code=409, detail="Este App ID já está cadastrado")
+    existing = (await db.scalars(select(MetaApp).where(MetaApp.owner_id == owner_id))).all()
+    app = MetaApp(
+        owner_id=owner_id,
+        name=name,
+        app_id=app_id,
+        app_secret_encrypted=encrypt_token(app_secret),
+        is_default=not bool(existing),
+    )
+    db.add(app)
+    await db.commit()
+    return RedirectResponse("/dashboard#system", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/meta-apps/{meta_app_id}/default")
+async def set_default_meta_app(
+    meta_app_id: int,
+    user: User = Depends(admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    app = await db.scalar(select(MetaApp).where(MetaApp.id == meta_app_id, MetaApp.owner_id == owner_id, MetaApp.is_active.is_(True)))
+    if not app:
+        raise HTTPException(status_code=404, detail="Aplicativo Meta não encontrado")
+    await db.execute(update(MetaApp).where(MetaApp.owner_id == owner_id).values(is_default=False))
+    app.is_default = True
+    await db.commit()
+    return RedirectResponse("/dashboard#system", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/meta-apps/{meta_app_id}/toggle")
+async def toggle_meta_app(
+    meta_app_id: int,
+    user: User = Depends(admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    owner_id = workspace_owner_id(user)
+    app = await db.scalar(select(MetaApp).where(MetaApp.id == meta_app_id, MetaApp.owner_id == owner_id))
+    if not app:
+        raise HTTPException(status_code=404, detail="Aplicativo Meta não encontrado")
+    if app.is_active:
+        used = await db.scalar(select(func.count(InstagramAccount.id)).where(InstagramAccount.meta_app_id == app.id))
+        if used:
+            raise HTTPException(status_code=409, detail="Este aplicativo possui contas vinculadas; reconecte-as antes de desativar")
+    app.is_active = not app.is_active
+    if not app.is_active:
+        app.is_default = False
+    await db.commit()
+    return RedirectResponse("/dashboard#system", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(
     request: Request,
@@ -1205,6 +1322,9 @@ async def dashboard(
         _dashboard_period_bounds(period_days, start_date=start_date, end_date=end_date)
     )
     owner_id = workspace_owner_id(user)
+    meta_apps = (await db.scalars(
+        select(MetaApp).where(MetaApp.owner_id == owner_id).order_by(MetaApp.is_default.desc(), MetaApp.created_at.asc())
+    )).all()
     await _remove_stale_pending_accounts(db, owner_id)
     accounts = (await db.scalars(
         select(InstagramAccount)
@@ -1375,6 +1495,8 @@ async def dashboard(
             "unbatched_account_groups": unbatched_account_groups,
             "batch_account_ids": batch_account_ids,
             "selected_account_id": account_id,
+            "meta_apps": meta_apps,
+            "legacy_meta_app_id": get_settings().meta_app_id,
             "metrics": metrics,
             "app_version": get_settings().app_version,
             "deploy_timestamp": get_settings().deploy_timestamp or "não informado",
@@ -2932,11 +3054,17 @@ async def delete_feed_items(
 async def instagram_start(
     request: Request,
     reconnect_account_id: int | None = None,
+    meta_app_id: int | None = None,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    owner_id = workspace_owner_id(user) if hasattr(user, "id") else 0
+    selected_meta_app, client_id, client_secret = await _selected_meta_app(db, owner_id, meta_app_id)
     oauth_nonce = new_state()
-    state = new_oauth_state(getattr(user, "id", 0), reconnect_account_id, oauth_nonce)
+    state = new_oauth_state(
+        getattr(user, "id", 0), reconnect_account_id, oauth_nonce,
+        selected_meta_app.id if selected_meta_app else None,
+    )
     request.session["instagram_oauth_state"] = state
     request.session["instagram_oauth_nonce"] = oauth_nonce
     if reconnect_account_id is not None:
@@ -2948,7 +3076,7 @@ async def instagram_start(
         )
         if account:
             request.session["instagram_reconnect_account_id"] = account.id
-    redirect_url = authorization_url(state)
+    redirect_url = authorization_url(state, client_id=client_id)
     logger.info(
         "Instagram OAuth authorization started: user_id=%s reconnect=%s state_length=%s",
         getattr(user, "id", None),
@@ -2994,12 +3122,19 @@ async def instagram_callback(
         raise HTTPException(status_code=400, detail=f"Autorização do Instagram não concluída: {detail}")
     if not code:
         raise HTTPException(status_code=400, detail="Código OAuth ausente")
+    user = await db.get(User, int(request.session["user_id"]))
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    owner_id = workspace_owner_id(user)
+    selected_meta_app, client_id, client_secret = await _selected_meta_app(
+        db, owner_id, signed_state.get("meta_app_id")
+    )
     try:
-        token_data = await exchange_code(code)
+        token_data = await exchange_code(code, client_id=client_id, client_secret=client_secret)
         short_token = token_data["access_token"]
         token_expires_at = token_expiration_from_data(token_data)
         try:
-            long_token_data = await exchange_long_lived_token_data(short_token)
+            long_token_data = await exchange_long_lived_token_data(short_token, client_secret=client_secret)
             access_token = long_token_data["access_token"]
             token_expires_at = token_expiration_from_data(long_token_data)
         except httpx.HTTPStatusError as exc:
@@ -3015,10 +3150,6 @@ async def instagram_callback(
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Falha no OAuth do Instagram: {exc}") from exc
-    user = await db.get(User, int(request.session["user_id"]))
-    if not user:
-        raise HTTPException(status_code=401, detail="Login required")
-    owner_id = workspace_owner_id(user)
     reconnect_account_id = request.session.pop("instagram_reconnect_account_id", None)
     if reconnect_account_id is None:
         reconnect_account_id = signed_state.get("reconnect_account_id")
@@ -3058,6 +3189,7 @@ async def instagram_callback(
         if business_account:
             account.instagram_user_id = business_account["instagram_user_id"]
             account.facebook_page_id = business_account.get("page_id")
+        account.meta_app_id = selected_meta_app.id if selected_meta_app else None
         account.username = profile.get("username", account.username)
         account.profile_picture_url = profile.get("profile_picture_url", account.profile_picture_url)
         account.access_token_encrypted = encrypt_token(access_token)
@@ -3065,6 +3197,7 @@ async def instagram_callback(
     else:
         account = InstagramAccount(
             owner_id=owner_id,
+            meta_app_id=selected_meta_app.id if selected_meta_app else None,
             instagram_user_id=(
                 business_account["instagram_user_id"]
                 if business_account

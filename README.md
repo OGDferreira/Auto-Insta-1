@@ -86,6 +86,17 @@ No Shark Bot, copie a URL individual exibida no painel do Auto-Insta (Dashboard/
 
 Cada usuário possui um token próprio; a rota sem token é rejeitada para impedir que dados sejam compartilhados entre workspaces. O endpoint aceita os payloads `payment_created`, `payment_approved` e `user_joined`, grava os valores em BRL e ignora reentregas idênticas por chave de idempotência.
 
+## Múltiplos aplicativos Meta
+
+O aplicativo mantém `META_APP_ID` e `META_APP_SECRET` como **app principal legado**. As contas já conectadas sem `meta_app_id` continuam usando esse app e não são migradas nem desconectadas.
+
+Administradores podem abrir **Dashboard → Logs & Sistema → Aplicativos Meta** e cadastrar outros aplicativos. O `Meta App Secret` é criptografado com `FERNET_KEY`, não é retornado pela API e não é exibido novamente. Cada conta conectada a partir de um app cadastrado guarda o vínculo com aquele app; novas conexões podem selecionar o app no Hub de contas ou usar o app padrão.
+
+Para cada app cadastrado, configure no Meta Developers o mesmo redirect URI:
+`https://SEU_HOST/auth/callback`.
+
+O erro do Instagram **“Função de desenvolvedor é insuficiente”** ocorre antes do callback quando o usuário não possui uma função permitida no app Meta selecionado. Em modo Development, adicione a pessoa como **Administrator, Developer, Tester** ou **Instagram Tester**, conforme o produto/permissão, aceite o convite e confirme que a conta Instagram atende aos requisitos do produto. Para usuários externos, o app precisa estar em Live e ter as permissões necessárias aprovadas pela Meta; cadastrar outro App ID não remove essa exigência.
+
 ## Deploy no Render
 
 `render.yaml` cria apenas um Web Service Docker no plano gratuito. O SQLite e o APScheduler rodam na própria instância, sem serviços externos. Faça o blueprint apontar para este repositório, preencha os valores `sync: false` e defina `PUBLIC_BASE_URL` com a URL HTTPS do web service. O health check é `/health`.

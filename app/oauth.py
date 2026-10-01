@@ -28,9 +28,17 @@ def token_expiration_from_data(token_data: dict) -> datetime | None:
     )
 
 
-def authorization_url(state: str) -> str:
+def _credentials(client_id: str | None = None, client_secret: str | None = None) -> tuple[str, str]:
     settings = get_settings()
-    client_id = settings.meta_app_id.strip()
+    return (
+        (client_id if client_id is not None else settings.meta_app_id).strip(),
+        client_secret if client_secret is not None else settings.meta_app_secret,
+    )
+
+
+def authorization_url(state: str, client_id: str | None = None) -> str:
+    settings = get_settings()
+    client_id, _ = _credentials(client_id=client_id)
     redirect_uri = settings.oauth_redirect_uri
     scope = ",".join(OAUTH_SCOPES)
     if not client_id:
@@ -54,14 +62,18 @@ def new_oauth_state(
     user_id: int,
     reconnect_account_id: int | None = None,
     nonce: str | None = None,
+    meta_app_id: int | None = None,
 ) -> str:
     """Create a short-lived, signed state bound to the initiating session."""
     serializer = URLSafeTimedSerializer(get_settings().secret_key, salt="instagram-oauth")
-    return serializer.dumps({
+    payload = {
         "user_id": int(user_id),
         "reconnect_account_id": reconnect_account_id,
         "nonce": nonce or new_state(),
-    })
+    }
+    if meta_app_id is not None:
+        payload["meta_app_id"] = int(meta_app_id)
+    return serializer.dumps(payload)
 
 def read_oauth_state(value: str, max_age: int = 900) -> dict | None:
     serializer = URLSafeTimedSerializer(get_settings().secret_key, salt="instagram-oauth")
@@ -72,14 +84,19 @@ def read_oauth_state(value: str, max_age: int = 900) -> dict | None:
     return payload if isinstance(payload, dict) and payload.get("user_id") else None
 
 
-async def exchange_code(code: str) -> dict:
+async def exchange_code(
+    code: str,
+    client_id: str | None = None,
+    client_secret: str | None = None,
+) -> dict:
     settings = get_settings()
+    client_id, client_secret = _credentials(client_id, client_secret)
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.post(
             "https://api.instagram.com/oauth/access_token",
             data={
-                "client_id": settings.meta_app_id,
-                "client_secret": settings.meta_app_secret,
+                "client_id": client_id,
+                "client_secret": client_secret,
                 "grant_type": "authorization_code",
                 "redirect_uri": settings.oauth_redirect_uri,
                 "code": code,
@@ -89,14 +106,18 @@ async def exchange_code(code: str) -> dict:
         return response.json()
 
 
-async def exchange_long_lived_token_data(short_token: str) -> dict:
+async def exchange_long_lived_token_data(
+    short_token: str,
+    client_secret: str | None = None,
+) -> dict:
     settings = get_settings()
+    _, client_secret = _credentials(client_secret=client_secret)
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.get(
             "https://graph.instagram.com/access_token",
             params={
                 "grant_type": "ig_exchange_token",
-                "client_secret": settings.meta_app_secret,
+                "client_secret": client_secret,
                 "access_token": short_token,
             },
         )
@@ -104,8 +125,8 @@ async def exchange_long_lived_token_data(short_token: str) -> dict:
         return response.json()
 
 
-async def exchange_long_lived_token(short_token: str) -> str:
-    token_data = await exchange_long_lived_token_data(short_token)
+async def exchange_long_lived_token(short_token: str, client_secret: str | None = None) -> str:
+    token_data = await exchange_long_lived_token_data(short_token, client_secret=client_secret)
     return token_data["access_token"]
 
 

@@ -27,6 +27,9 @@ class User(Base):
     instagram_accounts: Mapped[list["InstagramAccount"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
     )
+    meta_apps: Mapped[list["MetaApp"]] = relationship(
+        back_populates="owner", cascade="all, delete-orphan"
+    )
     scheduled_posts: Mapped[list["ScheduledPost"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan"
     )
@@ -44,10 +47,31 @@ class User(Base):
     )
 
 
+class MetaApp(Base):
+    __tablename__ = "meta_apps"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "app_id", name="uq_meta_apps_owner_app_id"),
+        Index("ix_meta_apps_owner_active", "owner_id", "is_active"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    app_id: Mapped[str] = mapped_column(String(160))
+    app_secret_encrypted: Mapped[str] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    owner: Mapped[User] = relationship(back_populates="meta_apps")
+
+
 class InstagramAccount(Base):
     __tablename__ = "instagram_accounts"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    meta_app_id: Mapped[int | None] = mapped_column(
+        ForeignKey("meta_apps.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     instagram_user_id: Mapped[str] = mapped_column(String(120), index=True)
     facebook_page_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
     username: Mapped[str] = mapped_column(String(120))
@@ -67,6 +91,7 @@ class InstagramAccount(Base):
     followers_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     owner: Mapped[User] = relationship(back_populates="instagram_accounts")
+    meta_app: Mapped[MetaApp | None] = relationship()
     scheduled_posts: Mapped[list["ScheduledPost"]] = relationship(
         back_populates="account", cascade="all, delete-orphan"
     )

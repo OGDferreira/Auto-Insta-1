@@ -91,6 +91,10 @@ async def init_db() -> None:
             )
             columns = await connection.exec_driver_sql("PRAGMA table_info(instagram_accounts)")
             existing = {row[1] for row in columns}
+            if "meta_app_id" not in existing:
+                await connection.exec_driver_sql(
+                    "ALTER TABLE instagram_accounts ADD COLUMN meta_app_id INTEGER"
+                )
             new_columns = {
                 "profile_picture_url": "TEXT",
                 "facebook_page_id": "TEXT",
@@ -229,6 +233,7 @@ async def init_db() -> None:
                     "created_at": "TIMESTAMP WITH TIME ZONE",
                 },
                 "instagram_accounts": {
+                    "meta_app_id": "INTEGER",
                     "connection_status": "VARCHAR(20) NOT NULL DEFAULT 'connected'",
                     "facebook_page_id": "VARCHAR(120)",
                     "status_reason": "TEXT",
