@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Painel · Auto-Insta{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="/static/css/queue.css">
 <link rel="stylesheet" href="/static/css/feed.css">
 <link rel="stylesheet" href="/static/css/calendar.css">
 <link rel="stylesheet" href="/static/css/analytics.css">
@@ -32,7 +31,6 @@
   .automation-global input { width:auto; margin:0; }
   .select-all-accounts { display:flex; align-items:center; gap:.55rem; margin:.2rem 0 .55rem; color:var(--text); font-size:.8rem; }
   .select-all-accounts input,.queue-select { width:auto; margin:0; }
-  .queue-panel { min-width:0; overflow:hidden; }
   .queue-toolbar { display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin-bottom:.75rem; }
   .queue-toolbar button { width:auto; padding:.5rem .7rem; }
   .queue-toolbar-actions { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; justify-content:flex-end; }
@@ -88,40 +86,6 @@
   .drive-modal-actions { border-top:1px solid var(--line); padding-top:.9rem; }
   .drive-modal-actions button { width:auto; }
   .queue-card-body { position:relative; }
-  .batch-list { display:grid; gap:.65rem; margin-bottom:1rem; }
-  .batch-accordion { border:1px solid var(--line); border-radius:12px; background:linear-gradient(145deg,rgba(91,145,255,.055),rgba(12,14,18,.96)); overflow:hidden; }
-  .batch-accordion[open] { border-color:rgba(26,60,125,.45); }
-  .batch-accordion.paused { border-color:var(--warning); }
-  .batch-summary { display:flex; align-items:center; justify-content:space-between; gap:.8rem; padding:.85rem .9rem; cursor:pointer; list-style:none; }
-  .batch-summary::-webkit-details-marker { display:none; }
-  .batch-summary::before { content:"▸"; color:var(--cyan); margin-right:.5rem; transition:transform .2s ease; }
-  .batch-accordion[open] .batch-summary::before { transform:rotate(90deg); }
-  .batch-summary strong { display:block; }
-  .batch-header-actions { display:flex; align-items:center; justify-content:flex-end; gap:.35rem; flex-wrap:wrap; margin-left:auto; }
-  .batch-header-actions form { display:contents; }
-  .batch-icon-action { width:32px; height:32px; padding:.35rem; flex:none; }
-  .batch-icon-action:hover { transform:translateY(-1px); }
-  .batch-previews-hidden .batch-queue { display:none; }
-  .batch-statuses { display:flex; align-items:center; gap:.35rem; flex-wrap:wrap; margin-top:.35rem; }
-  .batch-status-count { display:inline-flex; align-items:center; gap:.2rem; padding:.2rem .4rem; border:1px solid var(--line); border-radius:999px; font-size:.68rem; line-height:1; background:transparent; cursor:pointer; }
-  .batch-status-count.awaiting { color:var(--warning); border-color:rgba(250,204,21,.35); }
-  .batch-status-count.failed { color:var(--danger); border-color:rgba(244,63,94,.35); }
-  .batch-status-count.completed { color:var(--success); border-color:rgba(34,197,94,.35); }
-  .batch-status-count.processing { color:var(--cyan); border-color:rgba(26,60,125,.35); }
-  .batch-content { padding:0 .9rem .9rem; }
-  .batch-accounts-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:.55rem; margin:.2rem 0 .8rem; }
-  .batch-account-summary { display:flex; flex-direction:column; align-items:flex-start; gap:.3rem; width:100%; padding:.65rem .7rem; text-align:left; background:rgba(91,145,255,.035); border:1px solid var(--line); border-radius:10px; }
-  .batch-account-summary:hover,.batch-account-summary.active { border-color:var(--cyan); background:rgba(26,60,125,.08); transform:none; box-shadow:none; }
-  .batch-account-summary strong { overflow:hidden; text-overflow:ellipsis; max-width:100%; }
-  .batch-account-statuses { display:flex; flex-wrap:wrap; gap:.25rem; }
-  .batch-account-status { color:var(--muted); font-size:.65rem; }
-  .batch-queue { border-top:1px solid var(--line); padding-top:.8rem; }
-  .batch-queue[hidden] { display:none; }
-  .batch-account-filter { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; margin-bottom:.75rem; }
-  .batch-account-filter button { width:auto; padding:.38rem .55rem; font-size:.7rem; }
-  .account-queue[hidden] { display:none; }
-  .batch-preview[hidden], .batch-overflow[hidden] { display:none; }
-  .batch-more { width:auto; margin-top:.75rem; }
   .batch-empty { padding:.75rem 0; }
   .batch-actions { display:flex; align-items:center; gap:.45rem; flex-wrap:wrap; justify-content:flex-end; }
   .batch-actions button,.batch-actions summary { width:auto; padding:.45rem .65rem; font-size:.75rem; }
@@ -133,26 +97,34 @@
   .loop-board-title { display:flex; align-items:center; gap:.55rem; margin:0; font:700 1.15rem "Space Grotesk",sans-serif; }
   .loop-board-title i { color:var(--cyan); }
   .loop-new-button { width:auto; padding:.5rem .8rem; }
-  .loop-tabs { display:flex; gap:.5rem; margin:.35rem 0 .8rem; }
-  .loop-tab { width:auto; padding:.55rem .8rem; color:var(--muted); background:rgba(91,145,255,.04); border:1px solid var(--line); border-radius:10px; box-shadow:none; }
-  .loop-tab:hover,.loop-tab.active { color:var(--text); border-color:var(--cyan); background:rgba(26,60,125,.12); box-shadow:none; transform:none; }
-  .loop-tab[aria-selected="true"] { color:var(--cyan); border-color:var(--cyan); background:rgba(26,60,125,.16); }
-  .loop-view-panel[hidden],.loop-details[hidden],.loop-error-panel[hidden] { display:none!important; }
-  .loop-details { margin:.2rem .9rem .9rem; padding:.85rem; border-top:1px solid var(--line); background:rgba(91,145,255,.025); }
-  .loop-details-heading,.loop-schedule-row,.loop-error-heading { display:flex; align-items:center; justify-content:space-between; gap:.7rem; }
-  .loop-schedule-account { margin-top:.75rem; }
-  .loop-schedule-account h4,.loop-error-group h4 { margin:.2rem 0 .4rem; font-size:.78rem; }
-  .loop-schedule-list,.loop-error-list { display:grid; gap:.35rem; margin:0; padding:0; list-style:none; }
-  .loop-schedule-row,.loop-error-row { padding:.55rem .65rem; border:1px solid var(--line); border-radius:7px; background:rgba(91,145,255,.04); font-size:.74rem; }
-  .loop-schedule-row small,.loop-error-row small,.loop-error-row time { display:block; margin-top:.2rem; color:var(--muted); font-size:.68rem; }
-  .loop-schedule-state { color:var(--cyan); white-space:nowrap; }
-  .loop-error-panel { display:grid; gap:.75rem; }
-  .loop-error-group { padding:.8rem; border:1px solid rgba(244,63,94,.28); border-radius:8px; background:rgba(244,63,94,.035); }
-  .loop-error-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:.7rem; }
-  .loop-error-row form,.loop-details-heading button { width:auto; margin:0; }
-  .loop-error-row button,.loop-details-heading button { padding:.38rem .55rem; font-size:.7rem; }
-  .loop-details-toggle { width:auto; padding:.42rem .6rem; font-size:.7rem; }
+  .loop-view-panel[hidden] { display:none!important; }
   .loop-empty { margin:.5rem 0; }
+  .queue-layout { display:block; max-width:980px; margin:0 auto; }
+  .queue-section-heading { margin-bottom:1rem; }
+  .queue-section-heading .section-note { max-width:680px; margin-top:.35rem; }
+  .loop-board { min-width:0; }
+  .loop-card-main { min-width:0; }
+  .loop-card-actions { flex-wrap:wrap; justify-content:flex-end; }
+  @media (max-width:760px) {
+    .queue-section-heading h2 { font-size:1.35rem; }
+    .loop-board-header { align-items:flex-start; }
+    .loop-new-button { flex:0 0 auto; }
+    .loop-card-summary { gap:.75rem; padding:.8rem; }
+    .loop-card-actions { width:100%; justify-content:flex-start; }
+    .loop-card-actions button, .loop-card-actions form { flex:0 0 auto; }
+    .loop-editor { margin:0 .55rem .65rem; padding:.7rem; }
+    .loop-editor-fields, .loop-account-grid { grid-template-columns:1fr; }
+    .loop-account-grid { max-height:260px; overflow:auto; }
+    #loop-composer { padding:.8rem; }
+    #loop-composer .check-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    #loop-composer .caption-mode { flex-direction:column; }
+  }
+  @media (max-width:420px) {
+    .loop-board-header { flex-direction:column; }
+    .loop-new-button { width:100%; }
+    #loop-composer .check-list { grid-template-columns:1fr; }
+    .loop-card-meta { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.3rem; }
+  }
   .loop-card { margin:.75rem 0; border:1px solid var(--line); border-radius:9px; background:linear-gradient(145deg,rgba(91,145,255,.055),rgba(12,14,18,.96)); }
   .loop-card-summary { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; padding:.9rem 1rem; }
   .loop-card-title { display:flex; align-items:center; gap:.55rem; min-width:0; font-weight:700; }
@@ -172,10 +144,6 @@
   .loop-account-counter.published { color:var(--success); }
   .loop-account-counter.failed { color:var(--danger); }
   .loop-account-counter.queued { color:var(--warning); }
-  .loop-status-legend { display:flex; flex-wrap:wrap; gap:.8rem; margin:.5rem 0; font-size:.7rem; }
-  .loop-status-legend .published { color:var(--success); }
-  .loop-status-legend .failed { color:var(--danger); }
-  .loop-status-legend .queued { color:var(--warning); }
   .loop-card-actions { display:flex; align-items:center; gap:.4rem; }
   .loop-card-actions button,.loop-card-actions form { width:auto; margin:0; }
   .loop-card-actions button { width:32px; height:32px; padding:.35rem; }
@@ -416,17 +384,11 @@
   </section>
 
   <section id="queue" class="workspace-view" data-panel="queue">
-    <div class="section-heading"><div><div class="eyebrow">Publicações</div><h2>Fila de conteúdo</h2></div><span class="section-note">{{ posts|length }} itens</span></div>
+    <div class="section-heading queue-section-heading"><div><div class="eyebrow">Automação recorrente</div><h2>Loops de conteúdo</h2><p class="section-note">Crie um Loop, escolha as contas manualmente e mantenha sua playlist em horários fixos.</p></div></div>
     <section class="loop-board" aria-labelledby="loop-board-title">
       <div class="loop-board-header"><h3 class="loop-board-title" id="loop-board-title"><i data-lucide="infinity"></i> Loops</h3><button class="loop-new-button" type="button" data-loop-create><i data-lucide="plus"></i> Novo loop</button></div>
       {% set loop_groups = queue_groups|selectattr("batch.is_loop")|list %}
-      {% set loop_errors = namespace(posts=[]) %}
-      {% for loop_group in loop_groups %}
-        {% set loop_errors.posts = loop_errors.posts + (loop_group.posts|selectattr("status", "in", ["failed", "blocked"])|list) %}
-      {% endfor %}
-      <div class="loop-tabs" role="tablist" aria-label="Visualização de loops"><button class="loop-tab active" id="loop-tab-active" type="button" role="tab" data-loop-view="active" aria-controls="loop-panel-active" aria-selected="true">Loops ({{ loop_groups|length }})</button><button class="loop-tab" id="loop-tab-errors" type="button" role="tab" data-loop-view="errors" aria-controls="loop-panel-errors" aria-selected="false">Erros de Publicação ({{ loop_errors.posts|length }})</button></div>
-      <div class="loop-view-panel" id="loop-panel-active" role="tabpanel" aria-labelledby="loop-tab-active" data-loop-panel="active">
-      <p class="loop-status-legend"><span class="published">● Publicados</span><span class="failed">● Falhas</span><span class="queued">● Na fila ou processando</span></p>
+<div class="loop-view-panel" id="loop-panel-active" role="tabpanel" aria-label="Loops criados" data-loop-panel="active">
       {% if loop_groups %}
         {% for group in loop_groups %}
         {% set batch = group.batch %}
@@ -443,7 +405,6 @@
               <p class="loop-totals"><strong>{{ published_count }} publicados</strong> · {{ pending_count }} na fila · {{ processing_count }} processando · {{ loop_error_count }} com erro</p>
             </div>
             <div class="loop-card-actions">
-              <button type="button" class="secondary loop-details-toggle" data-loop-details-toggle="{{ batch.id }}" aria-label="Ver publicações e horários" title="Ver publicações e horários" aria-expanded="false" aria-controls="loop-details-{{ batch.id }}"><i data-lucide="eye"></i></button>
               <button type="button" class="secondary" data-loop-edit="{{ batch.id }}" title="Editar Loop" aria-label="Editar Loop {{ batch.name }}"><i data-lucide="pencil"></i></button>
               {% if batch.status == "paused" %}<form method="post" action="/batches/{{ batch.id }}/resume"><button type="submit" class="secondary" title="Retomar Loop" aria-label="Retomar Loop"><i data-lucide="play"></i></button></form>{% else %}<form method="post" action="/batches/{{ batch.id }}/pause"><button type="submit" class="secondary" title="Pausar Loop" aria-label="Pausar Loop"><i data-lucide="pause"></i></button></form>{% endif %}
               <form method="post" action="/batches/{{ batch.id }}/delete" data-delete-batch><button type="submit" class="secondary" title="Excluir Loop" aria-label="Excluir Loop"><i data-lucide="trash-2"></i></button></form>
@@ -460,28 +421,10 @@
             <form class="loop-media-editor" data-loop-media-editor="{{ batch.id }}" method="post" action="/batches/{{ batch.id }}/media" enctype="multipart/form-data" hidden><input type="file" data-loop-media-files multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"><small class="muted">Escolha uma nova playlist com qualquer quantidade de mídias. As contas e o intervalo do Loop serão preservados.</small><div data-loop-media-items class="thumb-list"></div><button type="submit" class="secondary">Salvar novas mídias</button></form>
             <button type="button" class="secondary loop-media-edit-button" data-loop-media-edit="{{ batch.id }}"><i data-lucide="images"></i> Substituir mídias</button>
                       </div>
-          <div class="loop-details" id="loop-details-{{ batch.id }}" data-loop-details="{{ batch.id }}" hidden>
-            <div class="loop-details-heading"><strong>Publicações e horários programados</strong><span class="muted">{{ batch.loop_interval_minutes }} min entre mídias</span></div>
-            {% set scheduled_loop_posts = batch_posts|selectattr("status", "in", ["scheduled", "pending", "aguardando", "processing"])|sort(attribute="scheduled_for")|list %}
-            {% if scheduled_loop_posts %}
-              {% for account_group in group.account_groups if account_group.account.id in batch_account_ids[batch.id] %}
-                {% set account_scheduled_posts = account_group.posts|selectattr("status", "in", ["scheduled", "pending", "aguardando", "processing"])|sort(attribute="scheduled_for")|list %}
-                {% if account_scheduled_posts %}<section class="loop-schedule-account"><h4>@{{ account_group.account.username }} · conta #{{ account_group.account.id }}</h4><ol class="loop-schedule-list">{% for post in account_scheduled_posts %}<li class="loop-schedule-row"><div><strong>Mídia {{ post.loop_index + 1 }} · {{ "Vídeo" if post.media_type == "REELS" else "Imagem" }}</strong><small>{{ local_scheduled_datetime(post.scheduled_for) }}</small></div><span class="loop-schedule-state">{{ "Processando" if post.status == "processing" else "Agendada" }}</span></li>{% endfor %}</ol></section>{% endif %}
-              {% endfor %}
-            {% else %}<p class="muted loop-empty">Sem publicações na fila no momento. A próxima mídia será agendada após a conclusão do ciclo atual.</p>{% endif %}
-          </div>
         </article>
         {% endfor %}
       {% else %}<p class="muted loop-empty">Nenhum Loop criado.</p>{% endif %}
       </div>
-      <section class="loop-view-panel loop-error-panel" id="loop-panel-errors" role="tabpanel" aria-labelledby="loop-tab-errors" data-loop-panel="errors" hidden aria-label="Erros de Publicação">
-        {% if loop_errors.posts %}
-          {% for group in loop_groups %}
-            {% set group_loop_errors = group.posts|selectattr("status", "in", ["failed", "blocked"])|list %}
-            {% if group_loop_errors %}<article class="loop-error-group"><div class="loop-error-heading"><h4>{{ group.batch.name }}</h4><span class="batch-status-count failed">{{ group_loop_errors|length }} falha(s)</span></div><ul class="loop-error-list">{% for post in group_loop_errors %}<li class="loop-error-row"><div><strong>@{{ post.account.username }} · conta #{{ post.account_id }}</strong><small>Mídia {{ (post.loop_index + 1) if post.loop_index is not none else "-" }} · {{ post.media_type }} · {{ post.status }}</small><small>{{ post.error_message or "Falha sem detalhe retornado." }}</small><time>{% if post.error_at %}{{ local_scheduled_datetime(post.error_at) }}{% else %}Horário não registrado para falha anterior{% endif %}</time></div><form method="post" action="/posts/{{ post.id }}/retry"><button class="secondary" type="submit" title="Tentar publicar novamente"><i data-lucide="rotate-cw"></i> Tentar novamente</button></form></li>{% endfor %}</ul></article>{% endif %}
-          {% endfor %}
-        {% else %}<p class="muted loop-empty">Nenhum erro de publicação nos loops.</p>{% endif %}
-      </section>
     </section>
     <div class="queue-layout">
       <div class="panel composer" id="loop-composer" hidden>
@@ -494,12 +437,12 @@
           <div class="check-list">
             {% for account in accounts %}<label class="account-check"><input class="account-selector" type="checkbox" name="account_ids" value="{{ account.id }}" checked><span class="mini-avatar">{% if account.profile_picture_url %}<img src="{{ account.profile_picture_url }}" alt="">{% else %}{{ account.username[:1]|upper }}{% endif %}</span><b title="@{{ account.username }}">@{{ account.username }}</b></label>{% endfor %}
           </div>
-          <label>Nome do lote<input name="batch_name" maxlength="160" placeholder="Ex.: Campanha de setembro"></label>
+          <label>Nome do Loop<input name="batch_name" maxlength="160" placeholder="Ex.: Conteúdo diário"></label>
           <input id="loop-enabled" name="is_loop" type="checkbox" value="true" checked hidden>
           <label class="dropzone" for="bulk-files"><span id="bulk-label"><b>Adicionar mídias à playlist</b><br><small>Imagens e vídeos · ordem fixa do Loop</small></span><input id="bulk-files" type="file" multiple accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></label>
           <button type="button" class="secondary" id="drive-import"><i data-lucide="hard-drive"></i> Importar do Drive</button>
           <div id="media-items" class="thumb-list"></div>
-          <p class="muted media-limit-note">Limite de 30 publicações por lote.</p>
+
           <div class="caption-mode" role="radiogroup" aria-label="Modo de legenda">
             <label><input type="radio" name="caption_mode" value="global" checked> Legenda única</label>
             <label><input type="radio" name="caption_mode" value="individual"> Uma por mídia</label>
@@ -509,86 +452,10 @@
           <label>Intervalo entre publicações<input id="interval" name="interval_minutes" type="number" min="1" value="1" required><small class="field-hint">Aplicado entre as mídias de cada conta</small></label>
           <label id="schedule-field">Primeiro horário<input id="bulk-time" name="scheduled_for_local" type="datetime-local" required><small id="schedule-hint" class="field-hint"></small></label>
           <p id="schedule-note" class="form-note">O horário usa o fuso local do seu navegador.</p>
-          <button id="bulk-submit" type="submit">Adicionar à fila <span>→</span></button>
+          <button id="bulk-submit" type="submit">Criar Loop <span>→</span></button>
         </form>
         {% else %}<p>Conecte uma conta antes de agendar.</p>{% endif %}
       </div>
-      <div class="panel queue-panel">
-        <div class="queue-toolbar"><div><div class="eyebrow">Fila detalhada</div><h3>Publicações programadas</h3></div><div class="queue-toolbar-actions"><input id="privacy-toggle" type="checkbox" hidden><button class="secondary privacy-button" type="button" id="privacy-button" title="Ativar modo privacidade" aria-label="Ativar modo privacidade"><i data-lucide="eye"></i></button><button class="secondary privacy-button" type="button" id="queue-sort" title="Alternar ordenação" aria-label="Alternar ordenação"><i data-lucide="arrow-down-up"></i></button><button class="secondary privacy-button" type="button" id="select-all-posts" title="Selecionar todas" aria-label="Selecionar todas"><i data-lucide="list-check"></i></button><form id="publish-selected-form" method="post" action="/posts/publish-selected"><button type="submit" title="Publicar selecionadas"><i data-lucide="send"></i> Publicar selecionadas</button></form><form id="delete-selected-form" method="post" action="/posts/delete-selected"><button type="submit" class="secondary" title="Excluir selecionadas" hidden><i data-lucide="trash-2"></i> Excluir selecionadas</button></form><form id="retry-blocked-form" method="post" action="/posts/retry-blocked">{% if selected_account_id %}<input type="hidden" name="account_id" value="{{ selected_account_id }}">{% endif %}<button type="submit" class="secondary" title="Tentar novamente as publicações bloqueadas"><i data-lucide="rotate-cw"></i> Tentar bloqueadas</button></form><form id="retry-failed-form" method="post" action="/posts/retry-failed">{% if selected_account_id %}<input type="hidden" name="account_id" value="{{ selected_account_id }}">{% endif %}<button type="submit" class="secondary" title="Tentar novamente as publicações com falha"><i data-lucide="rotate-cw"></i> Tentar falhas</button></form><form id="delete-all-form" method="post" action="/posts/delete-all">{% if selected_account_id %}<input type="hidden" name="account_id" value="{{ selected_account_id }}">{% endif %}<button type="submit" class="secondary" title="Excluir todas as publicações desta visualização"><i data-lucide="trash"></i> Excluir todas</button></form><form method="post" action="/posts/clear-failed"><button type="submit" class="secondary" title="Limpar todas as falhas"><i data-lucide="eraser"></i> Limpar falhas</button></form></div></div>
-        <div class="publication-filter"><label for="publication-account-filter">Exibir publicações de</label><select id="publication-account-filter"><option value="" {% if not selected_account_id %}selected{% endif %}>Todas as contas conectadas</option>{% for account in accounts %}<option value="{{ account.id }}" {% if selected_account_id == account.id %}selected{% endif %}>@{{ account.username }}</option>{% endfor %}</select></div>
-        {% macro post_card(post) %}
-          <article class="queue-card" data-post-id="{{ post.id }}" data-account-id="{{ post.account_id }}" data-status="{{ post.status }}" data-scheduled="{{ post.scheduled_for.isoformat() }}">
-            <form method="post" action="/posts/{{ post.id }}/delete"><input type="hidden" name="return_to" value="/dashboard#queue"><button class="queue-delete" type="submit" aria-label="Excluir publicação" title="Excluir publicação"><i data-lucide="trash-2"></i></button></form>
-            <div class="queue-media"><input class="queue-select" type="checkbox" value="{{ post.id }}" aria-label="Selecionar publicação {{ post.id }}"><div class="queue-media-content">{% if post.media_type == "REELS" %}<video src="{{ post.media_url }}" controls preload="metadata"></video>{% else %}<img src="{{ post.media_url }}" alt="Pré-visualização da publicação">{% endif %}</div></div>
-            <div class="queue-card-body">
-              <div class="queue-card-head"><div class="queue-account">{% if post.account.profile_picture_url %}<img src="{{ post.account.profile_picture_url }}" alt="">{% else %}<span class="queue-account-initial">{{ post.account.username[:1]|upper }}</span>{% endif %}<span>@{{ post.account.username }}</span></div></div>
-              <div class="queue-meta"><time class="scheduled-time">{{ local_scheduled_datetime(post.scheduled_for) }}</time><span class="status-badge {{ post.status }}" data-post-status title="{{ post.error_message or '' }}">{{ post.status }}</span></div>
-              {% if post.error_message %}<button class="queue-error" type="button" title="{{ post.error_message }}" aria-label="Detalhes do erro desta publicação">!</button>{% endif %}
-              {% if post.status in ["failed", "blocked"] %}<form method="post" action="/posts/{{ post.id }}/retry"><button type="submit" class="secondary retry-post" title="Tentar publicar novamente"><i data-lucide="rotate-cw"></i> Tentar novamente</button></form>{% endif %}
-            </div>
-          </article>
-        {% endmacro %}
-        {% if posts %}
-        <div class="batch-list" aria-label="Lotes de postagem">
-          {% for group in queue_groups if not group.batch.is_loop %}
-          {% set batch = group.batch %}
-          {% set batch_posts = group.posts %}
-          {% set batch_account = batch_posts[0].account %}
-          {% set awaiting_count = (batch_posts|selectattr("status", "equalto", "scheduled")|list|length) + (batch_posts|selectattr("status", "equalto", "aguardando")|list|length) + (batch_posts|selectattr("status", "equalto", "pending")|list|length) %}
-          {% set failed_count = (batch_posts|selectattr("status", "equalto", "failed")|list|length) + (batch_posts|selectattr("status", "equalto", "blocked")|list|length) %}
-          {% set completed_count = batch_posts|selectattr("status", "equalto", "published")|list|length %}
-          {% set processing_count = batch_posts|selectattr("status", "equalto", "processing")|list|length %}
-          <details class="batch-accordion {{ batch.status }}" data-batch-id="{{ batch.id }}">
-            <summary class="batch-summary"><div><strong>Lote · @{{ batch_account.username }}</strong><small class="muted">{{ batch.name }} · {% if batch.is_loop %}Loop contínuo · intervalo {{ batch.loop_interval_minutes }} min · {% endif %}{{ batch_posts|length }} publicações · {% if batch.status == "paused" %}pausado{% else %}{{ batch.status == "active" and "ativo" or batch.status }}{% endif %}</small><span class="batch-statuses" aria-label="Resumo de status do lote"><button type="button" class="batch-status-count awaiting" data-batch-status-filter="pending">Aguardando: {{ awaiting_count }}</button><button type="button" class="batch-status-count failed" data-batch-status-filter="failed">Falha: {{ failed_count }}</button><button type="button" class="batch-status-count completed" data-batch-status-filter="published">Concluído: {{ completed_count }}</button><button type="button" class="batch-status-count processing" data-batch-status-filter="processing">Processando: {{ processing_count }}</button></span></div><div class="batch-header-actions" data-batch-actions><button type="button" class="secondary batch-icon-action" data-retry-batch="{{ batch.id }}" title="Reenviar falhas" aria-label="Reenviar falhas deste lote"><i data-lucide="refresh-cw"></i></button><button type="button" class="secondary batch-icon-action" data-edit-batch-config="{{ batch.id }}" data-batch-name="{{ batch.name }}" title="Editar configuração do lote" aria-label="Editar configuração do lote"><i data-lucide="settings-2"></i></button><button type="button" class="secondary batch-icon-action" data-toggle-batch-previews="{{ batch.id }}" title="Ocultar pré-visualizações" aria-label="Ocultar pré-visualizações"><i data-lucide="eye-off"></i></button>{% if batch.status == "paused" %}<form method="post" action="/batches/{{ batch.id }}/resume"><button type="submit" class="secondary batch-icon-action" title="Retomar lote" aria-label="Retomar lote"><i data-lucide="play"></i></button></form>{% else %}<form method="post" action="/batches/{{ batch.id }}/pause"><button type="submit" class="secondary batch-icon-action" title="Pausar lote" aria-label="Pausar lote"><i data-lucide="pause"></i></button></form>{% endif %}<form method="post" action="/batches/{{ batch.id }}/delete" data-delete-batch><button type="submit" class="secondary batch-icon-action" title="Excluir lote" aria-label="Excluir lote"><i data-lucide="trash-2"></i></button></form></div></summary>
-            <div class="batch-content">
-              <div class="batch-actions"><details><summary class="button secondary">Contas</summary><form method="post" action="/batches/{{ batch.id }}/accounts" class="batch-accounts">{% for account in accounts %}<label><input type="checkbox" name="account_ids" value="{{ account.id }}" {% if account.id in batch_account_ids[batch.id] %}checked{% endif %}> @{{ account.username }}</label>{% endfor %}<button type="submit">Salvar contas</button></form></details></div>
-              <div class="batch-accounts-summary" aria-label="Contas que receberão este lote">
-                {% for account_group in group.account_groups %}
-                {% set account_posts = account_group.posts %}
-                {% set account_awaiting = (account_posts|selectattr("status", "equalto", "scheduled")|list|length) + (account_posts|selectattr("status", "equalto", "aguardando")|list|length) + (account_posts|selectattr("status", "equalto", "pending")|list|length) %}
-                {% set account_failed = (account_posts|selectattr("status", "equalto", "failed")|list|length) + (account_posts|selectattr("status", "equalto", "blocked")|list|length) %}
-                {% set account_completed = account_posts|selectattr("status", "equalto", "published")|list|length %}
-                {% set account_processing = account_posts|selectattr("status", "equalto", "processing")|list|length %}
-                <button type="button" class="batch-account-summary" data-account-summary="{{ batch.id }}-{{ account_group.account.id }}" aria-label="Filtrar publicações de @{{ account_group.account.username }}">
-                  <strong>@{{ account_group.account.username }}</strong>
-                  <span class="batch-account-statuses"><span class="batch-account-status">Aguardando {{ account_awaiting }}</span><span class="batch-account-status">Falha {{ account_failed }}</span><span class="batch-account-status">Concluído {{ account_completed }}</span><span class="batch-account-status">Processando {{ account_processing }}</span></span>
-                </button>
-                <form method="post" action="/batches/{{ batch.id }}/accounts/{{ account_group.account.id }}/delete" data-batch-account-delete><button type="submit" class="secondary batch-icon-action" title="Remover conta deste lote" aria-label="Remover @{{ account_group.account.username }} deste lote"><i data-lucide="user-round-minus"></i></button></form>
-                {% endfor %}
-              </div>
-              <button type="button" class="secondary batch-more" data-show-batch>Mostrar fila deste lote</button>
-              <div class="batch-queue" data-batch-queue="{{ batch.id }}" hidden>
-                <div class="batch-account-filter"><span class="muted">Filtrar por conta:</span><button type="button" class="secondary active" data-account-filter="all">Todas</button>{% for account_group in group.account_groups %}<button type="button" class="secondary" data-account-filter="{{ batch.id }}-{{ account_group.account.id }}">@{{ account_group.account.username }}</button>{% endfor %}</div>
-                {% for account_group in group.account_groups %}
-                <div class="account-queue" data-account-queue="{{ batch.id }}-{{ account_group.account.id }}">
-                  <div class="queue-grid batch-preview">{% for post in account_group.posts[:8] %}{{ post_card(post) }}{% endfor %}</div>
-                  {% if account_group.posts|length > 8 %}
-                  <div class="queue-grid batch-overflow" hidden>
-                    {% for post in account_group.posts[8:] %}{{ post_card(post) }}{% endfor %}
-                  </div>
-                  <button type="button" class="secondary batch-more" data-show-batch>Mostrar fila completa</button>
-                  {% endif %}
-                </div>
-                {% endfor %}
-              </div>
-            </div>
-          </details>
-          {% endfor %}
-          {% if unbatched_posts %}
-          {% set awaiting_count = (unbatched_posts|selectattr("status", "equalto", "scheduled")|list|length) + (unbatched_posts|selectattr("status", "equalto", "aguardando")|list|length) + (unbatched_posts|selectattr("status", "equalto", "pending")|list|length) %}
-          {% set failed_count = (unbatched_posts|selectattr("status", "equalto", "failed")|list|length) + (unbatched_posts|selectattr("status", "equalto", "blocked")|list|length) %}
-          {% set completed_count = unbatched_posts|selectattr("status", "equalto", "published")|list|length %}
-          {% set processing_count = unbatched_posts|selectattr("status", "equalto", "processing")|list|length %}
-          <details class="batch-accordion" data-batch-id="unbatched">
-            <summary class="batch-summary"><div><strong>Sem lote</strong><small class="muted">{{ unbatched_posts|length }} publicações avulsas</small><span class="batch-statuses" aria-label="Resumo de status das publicações avulsas"><span class="batch-status-count awaiting">Aguardando: {{ awaiting_count }}</span><span class="batch-status-count failed">Falha: {{ failed_count }}</span><span class="batch-status-count completed">Concluído: {{ completed_count }}</span><span class="batch-status-count processing">Processando: {{ processing_count }}</span></span></div></summary>
-            <div class="batch-content">
-              <div class="queue-grid batch-preview">{% for post in unbatched_posts[:8] %}{{ post_card(post) }}{% endfor %}</div>
-              {% if unbatched_posts|length > 8 %}<div class="queue-grid batch-overflow" hidden>{% for post in unbatched_posts[8:] %}{{ post_card(post) }}{% endfor %}</div><button type="button" class="secondary batch-more" data-show-batch>Mostrar fila completa</button>{% endif %}
-            </div>
-          </details>
-          {% endif %}
-        </div>
-        {% else %}<div class="empty-state"><span>◎</span><h3>Fila vazia</h3><p>Envie uma mídia para começar.</p></div>{% endif %}
       </div>
     </div>
   </section>
@@ -717,19 +584,6 @@
     </div>
   </section>
 </main>
-<div id="batch-interval-modal" class="retry-modal" hidden>
-  <div class="retry-dialog" role="dialog" aria-modal="true" aria-labelledby="batch-interval-title">
-    <div class="panel-header"><h3 id="batch-interval-title">Editar configuração do lote</h3><button type="button" class="secondary drive-close" id="batch-interval-close" aria-label="Fechar modal" title="Fechar"><i data-lucide="x"></i></button></div>
-    <p class="muted">Altere o nome, o primeiro horário e o espaçamento das publicações pendentes.</p>
-    <form id="batch-interval-form">
-      <input id="batch-interval-id" type="hidden">
-      <label>Nome do lote<input id="batch-name-value" type="text" maxlength="160" required></label>
-      <label>Intervalo em minutos<input id="batch-interval-value" type="number" min="1" max="1440" value="1" required></label>
-      <label>Primeiro horário<input id="batch-start-value" type="datetime-local"></label>
-      <div class="retry-actions"><button type="button" class="secondary" id="batch-interval-cancel">Cancelar</button><button type="submit">Recalcular fila</button></div>
-    </form>
-  </div>
-</div>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
@@ -870,49 +724,9 @@ let dashboardAnchor=-1,dashboardDragging=false,dashboardDidDrag=false,dashboardS
 function syncDashboardAccounts(){const selected=dashboardAccountRows.filter(row=>row.classList.contains("selected"));if(dashboardRemoveButton)dashboardRemoveButton.hidden=!selected.length;if(dashboardRemoveForm){dashboardRemoveForm.querySelectorAll(".generated-account-id").forEach(input=>input.remove());selected.forEach(row=>{const input=document.createElement("input");input.type="hidden";input.name="account_ids";input.value=row.dataset.accountId;input.className="generated-account-id";dashboardRemoveForm.appendChild(input)})}}
 function updateDashboardAccountList(){const visible=dashboardAccountRows.filter(row=>activeDashboardAccountTab==="all"||row.dataset.accountCategory===activeDashboardAccountTab);dashboardAccountRows.forEach(row=>{row.hidden=!visible.includes(row)});dashboardAccountTabs.forEach(tab=>tab.setAttribute("aria-pressed",String(tab.dataset.dashboardAccountTab===activeDashboardAccountTab)));if(dashboardAccountNoResults)dashboardAccountNoResults.hidden=visible.length>0}
 function toggleDashboardAccount(row,range=false){const index=dashboardAccountRows.indexOf(row);if(range&&dashboardAnchor>=0){const [start,end]=[dashboardAnchor,index].sort((a,b)=>a-b);dashboardAccountRows.forEach((item,i)=>item.classList.toggle("selected",i>=start&&i<=end))}else row.classList.toggle("selected");dashboardAnchor=index;syncDashboardAccounts()}
-dashboardAccountRows.forEach(row=>{row.addEventListener("mousedown",event=>{if(event.target.closest("form,button"))return;dashboardDragging=true;dashboardDidDrag=false;toggleDashboardAccount(row,event.shiftKey)});row.addEventListener("mouseenter",()=>{if(dashboardDragging){dashboardDidDrag=true;row.classList.add("selected");syncDashboardAccounts()}});row.addEventListener("click",event=>{if(event.target.closest("form,button")||event.ctrlKey||event.metaKey)return;if(!dashboardDidDrag&&!event.shiftKey){const accountId=row.dataset.accountId;if(publicationFilter){publicationFilter.value=accountId;applyPublicationFilter(accountId);savedFilters.publicationAccount=accountId;localStorage.setItem(savedFiltersKey,JSON.stringify(savedFilters));const url=new URL(window.location.href);url.searchParams.set("account_id",accountId);url.hash="queue";history.replaceState(null,"",url.toString());selectDashboardView("queue")}}})});document.addEventListener("mouseup",()=>{dashboardDragging=false;dashboardDidDrag=false});dashboardAccountTabs.forEach(tab=>tab.addEventListener("click",()=>{activeDashboardAccountTab=tab.dataset.dashboardAccountTab;updateDashboardAccountList()}));updateDashboardAccountList();syncDashboardAccounts();
+dashboardAccountRows.forEach(row=>{row.addEventListener("mousedown",event=>{if(event.target.closest("form,button"))return;dashboardDragging=true;dashboardDidDrag=false;toggleDashboardAccount(row,event.shiftKey)});row.addEventListener("mouseenter",()=>{if(dashboardDragging){dashboardDidDrag=true;row.classList.add("selected");syncDashboardAccounts()}});row.addEventListener("click",event=>{if(event.target.closest("form,button")||event.ctrlKey||event.metaKey)return;});document.addEventListener("mouseup",()=>{dashboardDragging=false;dashboardDidDrag=false});dashboardAccountTabs.forEach(tab=>tab.addEventListener("click",()=>{activeDashboardAccountTab=tab.dataset.dashboardAccountTab;updateDashboardAccountList()}));updateDashboardAccountList();syncDashboardAccounts();
 const selectAll=document.getElementById("select-all-accounts"),accountSelectors=[...document.querySelectorAll(".account-selector")];
 if(selectAll){selectAll.addEventListener("change",()=>accountSelectors.forEach(input=>{input.checked=selectAll.checked}));accountSelectors.forEach(input=>input.addEventListener("change",()=>{selectAll.checked=accountSelectors.every(item=>item.checked);selectAll.indeterminate=accountSelectors.some(item=>item.checked)&&!selectAll.checked}));let accountAnchor=-1,accountDragging=false;accountSelectors.forEach((input,index)=>{const label=input.closest(".account-check");label?.classList.add("selectable-card");label?.addEventListener("pointerdown",event=>{if(event.button!==0)return;event.preventDefault();if(event.shiftKey&&accountAnchor>=0){const [start,end]=[accountAnchor,index].sort((a,b)=>a-b);accountSelectors.forEach((item,itemIndex)=>{item.checked=itemIndex>=start&&itemIndex<=end})}else if(event.ctrlKey||event.metaKey){input.checked=!input.checked;accountAnchor=index}else{accountSelectors.forEach(item=>{item.checked=false});input.checked=true;accountAnchor=index}accountDragging=true;input.dispatchEvent(new Event("change",{bubbles:true}))});label?.addEventListener("pointerenter",event=>{if(accountDragging&&event.buttons===1){input.checked=true;input.dispatchEvent(new Event("change",{bubbles:true}))}})});document.addEventListener("pointerup",()=>{accountDragging=false})}
-const queueCards=[...document.querySelectorAll(".queue-card")],queueSelects=[...document.querySelectorAll(".queue-select")],selectAllPosts=document.getElementById("select-all-posts"),privacyToggle=document.getElementById("privacy-toggle");
-const publicationFilter=document.getElementById("publication-account-filter"),savedFiltersKey="auto-insta-dashboard-filters";
-let savedFilters={};try{savedFilters=JSON.parse(localStorage.getItem(savedFiltersKey)||"{}")}catch(error){savedFilters={}}
-document.querySelectorAll("[data-show-batch]").forEach(button=>button.addEventListener("click",()=>{
-  const queue=button.closest(".batch-queue");
-  if(queue){const overflow=button.parentElement.querySelector(".batch-overflow");if(!overflow)return;overflow.hidden=false;button.remove();return}
-  const batchContent=button.closest(".batch-content"),batchQueue=batchContent?.querySelector("[data-batch-queue]");
-  if(!batchQueue)return;
-  batchQueue.hidden=false;
-  button.remove();
-}));
-document.querySelectorAll("[data-account-filter]").forEach(button=>button.addEventListener("click",()=>{
-  const queue=button.closest(".batch-queue"), filter=button.dataset.accountFilter;
-  if(!queue)return;
-  queue.querySelectorAll("[data-account-filter]").forEach(item=>item.classList.toggle("active",item===button));
-  queue.querySelectorAll("[data-account-queue]").forEach(group=>{group.hidden=filter!=="all"&&group.dataset.accountQueue!==filter});
-  queue.closest(".batch-content")?.querySelectorAll("[data-account-summary]").forEach(item=>item.classList.toggle("active",item.dataset.accountSummary===filter));
-}));
-document.querySelectorAll("[data-account-summary]").forEach(button=>button.addEventListener("click",()=>{
-  const batchContent=button.closest(".batch-content"), queue=batchContent?.querySelector(".batch-queue"), filter=button.dataset.accountSummary;
-  if(!queue)return;
-  queue.hidden=false;
-  const filterButton=queue.querySelector(`[data-account-filter="${filter}"]`);
-  if(filterButton)filterButton.click();
-  const revealButton=batchContent.querySelector(":scope > [data-show-batch]");
-  if(revealButton)revealButton.remove();
-}));
-function syncQueueAccountActions(value){["delete-all-form","retry-blocked-form","retry-failed-form"].forEach(formId=>{const form=document.getElementById(formId);if(!form)return;let input=form.querySelector('input[name="account_id"]');if(value){if(!input){input=document.createElement("input");input.type="hidden";input.name="account_id";form.appendChild(input)}input.value=value}else if(input){input.remove()}})}
-function applyPublicationFilter(value){queueCards.forEach(card=>{card.hidden=Boolean(value&&card.dataset.accountId!==value)});syncQueueAccountActions(value);const visibleCount=queueCards.filter(card=>!card.hidden).length;const note=document.querySelector(".queue-panel .section-note");if(note)note.textContent=`${visibleCount} itens`}
-publicationFilter?.addEventListener("change",event=>{const value=event.target.value;applyPublicationFilter(value);savedFilters.publicationAccount=value;localStorage.setItem(savedFiltersKey,JSON.stringify(savedFilters));const url=new URL(window.location.href);if(value)url.searchParams.set("account_id",value);else url.searchParams.delete("account_id");url.hash="queue";history.replaceState(null,"",url.toString());selectDashboardView("queue")});
-function selectedQueuePosts(){return queueSelects.filter(input=>input.checked)}
-const deleteSelectedButton=document.querySelector("#delete-selected-form button");function syncSelectAllPosts(){if(!selectAllPosts)return;const selected=queueSelects.filter(input=>input.checked);selectAllPosts.checked=queueSelects.length>0&&selected.length===queueSelects.length;selectAllPosts.indeterminate=selected.length>0&&selected.length<queueSelects.length;if(deleteSelectedButton)deleteSelectedButton.hidden=!selected.length}
-if(selectAllPosts){selectAllPosts.addEventListener("click",()=>{const selectAll=queueSelects.some(input=>!input.checked);queueSelects.forEach(input=>{input.checked=selectAll;input.closest(".queue-card")?.classList.toggle("selected",selectAll)});syncSelectAllPosts()});syncSelectAllPosts()}
-const privacyButton=document.getElementById("privacy-button");if(privacyToggle){privacyToggle.addEventListener("change",()=>{document.querySelectorAll(".queue-media-content img,.queue-media-content video").forEach(media=>media.classList.toggle("privacy-blur",privacyToggle.checked));savedFilters.privacy=privacyToggle.checked;localStorage.setItem(savedFiltersKey,JSON.stringify(savedFilters));if(privacyButton){privacyButton.innerHTML=`<i data-lucide="${privacyToggle.checked?"eye-off":"eye"}"></i>`;privacyButton.title=privacyToggle.checked?"Desativar modo privacidade":"Ativar modo privacidade";privacyButton.setAttribute("aria-label",privacyButton.title);if(window.lucide)lucide.createIcons()}})}if(privacyButton&&privacyToggle){privacyButton.addEventListener("click",()=>{privacyToggle.checked=!privacyToggle.checked;privacyToggle.dispatchEvent(new Event("change"))})}
-if(publicationFilter){const initialAccount=publicationFilter.value||savedFilters.publicationAccount;if(initialAccount&&[...publicationFilter.options].some(option=>option.value===initialAccount))publicationFilter.value=initialAccount;applyPublicationFilter(publicationFilter.value)}if(privacyToggle&&savedFilters.privacy){privacyToggle.checked=true;privacyToggle.dispatchEvent(new Event("change"))}
-let queueAscending=false;document.getElementById("queue-sort")?.addEventListener("click",()=>{queueAscending=!queueAscending;document.querySelectorAll(".queue-grid").forEach(grid=>{const sorted=[...grid.querySelectorAll(".queue-card")].sort((a,b)=>{const first=Date.parse(a.dataset.scheduled),second=Date.parse(b.dataset.scheduled);return queueAscending?first-second:second-first});sorted.forEach(card=>grid.appendChild(card))})});
-["delete-selected-form","publish-selected-form"].forEach(formId=>{const actionForm=document.getElementById(formId);if(actionForm){actionForm.addEventListener("submit",event=>{const selected=selectedQueuePosts();if(!selected.length){event.preventDefault();alert("Selecione ao menos uma publicação.");return}if(formId==="delete-selected-form"&&!confirm("Excluir as publicações selecionadas?")){event.preventDefault();return}actionForm.querySelectorAll(".generated-post-id").forEach(input=>input.remove());selected.forEach(item=>{const input=document.createElement("input");input.type="hidden";input.name="post_ids";input.value=item.value;input.className="generated-post-id";actionForm.appendChild(input)})})}});
-document.getElementById("delete-all-form")?.addEventListener("submit",event=>{if(!confirm("Excluir todas as publicações desta visualização?"))event.preventDefault()});document.querySelectorAll("[data-delete-batch]").forEach(form=>form.addEventListener("submit",event=>{if(!confirm("Excluir este lote e todas as publicações dele?"))event.preventDefault()}));
-document.getElementById("retry-blocked-form")?.addEventListener("submit",event=>{if(!confirm("Verificar a autorização e tentar novamente as publicações bloqueadas?"))event.preventDefault()});
-document.getElementById("retry-failed-form")?.addEventListener("submit",event=>{event.preventDefault();const form=event.currentTarget;const modal=document.createElement("div");modal.className="retry-modal";modal.innerHTML='<div class="retry-dialog" role="dialog" aria-modal="true"><div class="eyebrow">Reenvio</div><h3>Programar falhas novamente</h3><label>Qual o intervalo (em minutos) de uma publicação para a outra?<input id="retry-interval" type="number" min="1" value="1" required></label><div class="queue-toolbar-actions"><button type="button" class="secondary" data-retry-cancel>Cancelar</button><button type="button" data-retry-confirm>Confirmar</button></div></div>';document.body.appendChild(modal);modal.querySelector("[data-retry-cancel]").addEventListener("click",()=>modal.remove());modal.querySelector("[data-retry-confirm]").addEventListener("click",()=>{const value=Number(modal.querySelector("#retry-interval").value);if(!Number.isInteger(value)||value<1){modal.querySelector("#retry-interval").reportValidity();return}const input=document.createElement("input");input.type="hidden";input.name="intervalo";input.value=value;form.appendChild(input);modal.remove();form.submit()})});
 document.querySelectorAll("[data-verify-account]").forEach(form=>form.addEventListener("submit",async event=>{event.preventDefault();const button=form.querySelector("button");button.disabled=true;button.title="Testando autorização e preparando reconexão...";try{const response=await fetch(form.action,{method:"POST",headers:{"Accept":"application/json"}});const data=await response.json();const row=form.closest("[data-account-id]");if(row){["connected","disconnected","suspended","error","pending"].forEach(name=>row.classList.remove(`status-${name}`));row.classList.add(`status-${data.status==="active"?"connected":data.status}`);row.title=data.reason||"Conta conectada e funcional.";const reason=row.querySelector("[data-account-reason]");if(reason)reason.textContent=data.reason||"Online e autorizada";const checked=row.querySelector("[data-account-checked]");if(checked)checked.textContent=data.checked_at?`Verificada em ${new Date(data.checked_at).toLocaleString()}`:"Ainda não verificada"}if(data.reconnect_url){showToast("A autorização precisa ser renovada. Redirecionando para conectar novamente.","info");window.setTimeout(()=>{window.location.assign(data.reconnect_url)},700);return}showToast(data.status==="connected"?"Conta autorizada para publicar.":data.reason||"A conta não está autorizada.",data.status==="connected"?"success":"error")}catch(error){showToast("Não foi possível verificar a conta. Tente conectar novamente.","error")}finally{button.disabled=false;button.title="Verificar autorização"}}));
 const clearFailedForm=document.getElementById("clear-failed-form");if(clearFailedForm){clearFailedForm.addEventListener("submit",event=>{if(!confirm("Excluir todas as publicações com falha?"))event.preventDefault()})}
 const feedAccounts=document.getElementById("feed-accounts"),feedGrid=document.getElementById("feed-grid"),feedStatus=document.getElementById("feed-status"),feedItems=[];
@@ -931,11 +745,10 @@ automationForm?.addEventListener("submit",async event=>{event.preventDefault();c
 document.getElementById("automation-refresh")?.addEventListener("click",loadAutomations);if(automationList)loadAutomations();
 const metaTestButton=document.getElementById("meta-test-button"),metaTestResult=document.getElementById("meta-test-result");if(metaTestButton&&metaTestResult){metaTestButton.addEventListener("click",async()=>{metaTestButton.disabled=true;metaTestButton.textContent="Testando Meta...";metaTestResult.hidden=false;metaTestResult.textContent="Consultando perfil e Insights...";try{const response=await fetch("/api/meta/test",{method:"POST",headers:{"Accept":"application/json"}});const payload=await response.json();if(!response.ok)throw new Error(payload.detail||"Falha no diagnóstico");metaTestResult.textContent=JSON.stringify(payload,null,2);showToast(payload.message||"Diagnóstico concluído.","success")}catch(error){metaTestResult.textContent=error.message;showToast(error.message,"error")}finally{metaTestButton.disabled=false;metaTestButton.innerHTML='<i data-lucide="activity"></i> Executar teste';if(window.lucide)lucide.createIcons()}})}
 document.querySelectorAll('input[name="caption_mode"]').forEach(input=>input.addEventListener("change",renderCaptionFields));
-if(form){form.addEventListener("submit",event=>{const looping=Boolean(loopEnabled?.checked);if(!media.length){event.preventDefault();alert("Selecione ao menos uma mídia.");return}if(media.length>30){event.preventDefault();alert("Adicione quantas mídias precisar; o Loop mantém a ordem e o intervalo configurado.");return}if(!document.querySelector('input[name="account_ids"]:checked')){event.preventDefault();alert("Selecione ao menos uma conta.");return}if(!looping){const selected=parseLocalDateTime(time.value);if(Number.isNaN(selected.getTime())){event.preventDefault();time.setCustomValidity("Informe um horário válido.");time.reportValidity();return}time.setCustomValidity("")}form.querySelectorAll(".generated-media").forEach(item=>item.remove());media.forEach(item=>{[["media_urls",item.url],["media_types",item.type],["storage_paths",item.storagePath],["drive_media_urls",item.driveMediaUrl],["drive_account_emails",item.driveAccountEmail],["drive_credentials_encrypted",item.driveCredentialsEncrypted]].forEach(([name,value])=>{const input=document.createElement("input");input.type="hidden";input.name=name;input.value=value||"";input.className="generated-media";form.appendChild(input)})});if(document.querySelector('input[name="caption_mode"]:checked').value==="individual")media.forEach(item=>{const input=document.createElement("input");input.type="hidden";input.name="captions";input.value=item.caption||"";input.className="generated-media";form.appendChild(input)});if(!looping){const localInput=document.createElement("input");localInput.type="hidden";localInput.name="scheduled_for";localInput.value=time.value;localInput.className="generated-media";form.appendChild(localInput)}if(time)time.disabled=true})}
+if(form){form.addEventListener("submit",event=>{const looping=Boolean(loopEnabled?.checked);if(!media.length){event.preventDefault();alert("Selecione ao menos uma mídia.");return}if(!document.querySelector('input[name="account_ids"]:checked')){event.preventDefault();alert("Selecione ao menos uma conta.");return}if(!looping){const selected=parseLocalDateTime(time.value);if(Number.isNaN(selected.getTime())){event.preventDefault();time.setCustomValidity("Informe um horário válido.");time.reportValidity();return}time.setCustomValidity("")}form.querySelectorAll(".generated-media").forEach(item=>item.remove());media.forEach(item=>{[["media_urls",item.url],["media_types",item.type],["storage_paths",item.storagePath],["drive_media_urls",item.driveMediaUrl],["drive_account_emails",item.driveAccountEmail],["drive_credentials_encrypted",item.driveCredentialsEncrypted]].forEach(([name,value])=>{const input=document.createElement("input");input.type="hidden";input.name=name;input.value=value||"";input.className="generated-media";form.appendChild(input)})});if(document.querySelector('input[name="caption_mode"]:checked').value==="individual")media.forEach(item=>{const input=document.createElement("input");input.type="hidden";input.name="captions";input.value=item.caption||"";input.className="generated-media";form.appendChild(input)});if(!looping){const localInput=document.createElement("input");localInput.type="hidden";localInput.name="scheduled_for";localInput.value=time.value;localInput.className="generated-media";form.appendChild(localInput)}if(time)time.disabled=true})}
 </script>
 <script type="module">
   import "/static/js/dashboard.js";
-  import "/static/js/queue.js";
   import "/static/js/loop-manager.js";
   import "/static/js/drive-picker.js";
   import "/static/js/feed.js";

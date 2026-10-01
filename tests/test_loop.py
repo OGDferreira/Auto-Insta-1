@@ -160,8 +160,9 @@ async def test_loop_restarts_playlist_and_includes_added_accounts(monkeypatch):
         assert 'data-dashboard-period="7"' in html
         assert 'data-dashboard-period="30"' in html
         assert "Ver publicações e horários</button>" not in html
-        assert 'aria-label="Ver publicações e horários"' in html
-        assert 'data-lucide="eye"' in html
+        assert 'aria-label="Ver publicações e horários"' not in html
+        assert 'class="queue-panel"' not in html
+        assert 'Criar Loop <span>→</span>' in html
         assert 'status-error publication-error challenge-required' in html
         assert '#dashboard-account-list { display:grid; grid-template-columns:minmax(0,1fr)' in html
         assert '#dashboard-account-list .account-row.challenge-required { border-color:var(--danger)' in html
