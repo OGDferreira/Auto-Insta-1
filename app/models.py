@@ -1,7 +1,7 @@
 from datetime import date, datetime, timezone
 import secrets
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -143,6 +143,7 @@ class AutomationRule(Base):
 
 class PostingBatch(Base):
     __tablename__ = "posting_batches"
+    __table_args__ = (Index("ix_posting_batches_owner_status", "owner_id", "status"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(160), default="Lote de publicações")
@@ -159,6 +160,7 @@ class PostingBatch(Base):
 
 class ScheduledPost(Base):
     __tablename__ = "scheduled_posts"
+    __table_args__ = (Index("ix_scheduled_posts_owner_status_time", "owner_id", "status", "scheduled_for"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     account_id: Mapped[int] = mapped_column(
@@ -225,6 +227,10 @@ class CollaboratorConnectionBatch(Base):
 
 class BotEvent(Base):
     __tablename__ = "bot_events"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "source_event_key", name="uq_bot_event_owner_source_key"),
+        Index("ix_bot_events_owner_timestamp", "owner_id", "timestamp"),
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     account_id: Mapped[int | None] = mapped_column(
@@ -233,6 +239,7 @@ class BotEvent(Base):
     event_type: Mapped[str] = mapped_column(String(30), index=True)
     value: Mapped[float] = mapped_column(Float, default=0.0)
     webhook_id: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    source_event_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     customer_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
     customer_username: Mapped[str | None] = mapped_column(String(120), nullable=True)
     bot_name: Mapped[str | None] = mapped_column(String(180), nullable=True)

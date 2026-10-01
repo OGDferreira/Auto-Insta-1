@@ -1,4 +1,5 @@
 from functools import lru_cache
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 from pydantic import BaseModel
 import os
@@ -15,6 +16,7 @@ def _env_int(name: str, default: int) -> int:
 
 class Settings(BaseModel):
     app_version: str = "1.1.0"
+    environment: str = "development"
     deploy_timestamp: str = ""
     meta_app_id: str = ""
     meta_app_secret: str = ""
@@ -41,6 +43,34 @@ class Settings(BaseModel):
     vapid_subject: str = ""
 
     @property
+    def allowed_hosts(self) -> list[str]:
+        configured = os.getenv("ALLOWED_HOSTS", "")
+        if configured.strip():
+            return [host.strip() for host in configured.split(",") if host.strip()]
+        hostname = urlparse(self.public_base_url).hostname
+        return [item for item in (hostname, "localhost", "127.0.0.1", "testserver") if item]
+
+    def validate_production(self) -> None:
+        if self.environment not in {"production", "prod"}:
+            return
+        required = {
+            "SECRET_KEY": self.secret_key,
+            "FERNET_KEY": self.fernet_key,
+            "DATABASE_URL": self.database_url,
+            "META_APP_ID": self.meta_app_id,
+            "META_APP_SECRET": self.meta_app_secret,
+            "WEBHOOK_VERIFY_TOKEN": self.webhook_verify_token,
+        }
+        missing = [name for name, value in required.items() if not str(value).strip()]
+        insecure = [name for name, value in {
+            "SECRET_KEY": self.secret_key,
+            "WEBHOOK_VERIFY_TOKEN": self.webhook_verify_token,
+        }.items() if str(value).strip().lower().startswith("change-me")]
+        if missing or insecure:
+            details = ", ".join(dict.fromkeys(missing + insecure))
+            raise RuntimeError(f"Configuração de produção incompleta ou insegura: {details}")
+
+    @property
     def oauth_redirect_uri(self) -> str:
         return os.getenv("INSTAGRAM_REDIRECT_URI", f"{self.public_base_url}/auth/callback").rstrip("/")
 
@@ -63,6 +93,7 @@ def get_settings() -> Settings:
     )
     values = {
         "app_version": os.getenv("APP_VERSION", "1.1.0"),
+        "environment": os.getenv("ENVIRONMENT", "development").lower(),
         "deploy_timestamp": os.getenv("DEPLOY_TIMESTAMP", ""),
         "meta_app_id": os.getenv("META_APP_ID", ""),
         "meta_app_secret": os.getenv("META_APP_SECRET", ""),

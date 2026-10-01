@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import hashlib
 import io
 import json
 from datetime import datetime, timezone
@@ -114,6 +115,25 @@ def _event_timestamp(value: dict) -> datetime:
         except ValueError:
             logger.warning("Timestamp inválido recebido pelo Sharkbot: %s", raw_timestamp)
     return datetime.now(timezone.utc)
+
+
+def _event_source_key(event: dict, event_type: str) -> str:
+    """Build a stable idempotency key even when Sharkbot omits webhook_id."""
+    transaction = _event_transaction(event)
+    explicit_id = event.get("webhook_id") or event.get("id")
+    transaction_id = transaction.get("id") or transaction.get("external_id")
+    material = (
+        {
+            "webhook_id": str(explicit_id),
+            "event_type": event_type,
+            "transaction_id": str(transaction_id) if transaction_id else None,
+            "timestamp": event.get("timestamp"),
+        }
+        if explicit_id
+        else {"event_type": event_type, "payload": event}
+    )
+    serialized = json.dumps(material, sort_keys=True, ensure_ascii=False, default=str).encode()
+    return hashlib.sha256(serialized).hexdigest()
 
 
 @router.get("")
@@ -300,6 +320,11 @@ async def _delayed_auto_reply(account_id: int, event: dict) -> None:
 @router.post("/sharkbot/")
 @router.post("/sharkbot/{webhook_token}")
 async def receive_webhook(request: Request, webhook_token: str | None = None):
+    if not webhook_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Use a URL individual do webhook Sharkbot fornecida no painel.",
+        )
     try:
         payload = await request.json()
     except ValueError as exc:
@@ -311,11 +336,9 @@ async def receive_webhook(request: Request, webhook_token: str | None = None):
     if not events:
         raise HTTPException(status_code=422, detail="Nenhum evento reconhecível no payload")
     async with SessionLocal() as db:
-        webhook_owner = None
-        if webhook_token:
-            webhook_owner = await db.scalar(select(User).where(User.sharkbot_webhook_token == webhook_token))
-            if webhook_owner is None:
-                raise HTTPException(status_code=404, detail="Webhook do usuário não encontrado")
+        webhook_owner = await db.scalar(select(User).where(User.sharkbot_webhook_token == webhook_token))
+        if webhook_owner is None:
+            raise HTTPException(status_code=404, detail="Webhook do usuário não encontrado")
         for event in events:
             value = event.get("value", event)
             if not isinstance(value, dict):
@@ -363,23 +386,12 @@ async def receive_webhook(request: Request, webhook_token: str | None = None):
                 transaction_id = str(
                     transaction.get("id") or transaction.get("external_id")
                 ) if transaction.get("id") or transaction.get("external_id") else None
-                event_owner_id = account.owner_id if account else (webhook_owner.id if webhook_owner else None)
-                duplicate_query = select(BotEvent).where(
-                    BotEvent.webhook_id == webhook_id,
-                    BotEvent.event_type == event_type,
-                )
-                if event_owner_id is not None:
-                    duplicate_query = duplicate_query.where(BotEvent.owner_id == event_owner_id)
-                if transaction_id:
-                    duplicate_query = duplicate_query.where(
-                        BotEvent.transaction_id == transaction_id
-                    )
-                else:
-                    duplicate_query = duplicate_query.where(
-                        BotEvent.timestamp == timestamp,
-                        BotEvent.value == event_value,
-                    )
-                duplicate = await db.scalar(duplicate_query) if webhook_id else None
+                event_owner_id = account.owner_id if account else webhook_owner.id
+                source_event_key = _event_source_key(event, event_type)
+                duplicate = await db.scalar(select(BotEvent).where(
+                    BotEvent.owner_id == event_owner_id,
+                    BotEvent.source_event_key == source_event_key,
+                ))
                 if duplicate:
                     logger.info(
                         "Evento Sharkbot duplicado ignorado: webhook_id=%s tipo=%s",
@@ -393,6 +405,7 @@ async def receive_webhook(request: Request, webhook_token: str | None = None):
                     event_type=event_type,
                     value=event_value,
                     webhook_id=webhook_id,
+                    source_event_key=source_event_key,
                     customer_name=customer_name,
                     customer_username=str(customer.get("username")) if customer.get("username") else None,
                     bot_name=str(bot.get("name")) if bot.get("name") else None,

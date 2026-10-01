@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Auto-Insta{% endblock %}</title><link rel="icon" type="image/x-icon" href="/static/favicon.ico"><link rel="icon" type="image/png" sizes="512x512" href="/static/media_downloader_icon_512.png"><link rel="apple-touch-icon" href="/static/media_downloader_icon_512.png"><link rel="manifest" href="/static/manifest.webmanifest"><meta name="theme-color" content="#080D1C"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Auto-Insta">
+  <title>{% block title %}Auto-Insta{% endblock %}</title><meta name="csrf-token" content="{{ request.session.get('csrf_token', '') }}"><link rel="icon" type="image/x-icon" href="/static/favicon.ico"><link rel="icon" type="image/png" sizes="512x512" href="/static/media_downloader_icon_512.png"><link rel="apple-touch-icon" href="/static/media_downloader_icon_512.png"><link rel="manifest" href="/static/manifest.webmanifest"><meta name="theme-color" content="#080D1C"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Auto-Insta">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -206,6 +206,36 @@
   <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
+<script>
+(() => {
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  const token = meta?.content || "";
+  const unsafe = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (input, init = {}) => {
+    const request = input instanceof Request ? input : null;
+    const method = String(init.method || request?.method || "GET").toUpperCase();
+    const url = new URL(typeof input === "string" ? input : input.url, window.location.href);
+    if (token && url.origin === window.location.origin && unsafe.has(method)) {
+      const headers = new Headers(request?.headers || {});
+      new Headers(init.headers || {}).forEach((value, key) => headers.set(key, value));
+      headers.set("X-CSRF-Token", token);
+      init = {...init, headers};
+    }
+    return nativeFetch(input, init);
+  };
+  document.addEventListener("submit", event => {
+    if (!token || !event.target.matches("form")) return;
+    const method = (event.target.method || "GET").toUpperCase();
+    if (!unsafe.has(method) || event.target.querySelector('input[name="csrf_token"]')) return;
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "csrf_token";
+    input.value = token;
+    event.target.appendChild(input);
+  }, true);
+})();
+</script>
 <div id="app-loading-splash" class="app-loading-splash" role="status" aria-label="Carregando Auto-Insta"><img src="/static/media_downloader_icon_512.png" alt=""></div>
 <nav><a class="brand" href="/"><img class="brand-mark" src="/static/media_downloader_icon_512.png" alt=""> Auto<span>·</span>Insta</a>{% if request.session.get("user_id") %}<div class="top-actions"><div class="notification-menu" id="notification-menu" hidden><button id="notification-trigger" class="notification-trigger secondary" type="button" aria-label="Abrir alertas da conta" aria-expanded="false" aria-controls="notification-panel"><i data-lucide="bell"></i><span id="notification-count" class="notification-count" hidden></span></button><section id="notification-panel" class="notification-panel" aria-label="Alertas de conexão" hidden><h2>Alertas de conta</h2><div id="notification-list" class="notification-list" aria-live="polite"><p class="notification-empty">Carregando alertas...</p></div></section></div><button id="profile-trigger" class="profile-trigger secondary" type="button" aria-label="Abrir perfil"><i data-lucide="user-round"></i></button></div>{% endif %}</nav>
 {% block content %}{% endblock %}

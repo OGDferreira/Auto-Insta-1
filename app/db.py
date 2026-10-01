@@ -172,6 +172,7 @@ async def init_db() -> None:
             new_columns = {
                 "owner_id": "INTEGER",
                 "webhook_id": "TEXT",
+                "source_event_key": "TEXT",
                 "customer_name": "TEXT",
                 "customer_username": "TEXT",
                 "bot_name": "TEXT",
@@ -186,6 +187,22 @@ async def init_db() -> None:
                     )
             await connection.exec_driver_sql(
                 "UPDATE bot_events SET created_at = timestamp WHERE created_at IS NULL"
+            )
+            await connection.exec_driver_sql(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_bot_events_owner_source_key "
+                "ON bot_events(owner_id, source_event_key)"
+            )
+            await connection.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_bot_events_owner_timestamp "
+                "ON bot_events(owner_id, timestamp)"
+            )
+            await connection.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_posting_batches_owner_status "
+                "ON posting_batches(owner_id, status)"
+            )
+            await connection.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_scheduled_posts_owner_status_time "
+                "ON scheduled_posts(owner_id, status, scheduled_for)"
             )
             import secrets
             users = await connection.exec_driver_sql("SELECT id, sharkbot_webhook_token FROM users")
@@ -226,6 +243,7 @@ async def init_db() -> None:
                 "bot_events": {
                     "owner_id": "INTEGER",
                     "webhook_id": "VARCHAR(120)",
+                    "source_event_key": "VARCHAR(128)",
                     "customer_name": "VARCHAR(180)",
                     "customer_username": "VARCHAR(120)",
                     "bot_name": "VARCHAR(180)",
@@ -283,6 +301,22 @@ async def init_db() -> None:
                         )
             await connection.exec_driver_sql(
                 'UPDATE "bot_events" SET "created_at" = "timestamp" WHERE "created_at" IS NULL'
+            )
+            await connection.exec_driver_sql(
+                'CREATE UNIQUE INDEX IF NOT EXISTS "uq_bot_events_owner_source_key" '
+                'ON "bot_events" ("owner_id", "source_event_key")'
+            )
+            await connection.exec_driver_sql(
+                'CREATE INDEX IF NOT EXISTS "ix_bot_events_owner_timestamp" '
+                'ON "bot_events" ("owner_id", "timestamp")'
+            )
+            await connection.exec_driver_sql(
+                'CREATE INDEX IF NOT EXISTS "ix_posting_batches_owner_status" '
+                'ON "posting_batches" ("owner_id", "status")'
+            )
+            await connection.exec_driver_sql(
+                'CREATE INDEX IF NOT EXISTS "ix_scheduled_posts_owner_status_time" '
+                'ON "scheduled_posts" ("owner_id", "status", "scheduled_for")'
             )
             import secrets
             users = await connection.exec_driver_sql('SELECT "id", "sharkbot_webhook_token" FROM "users"')

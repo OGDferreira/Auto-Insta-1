@@ -5,6 +5,10 @@ services:
     plan: free
     healthCheckPath: /health
     envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: ALLOWED_HOSTS
+        value: auto-insta-aeqr.onrender.com
       - key: SECRET_KEY
         generateValue: true
       - key: FERNET_KEY

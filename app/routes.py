@@ -64,7 +64,14 @@ from .oauth import (
     token_expiration_from_data,
 )
 from .observability import get_recent_logs
-from .security import decrypt_token, encrypt_token, hash_password, verify_password
+from .security import (
+    csrf_token_matches,
+    decrypt_token,
+    encrypt_token,
+    ensure_csrf_token,
+    hash_password,
+    verify_password,
+)
 from .utils import parse_spintax
 
 router = APIRouter()
@@ -336,6 +343,17 @@ async def current_user(request: Request, db: AsyncSession = Depends(get_db)) -> 
     user_id = request.session.get("user_id")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Login required")
+    csrf_token = ensure_csrf_token(request.session)
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        supplied_token = request.headers.get("X-CSRF-Token")
+        content_type = request.headers.get("content-type", "")
+        if not supplied_token and content_type.startswith(
+            ("application/x-www-form-urlencoded", "multipart/form-data")
+        ):
+            form = await request.form()
+            supplied_token = form.get("csrf_token")
+        if not csrf_token_matches(csrf_token, str(supplied_token) if supplied_token else None):
+            raise HTTPException(status_code=403, detail="Token CSRF inválido ou ausente")
     user = await db.get(User, int(user_id))
     if not user:
         request.session.clear()
@@ -1163,7 +1181,8 @@ async def login(
 
 
 @router.post("/logout")
-async def logout(request: Request):
+async def logout(request: Request, user: User = Depends(current_user)):
+    del user
     request.session.clear()
     return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -2916,9 +2935,10 @@ async def instagram_start(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    state = new_oauth_state(getattr(user, "id", 0), reconnect_account_id)
-    # Mantém compatibilidade com sessões existentes, mas o callback também valida o estado assinado.
+    oauth_nonce = new_state()
+    state = new_oauth_state(getattr(user, "id", 0), reconnect_account_id, oauth_nonce)
     request.session["instagram_oauth_state"] = state
+    request.session["instagram_oauth_nonce"] = oauth_nonce
     if reconnect_account_id is not None:
         account = await db.scalar(
             select(InstagramAccount).where(
@@ -2929,7 +2949,12 @@ async def instagram_start(
         if account:
             request.session["instagram_reconnect_account_id"] = account.id
     redirect_url = authorization_url(state)
-    logger.warning("Instagram OAuth authorization URL: %s", redirect_url)
+    logger.info(
+        "Instagram OAuth authorization started: user_id=%s reconnect=%s state_length=%s",
+        getattr(user, "id", None),
+        reconnect_account_id,
+        len(state),
+    )
     return RedirectResponse(redirect_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
@@ -2944,18 +2969,25 @@ async def instagram_callback(
     db: AsyncSession = Depends(get_db),
 ):
     expected_state = request.session.pop("instagram_oauth_state", None)
+    expected_nonce = request.session.pop("instagram_oauth_nonce", None)
     signed_state = read_oauth_state(state or "") if state else None
-    session_user_id = request.session.get("user_id") or (signed_state or {}).get("user_id")
-    # O state é assinado e expira em 15 minutos. O cookie continua sendo conferido quando presente,
-    # mas não é mais a única fonte de verdade no retorno do Instagram.
-    if not signed_state or not session_user_id:
+    session_user_id = request.session.get("user_id")
+    if (
+        not signed_state
+        or not session_user_id
+        or not expected_state
+        or expected_state != state
+        or not expected_nonce
+        or signed_state.get("nonce") != expected_nonce
+        or int(signed_state.get("user_id", -1)) != int(session_user_id)
+    ):
         logger.warning(
             "Instagram OAuth callback rejected before token exchange: "
-            "session_user=%s callback_state=%s expected_state=%s signed_state=%s",
+            "session_user=%s callback_state=%s expected_state=%s signed_state=%s nonce=%s",
             bool(request.session.get("user_id")), bool(state), bool(expected_state), bool(signed_state),
+            bool(expected_nonce),
         )
         raise HTTPException(status_code=400, detail="OAuth state inválido ou expirado")
-    request.session["user_id"] = int(session_user_id)
     if error:
         request.session.pop("instagram_reconnect_account_id", None)
         detail = error_description or error_reason or error

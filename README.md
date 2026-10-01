@@ -19,9 +19,11 @@ Publicações impedidas por autorização ficam como `blocked`, podem ser verifi
 - `owner_id` está presente em contas e publicações; todas as consultas da interface filtram pelo usuário autenticado.
 - Senhas usam `werkzeug` com scrypt. A sessão fica em cookie assinado por `SECRET_KEY`, com `HttpOnly`, `SameSite=Lax` e `COOKIE_SECURE=true` em produção.
 - Access tokens do Instagram são cifrados em repouso com Fernet (`FERNET_KEY`); nenhum token é exibido em templates.
-- O callback valida um `state` aleatório armazenado na sessão.
+- Todas as mutações autenticadas exigem CSRF (`X-CSRF-Token` ou campo oculto); a sessão usa cookie assinado por `SECRET_KEY`.
+- O callback OAuth valida o `state` assinado, compara-o com a sessão iniciadora e exige um nonce de uso único; o `state` expira em 15 minutos.
+- O serviço envia CSP, `X-Frame-Options`, `nosniff`, HSTS em HTTPS e restringe o `Host` aos domínios configurados em `ALLOWED_HOSTS`.
 - OAuth e publicação usam o fluxo Instagram Login: `www.instagram.com`, `api.instagram.com` e `https://graph.instagram.com/{GRAPH_API_VERSION}`. Tokens obtidos nesse fluxo não devem ser enviados para `graph.facebook.com`.
-- `init_db()` executa `create_all` de forma idempotente no startup. Para evoluções posteriores, adicione migrações Alembic.
+- `init_db()` executa `create_all` e migrações idempotentes de colunas/índices no startup. A coleta de Insights ocorre pelo scheduler e não bloqueia o boot.
 
 ## Desenvolvimento local
 
@@ -78,11 +80,11 @@ Cadastre `https://SEU_HOST/webhook` no produto Instagram e use o mesmo `WEBHOOK_
 
 ## Webhook Shark Bot
 
-No Shark Bot, informe esta URL para receber pagamentos criados, pagamentos aprovados e novos leads:
+No Shark Bot, copie a URL individual exibida no painel do Auto-Insta (Dashboard/Logs e Sistema). Ela tem o formato:
 
-`https://auto-insta-aeqr.onrender.com/webhook/sharkbot`
+`https://SEU_HOST/webhook/sharkbot/SEU_TOKEN_INDIVIDUAL`
 
-O endpoint aceita os payloads `payment_created`, `payment_approved` e `user_joined`. Os valores da transação são gravados em BRL e os dados do cliente, bot, plano e transação ficam disponíveis no log e na tabela de métricas. Para uma instalação em outro domínio, substitua `auto-insta-aeqr.onrender.com` pelo valor público de `PUBLIC_BASE_URL`.
+Cada usuário possui um token próprio; a rota sem token é rejeitada para impedir que dados sejam compartilhados entre workspaces. O endpoint aceita os payloads `payment_created`, `payment_approved` e `user_joined`, grava os valores em BRL e ignora reentregas idênticas por chave de idempotência.
 
 ## Deploy no Render
 

@@ -8,7 +8,7 @@ from app.oauth import OAUTH_SCOPES
 from fastapi.testclient import TestClient
 
 
-def test_instagram_start_logs_complete_authorization_url(monkeypatch, caplog):
+def test_instagram_start_logs_safe_oauth_metadata(monkeypatch, caplog):
     monkeypatch.setenv("META_APP_ID", "test-app")
     get_settings.cache_clear()
     app.dependency_overrides[current_user] = lambda: object()
@@ -20,10 +20,9 @@ def test_instagram_start_logs_complete_authorization_url(monkeypatch, caplog):
     app.dependency_overrides.clear()
     assert response.status_code == 307
     location = response.headers["location"]
-    assert location == next(
-        record.getMessage().split(": ", 1)[1]
+    assert any(
+        record.getMessage().startswith("Instagram OAuth authorization started: ")
         for record in caplog.records
-        if record.getMessage().startswith("Instagram OAuth authorization URL: ")
     )
     query = parse_qs(urlparse(location).query)
     assert query["client_id"] == ["test-app"]

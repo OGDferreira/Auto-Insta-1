@@ -50,10 +50,18 @@ def authorization_url(state: str) -> str:
 def new_state() -> str:
     return secrets.token_urlsafe(32)
 
-def new_oauth_state(user_id: int, reconnect_account_id: int | None = None) -> str:
-    """Create a short-lived, signed state that survives cookie loss on provider return."""
+def new_oauth_state(
+    user_id: int,
+    reconnect_account_id: int | None = None,
+    nonce: str | None = None,
+) -> str:
+    """Create a short-lived, signed state bound to the initiating session."""
     serializer = URLSafeTimedSerializer(get_settings().secret_key, salt="instagram-oauth")
-    return serializer.dumps({"user_id": int(user_id), "reconnect_account_id": reconnect_account_id, "nonce": new_state()})
+    return serializer.dumps({
+        "user_id": int(user_id),
+        "reconnect_account_id": reconnect_account_id,
+        "nonce": nonce or new_state(),
+    })
 
 def read_oauth_state(value: str, max_age: int = 900) -> dict | None:
     serializer = URLSafeTimedSerializer(get_settings().secret_key, salt="instagram-oauth")
