@@ -57,6 +57,7 @@ class MetaApp(Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(120))
     app_id: Mapped[str] = mapped_column(String(160))
+    app_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     app_secret_encrypted: Mapped[str] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, index=True)

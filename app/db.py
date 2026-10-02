@@ -89,6 +89,12 @@ async def init_db() -> None:
                 "FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE, "
                 "FOREIGN KEY(account_id) REFERENCES instagram_accounts(id) ON DELETE CASCADE)"
             )
+            meta_app_columns = await connection.exec_driver_sql("PRAGMA table_info(meta_apps)")
+            existing_meta_app_columns = {row[1] for row in meta_app_columns}
+            if "app_url" not in existing_meta_app_columns:
+                await connection.exec_driver_sql(
+                    "ALTER TABLE meta_apps ADD COLUMN app_url VARCHAR(500)"
+                )
             columns = await connection.exec_driver_sql("PRAGMA table_info(instagram_accounts)")
             existing = {row[1] for row in columns}
             if "meta_app_id" not in existing:
@@ -241,6 +247,9 @@ async def init_db() -> None:
                     "token_expires_at": "TIMESTAMP WITH TIME ZONE",
                     "followers_count": "INTEGER NOT NULL DEFAULT 0",
                     "ice_breakers": "TEXT NOT NULL DEFAULT '[]'",
+                },
+                "meta_apps": {
+                    "app_url": "VARCHAR(500)",
                 },
                 "notification_subscriptions": {
                     "pwa_installed": "BOOLEAN NOT NULL DEFAULT FALSE",

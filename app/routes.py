@@ -10,6 +10,7 @@ import httpx
 from mimetypes import guess_type
 from pathlib import Path
 from uuid import uuid4
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
@@ -379,6 +380,7 @@ def _meta_app_public(app: MetaApp) -> dict:
         "id": app.id,
         "name": app.name,
         "app_id": app.app_id,
+        "app_url": app.app_url,
         "is_active": bool(app.is_active),
         "is_default": bool(app.is_default),
         "secret_configured": bool(app.app_secret_encrypted),
@@ -1242,12 +1244,21 @@ async def create_meta_app(
     name: str = Form(...),
     app_id: str = Form(...),
     app_secret: str = Form(...),
+    app_url: str = Form(""),
     user: User = Depends(admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     name = name.strip()[:120]
     app_id = app_id.strip()[:160]
     app_secret = app_secret.strip()
+    app_url = app_url.strip()[:500]
+    if app_url:
+        parsed_url = urlparse(app_url)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            raise HTTPException(
+                status_code=400,
+                detail="A URL do aplicativo deve começar com http:// ou https://",
+            )
     if not name or not app_id or not app_secret:
         raise HTTPException(status_code=400, detail="Informe nome, App ID e App Secret")
     owner_id = workspace_owner_id(user)
@@ -1259,6 +1270,7 @@ async def create_meta_app(
         owner_id=owner_id,
         name=name,
         app_id=app_id,
+        app_url=app_url or None,
         app_secret_encrypted=encrypt_token(app_secret),
         is_default=not bool(existing),
     )
